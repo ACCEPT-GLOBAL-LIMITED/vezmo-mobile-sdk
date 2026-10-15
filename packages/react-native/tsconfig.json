@@ -1,22 +1,31 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "rootDir": ".",
+    "paths": {
+      "@vezmo/react-native": ["./src/index"]
+    },
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "customConditions": [
+      "vezmo-react-native-source",
+      "react-native-strict-api"
+    ],
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
     "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2022"
-    ],
-    "types": [
-      "jest"
-    ],
-    "noEmit": true
-  },
-  "include": [
-    "src",
-    "node_modules/react-native/src/types/globals.d.ts"
-  ]
+    "strict": true,
+    "target": "ESNext",
+    "verbatimModuleSyntax": true
+  }
 }

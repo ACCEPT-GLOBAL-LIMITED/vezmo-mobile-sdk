@@ -1,0 +1,34 @@
+require "json"
+
+package = JSON.parse(File.read(File.join(__dir__, "package.json")))
+# The native payment engine the element runs on, pinned exactly; bumped on purpose, release by release.
+payment_engine_version = "26.14.0"
+
+if ENV["RCT_NEW_ARCH_ENABLED"] == "0"
+  raise "@vezmo/react-native needs the React Native New Architecture (RCT_NEW_ARCH_ENABLED=1)."
+end
+
+Pod::Spec.new do |s|
+  s.name         = "VezmoReactNative"
+  s.version      = package["version"]
+  s.summary      = package["description"]
+  s.homepage     = package["homepage"]
+  s.license      = package["license"]
+  s.authors      = package["author"]
+
+  s.platforms    = { :ios => "15.1" }
+  s.source       = { :git => "https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk.git", :tag => "#{s.version}" }
+  s.swift_version = "5.9"
+
+  s.source_files = "ios/**/*.{h,m,mm,swift}"
+  s.private_header_files = "ios/**/*.h"
+
+  s.pod_target_xcconfig = {
+    "DEFINES_MODULE" => "YES",
+    "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
+  }
+
+  s.dependency "StripePaymentSheet", payment_engine_version
+
+  install_modules_dependencies(s)
+end

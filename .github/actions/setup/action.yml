@@ -1,0 +1,32 @@
+name: Setup
+description: Node.js, Yarn and the React Native package's dependencies
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: packages/react-native/.nvmrc
+    - name: Enable Corepack (Yarn 4)
+      run: corepack enable
+      shell: bash
+    - name: Restore dependencies
+      id: cache
+      uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      with:
+        path: |
+          packages/react-native/**/node_modules
+          packages/react-native/.yarn/install-state.gz
+        key: ${{ runner.os }}-yarn-${{ hashFiles('packages/react-native/yarn.lock') }}
+    - name: Install dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: yarn install --immutable
+      working-directory: packages/react-native
+      shell: bash
+    - name: Save dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+      with:
+        path: |
+          packages/react-native/**/node_modules
+          packages/react-native/.yarn/install-state.gz
+        key: ${{ steps.cache.outputs.cache-primary-key }}
