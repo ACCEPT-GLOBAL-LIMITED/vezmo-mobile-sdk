@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "jest"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "node_modules/react-native/src/types/globals.d.ts"
+  ]
+}
