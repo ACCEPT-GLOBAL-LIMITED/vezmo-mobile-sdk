@@ -193,6 +193,12 @@ jobs:
           echo "Trying again: $failed"
           restart
           flows $failed || fail
+      # The sheet in dark mode: screenshots only (as the Android job and the other SDKs' runs).
+      - name: The sheet in dark mode
+        run: |
+          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
+          xcrun simctl ui "$UDID" appearance dark
+          maestro --device "$UDID" test e2e/maestro/look/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

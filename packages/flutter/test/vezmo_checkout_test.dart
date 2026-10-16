@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -219,6 +220,25 @@ void main() {
       await a.prepare(clientToken: 'a');
       await b.prepare(clientToken: 'b');
       expect(await a.present(), isA<CheckoutFailed>());
+      expect(await b.present(), isA<CheckoutCanceled>());
+    });
+
+    test('one sheet at a time: present while one is open answers at once, without opening another', () async {
+      final open = Completer<Object?>();
+      answers['present'] = (_) => open.future;
+      final a = VezmoCheckout();
+      await a.prepare(clientToken: 'a');
+      final first = a.present();
+      // Another checkout prepared while the sheet is open waits for it to close.
+      final b = VezmoCheckout();
+      await b.prepare(clientToken: 'b');
+      final second = await b.present();
+      expect((second as CheckoutFailed).error.message, 'The checkout is already open.');
+      expect(calls.where((c) => c.method == 'present'), hasLength(1));
+      open.complete({'status': 'canceled'});
+      expect(await first, isA<CheckoutCanceled>());
+      // Once closed, the checkout prepared meanwhile opens.
+      answers['present'] = (_) => {'status': 'canceled'};
       expect(await b.present(), isA<CheckoutCanceled>());
     });
 

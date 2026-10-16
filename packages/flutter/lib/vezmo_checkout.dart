@@ -35,6 +35,9 @@ class VezmoCheckout {
   /// The checkout whose session the sheet holds: the last one prepared, until it is presented.
   static VezmoCheckout? _prepared;
 
+  /// A sheet is open (there is one per app).
+  static bool _presenting = false;
+
   /// Loads the checkout. Pass exactly one token.
   ///
   /// [clientToken]: from your server, the API checkout session's `clientToken` (a one-time payment).
@@ -70,10 +73,15 @@ class VezmoCheckout {
 
   /// Opens the sheet and completes with the result when the buyer is done. Call [prepare] first, each time.
   Future<CheckoutResult> present() async {
+    // One sheet at a time, on both platforms (iPhone would otherwise open a second sheet over the first).
+    if (_presenting) {
+      return const CheckoutFailed(VezmoError(VezmoErrorCode.config, 'The checkout is already open.'));
+    }
     if (!identical(_prepared, this)) {
       return const CheckoutFailed(VezmoError(VezmoErrorCode.config, 'Call prepare() before present().'));
     }
     _prepared = null;
+    _presenting = true;
     try {
       final result = await _channel.invokeMapMethod<String, Object?>('present');
       return CheckoutResult.fromJson(result ?? const {});
@@ -81,6 +89,8 @@ class VezmoCheckout {
       return const CheckoutFailed(_unsupported);
     } on PlatformException catch (e) {
       return CheckoutFailed(VezmoError(VezmoErrorCode.unknown, e.message ?? _fallbackMessage));
+    } finally {
+      _presenting = false;
     }
   }
 
@@ -139,6 +149,7 @@ class VezmoConfiguration {
   };
 }
 
+/// Apple Pay in the sheet on iPhone, with your Apple Merchant ID.
 class ApplePayOptions {
   const ApplePayOptions({required this.merchantId, this.merchantCountryCode = 'US'});
 
@@ -149,6 +160,7 @@ class ApplePayOptions {
   final String merchantCountryCode;
 }
 
+/// Google Pay in the sheet on Android.
 class GooglePayOptions {
   const GooglePayOptions({this.merchantCountryCode = 'US'});
 
@@ -156,6 +168,7 @@ class GooglePayOptions {
   final String merchantCountryCode;
 }
 
+/// The sheet's look: follow the phone, or always light or dark.
 enum VezmoStyle { automatic, light, dark }
 
 /// Bring the sheet closer to your app.
@@ -312,6 +325,7 @@ final class CheckoutCanceled extends CheckoutResult {
   Map<String, Object?> toJson() => {'status': 'canceled'};
 }
 
+/// The checkout couldn't be paid: [error] says why, in words for the buyer.
 final class CheckoutFailed extends CheckoutResult {
   const CheckoutFailed(this.error);
 
@@ -337,6 +351,7 @@ class SubscriptionResult {
   Map<String, Object?> toJson() => {'ref': ref, 'status': status.name};
 }
 
+/// Where a subscription started in the sheet stands.
 enum SubscriptionStatus {
   /// The first payment went through.
   active,
@@ -366,6 +381,7 @@ class VezmoError {
   String toString() => 'VezmoError(${code.wireName}): $message';
 }
 
+/// What went wrong, to decide what your app does next.
 enum VezmoErrorCode {
   /// The bank said no; the buyer can try another card or way to pay.
   declined('declined'),

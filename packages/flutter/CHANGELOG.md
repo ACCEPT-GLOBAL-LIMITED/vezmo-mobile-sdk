@@ -7,6 +7,7 @@ The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`)
 - **API**: `VezmoCheckout(configuration: …)`, `prepare(clientToken: …)` or `prepare(subscriptionToken: …)`, then
   `present()`. Neither throws. Results are a sealed class: `CheckoutSucceeded`, `CheckoutProcessing`,
   `CheckoutCanceled`, `CheckoutFailed` with a `VezmoError` (`VezmoErrorCode` and a message written for the buyer).
+  One sheet at a time: `present()` while it is open is a `config` error.
 - **Android**: the native Vezmo Android SDK's sheet (`com.vezmo:vezmo-checkout` 0.1.0): cards with 3D Secure, Google
   Pay, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, the buyer's own currency, light and dark. The
   buyer comes back from bank apps and pay-later providers by themselves. Needs a `FlutterFragmentActivity`.
