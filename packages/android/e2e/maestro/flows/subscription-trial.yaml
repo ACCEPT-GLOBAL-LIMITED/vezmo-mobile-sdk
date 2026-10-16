@@ -20,6 +20,7 @@ appId: com.vezmo.example.nativeapp
     element:
       id: "subscribe"
     direction: DOWN
+    centerElement: true # tap it mid-screen, clear of the home indicator and gesture bar
 - tapOn:
     id: "subscribe"
 - extendedWaitUntil:
