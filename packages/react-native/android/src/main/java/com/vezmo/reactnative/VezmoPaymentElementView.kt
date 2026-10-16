@@ -104,7 +104,7 @@ class VezmoPaymentElementView(
     if (!configDirty && !intentDirty) return
     val config = parseJson(configJson) ?: return
     val intent = parseJson(intentJson) ?: return
-    val publishableKey = config.optString("publishableKey")
+    val publishableKey = config.text("publishableKey") ?: ""
     if (publishableKey.isEmpty()) {
       emit("topLoadFailed", Arguments.createMap().apply { putString("message", "Missing checkout keys.") })
       return
@@ -115,7 +115,7 @@ class VezmoPaymentElementView(
       PaymentConfiguration.init(
         reactContext.applicationContext,
         publishableKey,
-        config.optString("stripeAccount").ifEmpty { null },
+        config.text("stripeAccount"),
       )
       elementConfiguration = configuration(config)
     }
@@ -331,7 +331,7 @@ class VezmoPaymentElementView(
   private fun configuration(config: JSONObject): EmbeddedPaymentElement.Configuration {
     val builder =
       EmbeddedPaymentElement.Configuration
-        .Builder(config.optString("merchantDisplayName"))
+        .Builder(config.text("merchantDisplayName") ?: "")
         // Our own Pay button confirms; the card form only collects details.
         .formSheetAction(EmbeddedPaymentElement.FormSheetAction.Continue)
         // Vezmo is white label: no processor wallet of its own in the sheet.
@@ -346,16 +346,16 @@ class VezmoPaymentElementView(
             } else {
               PaymentSheet.GooglePayConfiguration.Environment.Production
             },
-          countryCode = gp.optString("merchantCountryCode", "US"),
-          currencyCode = gp.optString("currencyCode").ifEmpty { null },
+          countryCode = gp.text("merchantCountryCode") ?: "US",
+          currencyCode = gp.text("currencyCode"),
         ),
       )
     }
     config.optJSONObject("billing")?.let { b ->
       builder.defaultBillingDetails(
         PaymentSheet.BillingDetails(
-          name = b.optString("name").ifEmpty { null },
-          email = b.optString("email").ifEmpty { null },
+          name = b.text("name"),
+          email = b.text("email"),
         ),
       )
     }

@@ -20,21 +20,27 @@ internal fun parseJson(json: String): JSONObject? =
   }
 
 /** What is charged, for the element or the card flow, with the method types each one shows. */
+/**
+ * A string value, or null when it is missing, empty or JSON `null`. `optString` alone turns JSON `null` into the text
+ * "null": a merchant-of-record session (no connected account) then sent `Stripe-Account: null` and never loaded.
+ */
+internal fun JSONObject.text(key: String): String? = if (isNull(key)) null else optString(key).ifEmpty { null }
+
 internal fun intentConfiguration(
   intent: JSONObject,
   types: List<String>,
 ): PaymentSheet.IntentConfiguration {
-  val currency = intent.optString("currency", "usd").lowercase()
+  val currency = (intent.text("currency") ?: "usd").lowercase()
   // A subscription saves the card for its renewals: a free trial only sets it up; a first payment keeps it.
   val saveForLater =
-    if (intent.optString("setupFutureUsage") == "off_session") {
+    if (intent.text("setupFutureUsage") == "off_session") {
       PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession
     } else {
       null
     }
   return PaymentSheet.IntentConfiguration(
     mode =
-      if (intent.optString("mode") == "setup") {
+      if (intent.text("mode") == "setup") {
         PaymentSheet.IntentConfiguration.Mode.Setup(
           currency = currency,
           setupFutureUse = PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession,
@@ -56,7 +62,7 @@ internal fun intentConfiguration(
 internal fun appearance(params: JSONObject): PaymentSheet.Appearance {
   val colors = params.optJSONObject("colors") ?: JSONObject()
   fun color(key: String): Int? =
-    colors.optString(key).takeIf { it.isNotEmpty() }?.let {
+    colors.text(key)?.let {
       try {
         Color.parseColor(it)
       } catch (_: IllegalArgumentException) {
@@ -94,7 +100,7 @@ internal fun appearance(params: JSONObject): PaymentSheet.Appearance {
   // Methods as a flat list with a checkmark, inside the sheet's own rounded group (which draws the outer edges).
   val row = params.optJSONObject("row")
   if (row?.optString("style") == "checkmark") {
-    val separator = row.optString("separatorColor").takeIf { it.isNotEmpty() }?.let {
+    val separator = row.text("separatorColor")?.let {
       try {
         Color.parseColor(it)
       } catch (_: IllegalArgumentException) {

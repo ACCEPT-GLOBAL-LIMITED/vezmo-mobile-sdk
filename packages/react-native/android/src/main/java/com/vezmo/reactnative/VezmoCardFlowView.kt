@@ -114,7 +114,7 @@ class VezmoCardFlowView(
       commands.trySend(Command.Off)
       return
     }
-    val publishableKey = config.optString("publishableKey")
+    val publishableKey = config.text("publishableKey") ?: ""
     if (publishableKey.isEmpty()) {
       emit("topLoadFailed", Arguments.createMap().apply { putString("message", "Missing checkout keys.") })
       return
@@ -123,7 +123,7 @@ class VezmoCardFlowView(
       PaymentConfiguration.init(
         reactContext.applicationContext,
         publishableKey,
-        config.optString("stripeAccount").ifEmpty { null },
+        config.text("stripeAccount"),
       )
       sheetConfiguration = sheetConfiguration(config, wallets = false)
       walletConfiguration = if (config.optJSONObject("googlePay") != null) sheetConfiguration(config, wallets = true) else null
@@ -310,7 +310,7 @@ class VezmoCardFlowView(
   ): PaymentSheet.Configuration {
     val builder =
       PaymentSheet.Configuration
-        .Builder(config.optString("merchantDisplayName"))
+        .Builder(config.text("merchantDisplayName") ?: "")
         // Vezmo is white label: no processor wallet of its own.
         .link(PaymentSheet.LinkConfiguration(display = PaymentSheet.LinkConfiguration.Display.Never))
         .paymentMethodLayout(PaymentSheet.PaymentMethodLayout.Vertical)
@@ -323,16 +323,16 @@ class VezmoCardFlowView(
             } else {
               PaymentSheet.GooglePayConfiguration.Environment.Production
             },
-          countryCode = gp.optString("merchantCountryCode", "US"),
-          currencyCode = gp.optString("currencyCode").ifEmpty { null },
+          countryCode = gp.text("merchantCountryCode") ?: "US",
+          currencyCode = gp.text("currencyCode"),
         ),
       )
     }
     config.optJSONObject("billing")?.let { b ->
       builder.defaultBillingDetails(
         PaymentSheet.BillingDetails(
-          name = b.optString("name").ifEmpty { null },
-          email = b.optString("email").ifEmpty { null },
+          name = b.text("name"),
+          email = b.text("email"),
         ),
       )
     }
