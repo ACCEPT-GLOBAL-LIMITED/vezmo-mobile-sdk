@@ -31,6 +31,7 @@ struct Shop: View {
   @State private var status = ""
   @State private var result: CheckoutResult?
   @State private var showing = false
+  @FocusState private var typingToken: Bool
 
   private var ready: Bool { !token.trimmingCharacters(in: .whitespaces).isEmpty }
 
@@ -43,7 +44,7 @@ struct Shop: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .contentShape(Rectangle())
           // Tapping outside the field closes the keyboard.
-          .onTapGesture { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+          .onTapGesture { typingToken = false }
 
         product
 
@@ -106,6 +107,7 @@ struct Shop: View {
         .frame(height: 44)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.white))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
+        .focused($typingToken)
         .accessibilityIdentifier("client-token")
       Button { Task { await newSession() } } label: {
         Text("New sandbox session").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
@@ -148,6 +150,7 @@ struct Shop: View {
   }
 
   private func pay() async {
+    typingToken = false
     result = nil
     status = "Loading checkout…"
     if let error = await vezmo.prepare(clientToken: token) {
