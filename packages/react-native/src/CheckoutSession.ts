@@ -367,7 +367,12 @@ export class CheckoutSession {
       return;
     }
     if (status === 'failed') {
-      const error = this.lastError ?? (await this.deviceFailure()) ?? { code: 'declined' as const, message: message || DECLINED.message };
+      const answer = this.lastError ? null : await this.afterDeviceFailure();
+      if (answer && 'result' in answer) {
+        this.set({ phase: { name: 'done', result: answer.result } });
+        return;
+      }
+      const error = this.lastError ?? answer?.error ?? { code: 'declined' as const, message: message || DECLINED.message };
       this.set({ phase: { name: 'ready', error } });
       return;
     }
@@ -399,19 +404,30 @@ export class CheckoutSession {
   }
 
   /**
-   * A payment Vezmo handed to the device (3D Secure, a redirect) that then failed there: Vezmo's own verdict and words
-   * (the platforms word a decline differently), and the decline recorded now. Null when Vezmo has no such answer.
+   * A payment Vezmo handed to the device (3D Secure, a redirect) that then failed there: Vezmo has the answer. A step
+   * lost on the device can still have gone through (a bank app that came back late): then that is the result, as on
+   * iOS and Android. Otherwise Vezmo's own words for the decline (the platforms word it differently), recorded now.
+   * Null when Vezmo has no answer.
    */
-  private async deviceFailure(): Promise<VezmoError | null> {
+  private async afterDeviceFailure(): Promise<{ result: CheckoutResult } | { error: VezmoError } | null> {
     const intentId = this.lastPay?.state === 'requires_action' ? intentIdOf(this.lastPay.clientSecret) : null;
     if (!intentId) return null;
     try {
-      if (this.kind === 'subscription') await this.api.subscriptionConfirm(this.token, intentId);
-      else await this.api.confirm(this.token, intentId);
+      if (this.kind === 'subscription') {
+        // Answers only when the subscription started (paid, or the trial's card saved); anything else is a 400.
+        return { result: resultFromSubscriptionConfirm(await this.api.subscriptionConfirm(this.token, intentId)) };
+      }
+      const now = await this.api
+        .status(this.token)
+        .then(resultFromStatus)
+        .catch(() => null);
+      if (now && now.status !== 'failed') return { result: now };
+      // Answers only when the payment went through or is on its way; a decline is a 400 in our words.
+      await this.api.confirm(this.token, intentId);
+      return { result: await this.settledResult() };
     } catch (e) {
-      if (e instanceof VezmoApiError && e.code === 'declined') return e.toVezmoError();
+      return e instanceof VezmoApiError && e.code === 'declined' ? { error: e.toVezmoError() } : null;
     }
-    return null;
   }
 
   /** A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands. */

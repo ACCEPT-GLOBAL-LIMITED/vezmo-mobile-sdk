@@ -104,6 +104,7 @@ describe('CheckoutSession', () => {
 
   it('a decline after 3D Secure on the device reads in Vezmo’s words (the same on both platforms) and is recorded', async () => {
     t.api.pay.mockResolvedValue({ state: 'requires_action', paymentId: 'pay_1', clientSecret: 'pi_5_secret_d' });
+    t.api.status.mockResolvedValue({ state: 'failed', paymentId: 'pay_1', transactionId: null, livemode: false });
     t.api.confirm.mockRejectedValue(new VezmoApiError('declined', 'Your card was declined.', 400));
     t.session.setOption({ label: 'Visa •••• 0002' });
     t.session.pay();
@@ -121,6 +122,21 @@ describe('CheckoutSession', () => {
     await t.session.onConfirmationToken('ctoken_2');
     await t.session.onConfirmResult('failed', 'Your payment method was declined.');
     expect(t.session.getSnapshot().phase).toMatchObject({ error: { message: 'Your payment method was declined.' } });
+  });
+
+  it('a step lost on the device that went through anyway is the payment, as on iOS and Android', async () => {
+    t.api.pay.mockResolvedValue({ state: 'requires_action', paymentId: 'pay_1', clientSecret: 'pi_6_secret_l' });
+    // The bank app came back late: the device reports a failure, Vezmo has the payment.
+    t.api.status.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT6', livemode: false });
+    t.session.setOption({ label: 'Visa •••• 4242' });
+    t.session.pay();
+    await t.session.onConfirmationToken('ctoken_1');
+    await t.session.onConfirmResult('failed', 'Your payment method was declined.');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'done',
+      result: { status: 'succeeded', paymentId: 'pay_1', transactionId: 'VT6' },
+    });
+    expect(t.api.confirm).not.toHaveBeenCalled();
   });
 
   it('canceling the element returns to the sheet; an expired session closes it', async () => {
