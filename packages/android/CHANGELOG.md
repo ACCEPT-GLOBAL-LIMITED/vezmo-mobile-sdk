@@ -22,4 +22,7 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
   trial with the card saved); the result carries `subscription` (`ref`, `status`), and `paymentId` is null for a free
   trial. The sheet shows what is due today, the plan and the authorization the buyer gives.
 - Both business models: sessions of a merchant-of-record business (no connected account) load and pay the same way.
+- **Declines in Vezmo's words**: a card declined after 3D Secure shows Vezmo's reason, the same as on iPhone.
+- **Large font sizes**: the sheet's buttons, fields and labels grow with the phone's font size instead of clipping.
+- Minified (R8) release builds need no extra rules.
 - Android 7.0+ (API 24), compiled against SDK 36.
