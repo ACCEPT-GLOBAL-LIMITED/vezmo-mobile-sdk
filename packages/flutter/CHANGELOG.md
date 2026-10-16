@@ -10,7 +10,9 @@ The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`)
   One sheet at a time: `present()` while it is open is a `config` error.
 - **Android**: the native Vezmo Android SDK's sheet (`com.vezmo:vezmo-checkout` 0.1.0): cards with 3D Secure, Google
   Pay, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, the buyer's own currency, light and dark. The
-  buyer comes back from bank apps and pay-later providers by themselves. Needs a `FlutterFragmentActivity`.
+  buyer comes back from bank apps and pay-later providers by themselves. Needs a `FlutterFragmentActivity`. A
+  session prepared before the activity is recreated (a configuration change) is prepared again on the new one, so
+  `present()` still opens it.
 - **Subscriptions**: `prepare(subscriptionToken: …)` starts a subscription (the first payment, or a free trial with
   the card saved); the result carries `subscription` (`ref`, `status`), and `paymentId` is null for a free trial.
 - **Appearance**: your colors (one, or light and dark), corner radius and a native font through `VezmoAppearance`.

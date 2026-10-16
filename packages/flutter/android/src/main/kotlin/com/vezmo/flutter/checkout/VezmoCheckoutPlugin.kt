@@ -18,7 +18,9 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
@@ -31,7 +33,23 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     private val scope = MainScope()
     private var context: Context? = null
     private var checkout: VezmoCheckout? = null
+
+    /** Why there is no [checkout] on this activity, in words for the app's developer. */
+    private var noCheckout = NO_ACTIVITY
     private var pending: MethodChannel.Result? = null
+
+    /** The last prepare that succeeded and isn't presented yet: prepared again when the activity is recreated. */
+    private var prepared: Prepare? = null
+
+    /** That prepare, made again on a new activity: present waits for it. */
+    private var restoring: Deferred<VezmoError?>? = null
+
+    private class Prepare(
+        val configuration: VezmoConfiguration,
+        val clientToken: String?,
+        val subscriptionToken: String?,
+        val merchantDisplayName: String?,
+    )
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(binding.binaryMessenger, "vezmo_checkout")
@@ -47,13 +65,26 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     // activity starts). It needs a ComponentActivity: the app's MainActivity extends FlutterFragmentActivity. The
     // settings come from Dart with each prepare.
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
-        val activity = binding.activity as? ComponentActivity ?: return
+        val activity = binding.activity
         context = activity
-        checkout = try {
+        checkout = null
+        if (activity !is ComponentActivity) {
+            noCheckout = NOT_FRAGMENT_ACTIVITY
+            return
+        }
+        val vezmo = try {
             VezmoCheckout(activity, VezmoConfiguration(), ::finish)
         } catch (_: IllegalStateException) {
-            null // attached after the activity started (an engine added to a running screen): prepare says so
+            // The engine was attached to an activity that had already started (an engine added to a running screen).
+            noCheckout = ATTACHED_LATE
+            return
         }
+        checkout = vezmo
+        // A new activity (after a configuration change) has a new checkout, which knows nothing of the session
+        // prepared on the one before: it is prepared again here, and present() waits for it.
+        val again = prepared ?: return
+        restoring?.cancel()
+        restoring = scope.async { prepare(vezmo, again) }
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) = onAttachedToActivity(binding)
@@ -63,6 +94,7 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     override fun onDetachedFromActivity() {
         checkout = null
         context = null
+        noCheckout = NO_ACTIVITY
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -74,24 +106,53 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     }
 
     private fun prepare(call: MethodCall, result: MethodChannel.Result) {
-        val vezmo = checkout ?: return result.success(VezmoError(VezmoError.Code.Config, NO_ACTIVITY).toMap())
-        vezmo.configuration = configuration(call.argument<Map<String, Any?>>("configuration").orEmpty())
+        // A new prepare replaces the one before, and any prepare of it on a recreated activity.
+        prepared = null
+        restoring?.cancel()
+        restoring = null
+        val vezmo = checkout ?: return result.success(VezmoError(VezmoError.Code.Config, noCheckout).toMap())
+        val request = Prepare(
+            configuration = configuration(call.argument<Map<String, Any?>>("configuration").orEmpty()),
+            clientToken = call.argument("clientToken"),
+            subscriptionToken = call.argument("subscriptionToken"),
+            merchantDisplayName = call.argument("merchantDisplayName"),
+        )
         scope.launch {
-            val error = vezmo.prepare(
-                clientToken = call.argument("clientToken"),
-                subscriptionToken = call.argument("subscriptionToken"),
-                merchantDisplayName = call.argument("merchantDisplayName"),
-            )
+            val error = prepare(vezmo, request)
+            if (error == null) {
+                prepared = request
+                // The activity was recreated while this ran: prepared again on the new one.
+                val now = checkout
+                if (now != null && now !== vezmo) restoring = scope.async { prepare(now, request) }
+            }
             result.success(error?.toMap())
         }
     }
 
+    private suspend fun prepare(vezmo: VezmoCheckout, request: Prepare): VezmoError? {
+        vezmo.configuration = request.configuration
+        return vezmo.prepare(request.clientToken, request.subscriptionToken, request.merchantDisplayName)
+    }
+
     private fun present(result: MethodChannel.Result) {
-        val vezmo = checkout ?: return result.success(failed("Call prepare() before present()."))
         if (pending != null) return result.success(failed("The checkout is already open."))
+        val vezmo = checkout ?: return result.success(failed(noCheckout))
         pending = result
+        prepared = null
         // The result comes back in finish(), from the sheet (or at once, when nothing was prepared).
-        vezmo.present()
+        val again = restoring ?: return vezmo.present()
+        restoring = null
+        // The activity was recreated after prepare(): the session is prepared on the new one first. If that fails
+        // (the session expired meanwhile, no connection), the app gets why, as prepare() would have told it.
+        scope.launch {
+            val error = again.await()
+            when {
+                error != null -> finish(CheckoutResult.Failed(error))
+                // Recreated once more meanwhile: this checkout's activity is gone.
+                checkout !== vezmo -> finish(CheckoutResult.Failed(VezmoError(VezmoError.Code.Config, PREPARE_AGAIN)))
+                else -> vezmo.present()
+            }
+        }
     }
 
     private fun finish(result: CheckoutResult) {
@@ -155,10 +216,20 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
         return context.resources.getIdentifier(name, "font", context.packageName).takeIf { it != 0 }
     }
 
-    private companion object {
-        const val NO_ACTIVITY =
+    internal companion object {
+        const val NOT_FRAGMENT_ACTIVITY =
             "Vezmo checkout needs a FlutterFragmentActivity: make your MainActivity extend " +
                 "io.flutter.embedding.android.FlutterFragmentActivity."
+
+        /** The engine was attached to an activity already started: too late to register for the sheet's result. */
+        const val ATTACHED_LATE =
+            "Vezmo checkout must be set up while your activity is created: the Flutter engine was attached to it " +
+                "after it started. Attach the engine in the activity's onCreate (as FlutterFragmentActivity does)."
+
+        const val PREPARE_AGAIN = "The screen was recreated before the checkout opened. Call prepare() again."
+
+        const val NO_ACTIVITY =
+            "Vezmo checkout needs your app's activity: call it from a screen of your app, while it is showing."
 
         fun failed(message: String) = CheckoutResult.Failed(VezmoError(VezmoError.Code.Config, message)).toMap()
 

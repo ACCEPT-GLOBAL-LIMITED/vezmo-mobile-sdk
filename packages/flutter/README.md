@@ -272,6 +272,9 @@ classes, rentals, services.
 
 - **The `config` error "Vezmo checkout needs a FlutterFragmentActivity"**: your `MainActivity` extends
   `FlutterActivity`. Make it extend `FlutterFragmentActivity`.
+- **The `config` error "Vezmo checkout must be set up while your activity is created"** (Android, an app that adds
+  Flutter to an existing screen): the Flutter engine was attached to the activity after it started. Attach it in the
+  activity's `onCreate`.
 - **The `config` error "Call prepare() before present()"**: `present()` needs a successful `prepare()` first, each
   time, on the same `VezmoCheckout`.
 - **After Cash App, a bank app or a pay-later provider the buyer stays in the browser**: remove
