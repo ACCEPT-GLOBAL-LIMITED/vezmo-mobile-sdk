@@ -64,10 +64,10 @@ takes a few extra steps; they are in the [Flutter README](packages/flutter#devel
 | Workflow | Runs on | What it checks |
 | --- | --- | --- |
 | `react-native.yml` | Every pull request and push to `main` | Types, unit tests, the package build, and the example app's iOS and Android builds |
-| `react-native-e2e.yml` | Pushes to `main` that change the package | Pays end to end with Maestro on an Android emulator and an iPhone simulator |
+| `react-native-e2e.yml` | Pushes to `main` that change the package | Pays end to end with Maestro on an Android emulator and an iPhone simulator, then checks dark mode and the largest text size |
 | `ios.yml` | Changes to the iOS SDK | Unit tests, then pays end to end from the example app on an iPhone simulator |
-| `android.yml` | Changes to the Android SDK | Unit tests, lint, screenshot tests and a Maven local publish, then pays end to end on an Android emulator |
-| `flutter.yml` | Changes to the Flutter plugin or either native SDK | Analysis and tests, then pays end to end from the example app on both |
+| `android.yml` | Changes to the Android SDK | Unit tests, lint, screenshot tests and a Maven local publish, then pays end to end from the minified example app on an Android emulator; uploads that app as `example-apk` to install on a phone |
+| `flutter.yml` | Changes to the Flutter plugin or either native SDK | Analysis and tests (Dart, and the Android plugin's own tests), then pays end to end from the example app on both |
 | `release-*.yml` | Release tags | Publishing; see [RELEASING.md](RELEASING.md) |
 | `testflight-*.yml` | By hand | Sends the example app to TestFlight and reports on its builds |
 
