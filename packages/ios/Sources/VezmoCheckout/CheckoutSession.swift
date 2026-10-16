@@ -112,6 +112,11 @@ final class CheckoutSession: ObservableObject {
     self.kind = kind
   }
 
+  /// The buyer's currency offer no longer holds: fetch the new one; the buyer sees the new amount before paying again.
+  private func refreshOffer() async {
+    if let config = try? await fetchConfig() { apply(config, payLocal: snapshot.payLocal) }
+  }
+
   private func fetchConfig() async throws -> CheckoutConfig {
     if kind == .subscription {
       let view = try await api.subscription(token: token)
@@ -257,6 +262,11 @@ final class CheckoutSession: ObservableObject {
     } catch {
       let apiError = error as? VezmoAPIError
       if apiError?.code == .expired || apiError?.code == .alreadyPaid { return close(error) }
+      // UPI and Pix are always in the buyer's currency: an offer that ran out is fetched again, not resent.
+      if apiError?.reason == "local_price_changed" {
+        set { $0.phase = .ready(error: VezmoError(code: .unknown, message: priceChanged)) }
+        return await refreshOffer()
+      }
       set { $0.phase = .ready(error: apiError?.vezmoError ?? VezmoError(code: .unknown, message: declinedError.message)) }
     }
   }
@@ -273,7 +283,11 @@ final class CheckoutSession: ObservableObject {
     guard let status = try? await api.status(token: token),
           let result = resultFromStatus(status),
           snapshot.phase.isWaiting else { return }
-    unwatch()
+    // The watcher stops, but only once this check is over: it may be the watcher's own, and cancelling it now would
+    // cancel the confirm call below with it.
+    let watcher = watching
+    watching = nil
+    defer { watcher?.cancel() }
     if case .failed = result {
       set { $0.phase = .ready(error: VezmoError(code: .declined, message: "The payment didn’t go through. Try again.")) }
       return
@@ -364,8 +378,7 @@ final class CheckoutSession: ObservableObject {
         let message = VezmoError(code: .unknown, message: priceChanged)
         lastError = message
         resolve(nil, message.message)
-        // Fetch the new offer; the buyer sees the new amount before paying again.
-        if let config = try? await fetchConfig() { apply(config, payLocal: snapshot.payLocal) }
+        await refreshOffer()
         return
       }
       let message = apiError?.vezmoError ?? VezmoError(code: .unknown, message: declinedError.message)
@@ -383,8 +396,18 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .ready(error: nil) }
       return
     case .failed:
-      let error = lastError ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
-      set { $0.phase = .ready(error: error) }
+      var error = lastError
+      if error == nil {
+        switch await deviceFailure() {
+        case .failed(let verdict)?: error = verdict
+        case let paid?:
+          set { $0.phase = .done(paid) }
+          return
+        case nil: break
+        }
+      }
+      let shown = error ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
+      set { $0.phase = .ready(error: shown) }
       return
     case .completed:
       break
@@ -407,6 +430,30 @@ final class CheckoutSession: ObservableObject {
     }
     let result = await settledResult()
     set { $0.phase = .done(result) }
+  }
+
+  /// A payment Vezmo handed to the device (3D Secure, a redirect) that failed or was lost there: Vezmo's verdict.
+  /// Paid after all; or why not, in Vezmo's words (the same on every phone, where the engine words a decline
+  /// differently), its confirm step recording the decline at once. Nil when Vezmo has no answer.
+  private func deviceFailure() async -> CheckoutResult? {
+    guard lastPay?.state == "requires_action", let intentId = intentIdOf(lastPay?.clientSecret) else { return nil }
+    do {
+      if kind == .subscription {
+        return resultFromSubscriptionConfirm(try await api.subscriptionConfirm(token: token, intentId: intentId))
+      }
+      // The session's state first: a step only lost (the payment still waiting on it) has no verdict to confirm.
+      guard let status = try? await api.status(token: token) else { return nil }
+      if let result = resultFromStatus(status) {
+        if case .failed = result {} else { return result }
+      }
+      guard status.state == "failed" else { return nil }
+      try await api.confirm(token: token, paymentIntentId: intentId)
+      return nil
+    } catch let error as VezmoAPIError where error.code == .declined {
+      return .failed(error.vezmoError)
+    } catch {
+      return nil
+    }
   }
 
   /// A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands.

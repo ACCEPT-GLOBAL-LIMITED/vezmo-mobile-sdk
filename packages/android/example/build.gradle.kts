@@ -23,6 +23,10 @@ android {
 
     buildTypes {
         release {
+            // Shrunk and obfuscated like a store build, so CI pays through the library as apps ship it (with its
+            // consumer rules and the engine's).
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             // Signed with the debug key so CI can install it on an emulator; this app is never published.
             signingConfig = signingConfigs.getByName("debug")
         }

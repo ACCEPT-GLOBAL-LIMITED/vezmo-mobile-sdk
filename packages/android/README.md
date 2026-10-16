@@ -20,7 +20,8 @@ dependencies {
 }
 ```
 
-The library is published to Maven Central with the release; `mavenCentral()` must be in your repositories.
+The library is published to Maven Central with the release; `mavenCentral()` must be in your repositories. A release
+build shrunk with R8 needs no rules of your own: the example app pays end to end minified in CI.
 
 Nothing else to set up: after a bank app, a pay-later provider or 3D Secure in the browser, the buyer comes back to
 the open sheet by itself.

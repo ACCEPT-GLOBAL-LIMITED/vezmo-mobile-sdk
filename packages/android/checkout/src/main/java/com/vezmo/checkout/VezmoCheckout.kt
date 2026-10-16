@@ -79,6 +79,8 @@ class VezmoCheckout internal constructor(
         subscriptionToken: String?,
         merchantDisplayName: String?,
     ): VezmoError? {
+        // A session prepared before and never presented is let go.
+        prepared?.let { PreparedSessions.take(it.token)?.dispose() }
         prepared = null
         if (clientToken.isNullOrBlank() == subscriptionToken.isNullOrBlank()) {
             return VezmoError(VezmoError.Code.Config, "Pass a clientToken or a subscriptionToken.")
@@ -108,7 +110,13 @@ class VezmoCheckout internal constructor(
             return
         }
         prepared = null
-        launcher.launch(request)
+        try {
+            launcher.launch(request)
+        } catch (e: IllegalStateException) {
+            // The activity this was created in is gone (its result registration with it).
+            PreparedSessions.take(request.token)?.dispose()
+            onResult(CheckoutResult.Failed(VezmoError(VezmoError.Code.Config, "Present the sheet from an open activity.")))
+        }
     }
 
     companion object {

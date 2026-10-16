@@ -32,6 +32,7 @@ private class FakeSubscriptionApi(var view: JSONObject = view()) : CheckoutApi {
     var payAnswer: JSONObject? = null
     var payArgs: List<String?>? = null
     var confirmAnswer: CheckoutResult? = null
+    var confirmError: VezmoApiError? = null
     val confirms = mutableListOf<String>()
 
     override suspend fun subscription(token: String, currency: String?) = load()
@@ -43,6 +44,7 @@ private class FakeSubscriptionApi(var view: JSONObject = view()) : CheckoutApi {
 
     override suspend fun subscriptionConfirm(token: String, intentId: String): CheckoutResult {
         confirms += "$token:$intentId"
+        confirmError?.let { throw it }
         return confirmAnswer!!
     }
 
@@ -156,6 +158,26 @@ class SubscriptionTest {
         assertEquals(listOf("subtok:pi_9"), t.api.confirms)
         assertEquals(
             SessionPhase.Done(CheckoutResult.Succeeded("pay_9", "VT9", SubscriptionResult("SUB-1", SubscriptionResult.Status.Active))),
+            t.session.state.value.phase,
+        )
+        t.session.dispose()
+    }
+
+    @Test
+    fun `declined after 3D Secure on the device - the reason is Vezmo's, from its confirm step`() = runTest {
+        val t = Setup(this, firstPayment())
+        t.session.load()
+        t.chooseCard()
+        t.api.payAnswer = JSONObject(
+            """{"state":"requires_action","subscriptionRef":"SUB-1","clientSecret":"pi_9_secret_b","method":null}""",
+        )
+        t.api.confirmError = VezmoApiError(VezmoError.Code.Declined, "The payment was not completed.", 400)
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        t.session.onConfirmResult(ConfirmStatus.Failed, "Your payment method was declined.")
+        assertEquals(listOf("subtok:pi_9"), t.api.confirms)
+        assertEquals(
+            SessionPhase.Ready(VezmoError(VezmoError.Code.Declined, "The payment was not completed.")),
             t.session.state.value.phase,
         )
         t.session.dispose()

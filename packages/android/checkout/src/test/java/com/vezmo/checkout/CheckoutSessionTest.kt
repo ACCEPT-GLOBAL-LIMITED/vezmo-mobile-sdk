@@ -1,8 +1,11 @@
 package com.vezmo.checkout
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,12 +18,14 @@ private val BASE = config(enabledMethods = setOf("card", "klarna"), localOffer =
 /** The API, faked: each answer can be swapped, every call is recorded. */
 private class FakeApi : CheckoutApi {
     val calls = mutableListOf<String>()
-    var checkout: () -> CheckoutConfig = { BASE }
+    var checkout: suspend () -> CheckoutConfig = { BASE }
     var pay: () -> PayResponse = { error("no pay answer") }
     val statuses = ArrayDeque<SessionStatus>()
     var status = SessionStatus("succeeded", "pay_1", "VT1")
     var payArgs: List<String?>? = null
     var qrArgs: Pair<QrMethod, QrStart>? = null
+    var confirmError: VezmoApiError? = null
+    var intentError: VezmoApiError? = null
 
     override suspend fun checkout(token: String, currency: String?): CheckoutConfig {
         calls += "checkout"
@@ -35,6 +40,7 @@ private class FakeApi : CheckoutApi {
 
     override suspend fun intent(token: String, localOffer: String?): SessionIntent {
         calls += "intent:$token:$localOffer"
+        intentError?.let { throw it }
         return SessionIntent("pi_7", "pi_7_secret_q", "acct_1", false)
     }
 
@@ -47,6 +53,7 @@ private class FakeApi : CheckoutApi {
 
     override suspend fun confirm(token: String, paymentIntentId: String) {
         calls += "confirm:$token:$paymentIntentId"
+        confirmError?.let { throw it }
     }
 
     override suspend fun status(token: String): SessionStatus {
@@ -179,6 +186,63 @@ class CheckoutSessionTest {
     }
 
     @Test
+    fun `a decline after 3D Secure on the device - the reason is the server's, recorded by its confirm step`() = test { t ->
+        t.api.pay = { PayResponse("requires_action", "pay_1", null, "pi_9_secret_b", null) }
+        t.api.status = SessionStatus("failed", "pay_1", null)
+        t.api.confirmError = VezmoApiError(VezmoError.Code.Declined, "Payment declined by your bank (issuer).", 400)
+        t.session.chooseCard()
+        t.session.setCard(CardChoice("•••• 0002", null))
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        // The engine's own words differ by platform ("Your payment method was declined." here, another on iPhone).
+        t.session.onConfirmResult(ConfirmStatus.Failed, "Your payment method was declined.")
+        assertTrue("confirm:tok:pi_9" in t.api.calls)
+        assertEquals(SessionPhase.Ready(VezmoError(VezmoError.Code.Declined, "Payment declined by your bank (issuer).")), t.snap.phase)
+
+        // The confirm step can't say why (offline): the engine's words, as before.
+        val u = Setup(this)
+        u.api.pay = { PayResponse("requires_action", "pay_1", null, "pi_9_secret_b", null) }
+        u.api.status = SessionStatus("failed", "pay_1", null)
+        u.api.confirmError = VezmoApiError(VezmoError.Code.Network, "Check your connection and try again.", null)
+        u.session.load()
+        u.session.setOption("Klarna")
+        u.session.pay()
+        u.session.onConfirmationToken("ctoken_1")
+        u.session.onConfirmResult(ConfirmStatus.Failed, "engine text")
+        assertEquals(SessionPhase.Ready(VezmoError(VezmoError.Code.Declined, "engine text")), u.snap.phase)
+        u.session.dispose()
+    }
+
+    @Test
+    fun `the session loading late never replaces a result that arrived first (back after the process was killed)`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val t = Setup(this)
+        t.api.checkout = { gate.await(); BASE }
+        val loading = launch { t.session.load() }
+        runCurrent()
+        // The engine's result for a payment finished in the browser, before the session has loaded again.
+        t.session.onConfirmResult(ConfirmStatus.Completed, "")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+        gate.complete(Unit)
+        loading.join()
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+        assertEquals(BASE, t.snap.config)
+
+        // Nor does a load that fails (the session reads as already paid now).
+        val u = Setup(this)
+        val gate2 = CompletableDeferred<Unit>()
+        u.api.checkout = { gate2.await(); throw VezmoApiError(VezmoError.Code.AlreadyPaid, "Already paid", 409) }
+        val loading2 = launch { u.session.load() }
+        runCurrent()
+        u.session.onConfirmResult(ConfirmStatus.Completed, "")
+        gate2.complete(Unit)
+        loading2.join()
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), u.snap.phase)
+        t.session.dispose()
+        u.session.dispose()
+    }
+
+    @Test
     fun `a decline goes back to the engine in our words and leaves the sheet ready to retry`() = test { t ->
         t.api.pay = { throw VezmoApiError(VezmoError.Code.Declined, "Your bank declined this card.", 400) }
         t.session.setOption("Klarna")
@@ -307,6 +371,28 @@ class CheckoutSessionTest {
         u.session.checkNow() // paid
         assertTrue("confirm:tok:pi_7" in u.api.calls)
         assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), u.snap.phase)
+        u.session.dispose()
+    }
+
+    @Test
+    fun `UPI with an offer that ran out - the new offer is fetched, then paid with, never the stale one again`() = test { t ->
+        val u = Setup(this)
+        u.api.checkout = { BASE.copy(enabledMethods = setOf("card", "upi"), localOffer = INR_OFFER) }
+        u.session.load()
+        u.session.chooseMethod(Method.Upi)
+        u.api.intentError = VezmoApiError(VezmoError.Code.Unknown, "Price changed", 409, "local_price_changed")
+        u.api.checkout = { BASE.copy(enabledMethods = setOf("card", "upi"), localOffer = INR_OFFER.copy(amountMinor = 421000, token = "offer_new")) }
+        val billing = QrBilling(name = "Asha Rao", line1 = "12 MG Road", country = "IN")
+        u.session.payWithQr(QrMethod.Upi, billing)
+        val ready = u.snap.phase as SessionPhase.Ready
+        assertTrue(ready.error!!.message.contains("price in your currency"))
+        assertEquals(Charge(421000, "INR", "offer_new"), u.snap.charge)
+        assertEquals(Method.Upi, u.snap.method)
+
+        u.api.intentError = null
+        u.session.payWithQr(QrMethod.Upi, billing)
+        assertEquals(listOf("intent:tok:offer_sealed", "intent:tok:offer_new"), u.api.calls.filter { it.startsWith("intent") })
+        assertTrue(u.snap.phase is SessionPhase.Waiting)
         u.session.dispose()
     }
 

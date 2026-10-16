@@ -66,6 +66,10 @@ struct Shop: View {
       .padding(.top, 12)
       .padding(.bottom, 20)
     }
+    // An opaque strip behind the status bar: the page scrolls under it, never under the clock.
+    .safeAreaInset(edge: .top, spacing: 0) {
+      Color.clear.frame(height: 0).background(Color(hex: 0xF4F5F8), ignoresSafeAreaEdges: .top)
+    }
     .background(Color(hex: 0xF4F5F8).ignoresSafeArea())
     .vezmoCheckout(vezmo, isPresented: $showing) { result = $0 }
   }

@@ -17,10 +17,14 @@ final class FakeAPI: CheckoutAPI {
   var statusOnce: [SessionStatus] = []
   var statusAnswer = SessionStatus(state: "succeeded", paymentId: "pay_1", transactionId: "VT1")
   var checkoutError: VezmoAPIError?
+  var confirmError: VezmoAPIError?
+  var intentError: VezmoAPIError?
 
   var checkoutCalls = 0
   var payCalls: [PayCall] = []
   var confirmCalls: [[String]] = []
+  /// Whether each confirm call ran in a cancelled task (a real request would be cancelled with it).
+  var confirmCancelled: [Bool] = []
   var intentCalls: [[String?]] = []
   var startQrCalls: [(method: QrMethod, intent: SessionIntent, returnURL: String, billing: QrBilling)] = []
 
@@ -41,6 +45,7 @@ final class FakeAPI: CheckoutAPI {
 
   func intent(token: String, localOffer: String?) async throws -> SessionIntent {
     intentCalls.append([token, localOffer])
+    if let intentError { throw intentError }
     return SessionIntent(id: "pi_7", clientSecret: "pi_7_secret_q", connectedAccountId: "acct_1", livemode: false)
   }
 
@@ -53,6 +58,8 @@ final class FakeAPI: CheckoutAPI {
 
   func confirm(token: String, paymentIntentId: String) async throws {
     confirmCalls.append([token, paymentIntentId])
+    confirmCancelled.append(Task.isCancelled)
+    if let confirmError { throw confirmError }
   }
 
   func status(token: String) async throws -> SessionStatus {
@@ -66,6 +73,7 @@ final class FakeAPI: CheckoutAPI {
   var subscriptionConfirmAnswer = SubscriptionConfirm(status: "active", subscriptionRef: "SUB-1", paymentId: "pay_9", transactionId: "VT9")
   var subscriptionPayCalls: [PayCall] = []
   var subscriptionConfirmCalls: [[String]] = []
+  var subscriptionConfirmError: VezmoAPIError?
 
   func subscription(token: String) async throws -> SubscriptionView {
     if let subscriptionError { throw subscriptionError }
@@ -79,6 +87,7 @@ final class FakeAPI: CheckoutAPI {
 
   func subscriptionConfirm(token: String, intentId: String) async throws -> SubscriptionConfirm {
     subscriptionConfirmCalls.append([token, intentId])
+    if let subscriptionConfirmError { throw subscriptionConfirmError }
     return subscriptionConfirmAnswer
   }
 }
@@ -178,6 +187,52 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(element.resolutions, [[nil, "Your bank declined this card."]])
     await session.onConfirmResult(.failed, message: "processor text")
     XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .declined, message: "Your bank declined this card.")))
+  }
+
+  func testADeclineAfter3DSecureOnTheDeviceIsInTheServersWordsRecordedByItsConfirmStep() async {
+    await start()
+    api.payAnswer = { PayResponse(state: "requires_action", paymentId: "pay_1", clientSecret: "pi_9_secret_b") }
+    api.statusAnswer = SessionStatus(state: "failed", paymentId: "pay_1", transactionId: nil)
+    api.confirmError = VezmoAPIError(.declined, "Payment declined by your bank (issuer).", httpStatus: 400)
+    session.setOption("Klarna")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    // The engine's own words differ by platform ("Your card was declined." here, another on Android).
+    await session.onConfirmResult(.failed, message: "Your card was declined.")
+    XCTAssertEqual(api.confirmCalls, [["tok", "pi_9"]])
+    XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .declined, message: "Payment declined by your bank (issuer).")))
+
+    // The confirm step can't say why (offline): the engine's words, as before.
+    await start()
+    api.payAnswer = { PayResponse(state: "requires_action", paymentId: "pay_1", clientSecret: "pi_9_secret_b") }
+    api.statusAnswer = SessionStatus(state: "failed", paymentId: "pay_1", transactionId: nil)
+    api.confirmError = VezmoAPIError(.network, "Check your connection and try again.")
+    session.setOption("Klarna")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    await session.onConfirmResult(.failed, message: "engine text")
+    XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .declined, message: "engine text")))
+  }
+
+  func testTheEngineLosingAStepItFinishedOnTheDeviceTheServersAnswerWins() async {
+    await start()
+    api.payAnswer = { PayResponse(state: "requires_action", paymentId: "pay_1", clientSecret: "pi_9_secret_b") }
+    session.setOption("Cash App Pay")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    await session.onConfirmResult(.failed, message: "engine text")
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+
+    // Not paid after all (still open): the buyer can try again.
+    await start()
+    api.payAnswer = { PayResponse(state: "requires_action", paymentId: "pay_1", clientSecret: "pi_9_secret_b") }
+    api.statusAnswer = SessionStatus(state: "open", paymentId: "pay_1", transactionId: nil)
+    session.setOption("Cash App Pay")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    await session.onConfirmResult(.failed, message: "")
+    XCTAssertEqual(snap.phase, .ready(error: declinedError))
+    XCTAssertTrue(api.confirmCalls.isEmpty)
   }
 
   func testAChangedLocalPriceRefreshesTheOfferAndAsksTheBuyerToPayAgain() async {
@@ -293,6 +348,44 @@ final class CheckoutSessionTests: XCTestCase {
     await session.checkNow() // paid
     XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
     XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+    session.dispose()
+  }
+
+  func testUPIWithAnOfferThatRanOutFetchesTheNewOfferThenPaysWithItNeverTheStaleOne() async {
+    await start(makeConfig(enabled: ["card": true, "upi": true], localOffer: rupees))
+    session.chooseMethod(.upi)
+    api.intentError = VezmoAPIError(.unknown, "Price changed", httpStatus: 409, reason: "local_price_changed")
+    var fresh = rupees
+    fresh.amountMinor = 421000
+    fresh.token = "offer_new"
+    api.config = makeConfig(enabled: ["card": true, "upi": true], localOffer: fresh)
+    let billing = QrBilling(name: "Asha Rao", line1: "12 MG Road", country: "IN")
+    await session.payWithQr(.upi, billing: billing)
+    guard case .ready(let error?) = snap.phase else { return XCTFail("ready, with the reason") }
+    XCTAssertTrue(error.message.contains("price in your currency"))
+    XCTAssertEqual(snap.charge, Charge(amountMinor: 421000, currency: "INR", localOffer: "offer_new"))
+    XCTAssertEqual(snap.method, .upi)
+
+    api.intentError = nil
+    await session.payWithQr(.upi, billing: billing)
+    XCTAssertEqual(api.intentCalls, [["tok", "offer"], ["tok", "offer_new"]])
+    XCTAssertTrue(snap.phase.isWaiting)
+    session.dispose()
+  }
+
+  func testTheUPIWatcherRecordsThePaymentItFindsWithoutCancellingTheRecord() async throws {
+    await start(makeConfig(enabled: ["card": true, "upi": true], localOffer: rupees))
+    session.chooseMethod(.upi)
+    await session.payWithQr(.upi, billing: QrBilling(name: "Asha Rao", line1: "12 MG Road", country: "IN"))
+    XCTAssertTrue(snap.phase.isWaiting)
+    // The watcher checks every 2 seconds by itself; the session reads as paid.
+    for _ in 0..<60 {
+      if case .done = snap.phase { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+    XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
+    XCTAssertEqual(api.confirmCancelled, [false])
     session.dispose()
   }
 

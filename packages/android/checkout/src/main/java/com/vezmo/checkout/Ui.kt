@@ -71,7 +71,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -250,7 +252,7 @@ internal fun PrimaryButton(
     Box(
         modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .heightIn(min = 56.dp)
             .scale(if (pressed) 0.985f else 1f)
             .alpha(if (pressed) 0.94f else 1f)
             .then(
@@ -295,7 +297,7 @@ internal fun GhostButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .heightIn(min = 50.dp)
             .clip(CircleShape)
             .background(p.surface2)
             .clickable(role = Role.Button, onClick = onClick),
@@ -341,7 +343,7 @@ internal fun <K> Segmented(
             Box(
                 Modifier
                     .weight(1f)
-                    .height(38.dp)
+                    .heightIn(min = 38.dp)
                     .then(
                         if (on) {
                             Modifier
@@ -570,6 +572,8 @@ internal fun Banner(text: String, tag: String? = null) {
     Row(
         Modifier
             .fillMaxWidth()
+            // TalkBack reads what went wrong as it appears.
+            .semantics { liveRegion = LiveRegionMode.Polite }
             .clip(RoundedCornerShape(look.radius))
             .background(look.p.badSoft)
             .padding(horizontal = 12.dp, vertical = 11.dp),

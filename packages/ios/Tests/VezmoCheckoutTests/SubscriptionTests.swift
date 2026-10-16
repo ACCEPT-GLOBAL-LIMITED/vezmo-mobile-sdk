@@ -174,6 +174,20 @@ final class SubscriptionSessionTests: XCTestCase {
     )
   }
 
+  func testDeclinedAfter3DSecureOnTheDeviceTheReasonIsVezmosFromItsConfirmStep() async {
+    await start(firstPayment)
+    chooseCard()
+    api.subscriptionPayAnswer = {
+      SubscriptionPayResponse(state: "requires_action", subscriptionRef: "SUB-1", clientSecret: "pi_9_secret_b")
+    }
+    api.subscriptionConfirmError = VezmoAPIError(.declined, "The payment was not completed.", httpStatus: 400)
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    await session.onConfirmResult(.failed, message: "Your card was declined.")
+    XCTAssertEqual(api.subscriptionConfirmCalls, [["subtok", "pi_9"]])
+    XCTAssertEqual(session.snapshot.phase, .ready(error: VezmoError(code: .declined, message: "The payment was not completed.")))
+  }
+
   func testAUsedOrUnknownSubscriptionLinkClosesTheSheetAsExpired() async {
     api = FakeAPI(config: makeConfig())
     api.subscriptionError = VezmoAPIError(.expired, "This subscription link is no longer valid.", httpStatus: 404)

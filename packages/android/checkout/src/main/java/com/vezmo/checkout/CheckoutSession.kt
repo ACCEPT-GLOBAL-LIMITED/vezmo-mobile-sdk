@@ -137,11 +137,12 @@ internal class CheckoutSession(
             val config = fetchConfig()
             // The buyer's own currency is offered first when there is an offer (as on the web checkout).
             apply(config, config.localOffer != null)
-            set { copy(phase = SessionPhase.Ready(null)) }
+            // Only out of Loading: after the process was killed mid-payment, the engine's result can arrive first.
+            set { if (phase == SessionPhase.Loading) copy(phase = SessionPhase.Ready(null)) else this }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            close(e)
+            if (snapshot.phase == SessionPhase.Loading) close(e)
         }
     }
 
@@ -231,6 +232,11 @@ internal class CheckoutSession(
             watch()
         } catch (e: VezmoApiError) {
             if (e.code == VezmoError.Code.Expired || e.code == VezmoError.Code.AlreadyPaid) return close(e)
+            // UPI and Pix are always in the buyer's currency: an offer that ran out is fetched again, not resent.
+            if (e.reason == "local_price_changed") {
+                refreshOffer()
+                return set { copy(phase = SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED))) }
+            }
             set { copy(phase = SessionPhase.Ready(e.toVezmoError())) }
         }
     }
@@ -333,10 +339,7 @@ internal class CheckoutSession(
             resolve(res.clientSecret, if (res.clientSecret != null) null else DECLINED.message)
         } catch (e: VezmoApiError) {
             val error = if (e.reason == "local_price_changed") {
-                // Fetch the new offer; the buyer sees the new amount before paying again.
-                post {
-                    runCatching { fetchConfig() }.getOrNull()?.let { apply(it, snapshot.payLocal) }
-                }
+                refreshOffer()
                 VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED)
             } else {
                 e.toVezmoError()
@@ -353,17 +356,16 @@ internal class CheckoutSession(
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
             ConfirmStatus.Failed -> {
-                // The engine lost a step it was finishing on the device (a browser or 3D Secure): Vezmo's server
-                // knows whether the money moved.
-                if (!subscription && lastError == null && lastPay?.state == "requires_action") {
-                    val result = runCatching { resultFromStatus(api.status(token)) }.getOrNull()
-                    if (result != null && result !is CheckoutResult.Failed) {
-                        set { copy(phase = SessionPhase.Done(result)) }
+                val error = lastError ?: when (val verdict = deviceFailure()) {
+                    null -> null
+                    is CheckoutResult.Failed -> verdict.error
+                    else -> {
+                        set { copy(phase = SessionPhase.Done(verdict)) }
                         return
                     }
                 }
                 set {
-                    copy(phase = SessionPhase.Ready(lastError ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
+                    copy(phase = SessionPhase.Ready(error ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
                 }
             }
             ConfirmStatus.Completed -> {
@@ -388,6 +390,38 @@ internal class CheckoutSession(
             }
         }
     }
+
+    /**
+     * A payment Vezmo handed to the device (3D Secure, a browser, a bank app) that failed or was lost there: Vezmo's
+     * verdict. Paid after all; or why not, in Vezmo's words (the same on every phone, where the engine words a decline
+     * differently), its confirm step recording the decline at once. Null when Vezmo has no answer.
+     */
+    private suspend fun deviceFailure(): CheckoutResult? {
+        val id = intentIdOf(lastPay?.clientSecret)?.takeIf { lastPay?.state == "requires_action" } ?: return null
+        if (!subscription) {
+            // The session's state first: a step only lost (the payment still waiting on it) has no verdict to confirm.
+            val status = try {
+                api.status(token)
+            } catch (_: VezmoApiError) {
+                return null
+            }
+            resultFromStatus(status)?.let { if (it !is CheckoutResult.Failed) return it }
+            if (status.state != "failed") return null
+        }
+        return try {
+            if (subscription) {
+                api.subscriptionConfirm(token, id)
+            } else {
+                api.confirm(token, id)
+                null
+            }
+        } catch (e: VezmoApiError) {
+            if (e.code == VezmoError.Code.Declined) CheckoutResult.Failed(e.toVezmoError()) else null
+        }
+    }
+
+    /** The buyer's currency offer no longer holds: fetch the new one; the buyer sees the new amount before paying again. */
+    private fun refreshOffer() = post { runCatching { fetchConfig() }.getOrNull()?.let { apply(it, snapshot.payLocal) } }
 
     private suspend fun fetchConfig(): CheckoutConfig = if (subscription) api.subscription(token) else api.checkout(token)
 

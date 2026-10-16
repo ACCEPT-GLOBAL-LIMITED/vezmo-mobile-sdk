@@ -146,6 +146,8 @@ struct SheetView: View {
   @State private var walletsHeight: CGFloat = 0
   @State private var contentHeight: CGFloat = 0
   @State private var scrollHeight: CGFloat = 0
+  /// Bumped to bring what went wrong into view (it shows under the form or the list, maybe below the fold).
+  @State private var revealRequest = 0
 
   /// Room for the home indicator under the sheet.
   // ponytail: fixed inset as in the React Native sheet; read the real one if a merchant app needs it to the point.
@@ -310,21 +312,35 @@ struct SheetView: View {
   // MARK: Ready, paying, waiting
 
   @ViewBuilder private func checkout(_ config: CheckoutConfig, _ methods: SheetMethods, _ look: Look) -> some View {
-    ScrollView(.vertical, showsIndicators: true) {
-      VStack(alignment: .leading, spacing: 0) {
-        header(config, look)
-        content(config, methods, look)
+    ScrollViewReader { proxy in
+      ScrollView(.vertical, showsIndicators: true) {
+        VStack(alignment: .leading, spacing: 0) {
+          header(config, look)
+          content(config, methods, look)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .measure(HeightKey.self)
+        .id(Self.contentID)
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .measure(HeightKey.self)
+      .measure(ScrollFrameKey.self)
+      .frame(maxHeight: contentHeight)
+      .modifier(NoBounceWhenFits())
+      .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
+      .onPreferenceChange(ScrollFrameKey.self) { scrollHeight = $0 }
+      .onChange(of: phaseError) { if $0 != nil { revealEnd(proxy) } }
+      .onChange(of: revealRequest) { _ in revealEnd(proxy) }
     }
-    .measure(ScrollFrameKey.self)
-    .frame(maxHeight: contentHeight)
-    .modifier(NoBounceWhenFits())
-    .onPreferenceChange(HeightKey.self) { contentHeight = $0 }
-    .onPreferenceChange(ScrollFrameKey.self) { scrollHeight = $0 }
 
     dock(look)
+  }
+
+  private static let contentID = "vezmo-content"
+
+  /// Scrolls to the end of the content (where a problem or a failed try shows), once this update is laid out.
+  private func revealEnd(_ proxy: ScrollViewProxy) {
+    DispatchQueue.main.async {
+      withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(Self.contentID, anchor: .bottom) }
+    }
   }
 
   private func header(_ config: CheckoutConfig, _ look: Look) -> some View {
@@ -522,7 +538,10 @@ struct SheetView: View {
             busy: paying,
             lock: true
           ) {
-            guard let config = snap.config, let billing = qrForm.billing(qr, country: config.localOffer?.country) else { return }
+            guard let config = snap.config, let billing = qrForm.billing(qr, country: config.localOffer?.country) else {
+              revealRequest += 1
+              return
+            }
             Task { await session.payWithQr(qr, billing: billing) }
           }
         } else if snap.elementError != nil {
