@@ -5,24 +5,24 @@ import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewManagerDelegate
 import com.facebook.react.uimanager.annotations.ReactProp
-import com.facebook.react.viewmanagers.VezmoPaymentElementViewManagerDelegate
-import com.facebook.react.viewmanagers.VezmoPaymentElementViewManagerInterface
+import com.facebook.react.viewmanagers.VezmoMethodsViewManagerDelegate
+import com.facebook.react.viewmanagers.VezmoMethodsViewManagerInterface
 
-@ReactModule(name = VezmoPaymentElementViewManager.NAME)
-class VezmoPaymentElementViewManager :
-  SimpleViewManager<VezmoPaymentElementView>(),
-  VezmoPaymentElementViewManagerInterface<VezmoPaymentElementView> {
-  private val delegate: ViewManagerDelegate<VezmoPaymentElementView> = VezmoPaymentElementViewManagerDelegate(this)
+@ReactModule(name = VezmoMethodsViewManager.NAME)
+class VezmoMethodsViewManager :
+  SimpleViewManager<VezmoMethodsView>(),
+  VezmoMethodsViewManagerInterface<VezmoMethodsView> {
+  private val delegate: ViewManagerDelegate<VezmoMethodsView> = VezmoMethodsViewManagerDelegate(this)
 
-  override fun getDelegate(): ViewManagerDelegate<VezmoPaymentElementView> = delegate
+  override fun getDelegate(): ViewManagerDelegate<VezmoMethodsView> = delegate
 
   override fun getName(): String = NAME
 
-  override fun createViewInstance(context: ThemedReactContext): VezmoPaymentElementView = VezmoPaymentElementView(context)
+  override fun createViewInstance(context: ThemedReactContext): VezmoMethodsView = VezmoMethodsView(context)
 
   @ReactProp(name = "configJson")
   override fun setConfigJson(
-    view: VezmoPaymentElementView,
+    view: VezmoMethodsView,
     value: String?,
   ) {
     view.setConfigJson(value)
@@ -30,32 +30,32 @@ class VezmoPaymentElementViewManager :
 
   @ReactProp(name = "intentJson")
   override fun setIntentJson(
-    view: VezmoPaymentElementView,
+    view: VezmoMethodsView,
     value: String?,
   ) {
     view.setIntentJson(value)
   }
 
-  override fun onDropViewInstance(view: VezmoPaymentElementView) {
+  override fun onDropViewInstance(view: VezmoMethodsView) {
     view.dispose()
     super.onDropViewInstance(view)
   }
 
-  override fun onAfterUpdateTransaction(view: VezmoPaymentElementView) {
+  override fun onAfterUpdateTransaction(view: VezmoMethodsView) {
     super.onAfterUpdateTransaction(view)
     view.commit()
   }
 
-  override fun confirm(view: VezmoPaymentElementView) {
+  override fun confirm(view: VezmoMethodsView) {
     view.confirm()
   }
 
-  override fun clearSelection(view: VezmoPaymentElementView) {
+  override fun clearSelection(view: VezmoMethodsView) {
     view.clearSelection()
   }
 
   override fun resolveConfirmation(
-    view: VezmoPaymentElementView,
+    view: VezmoMethodsView,
     clientSecret: String,
     errorMessage: String,
   ) {
@@ -73,6 +73,6 @@ class VezmoPaymentElementViewManager :
     )
 
   companion object {
-    const val NAME = "VezmoPaymentElementView"
+    const val NAME = "VezmoMethodsView"
   }
 }

@@ -113,8 +113,8 @@
     },
     "ios": {
       "components": {
-        "VezmoPaymentElementView": {
-          "className": "VezmoPaymentElementView"
+        "VezmoMethodsView": {
+          "className": "VezmoMethodsView"
         },
         "VezmoCardFlowView": {
           "className": "VezmoCardFlowView"

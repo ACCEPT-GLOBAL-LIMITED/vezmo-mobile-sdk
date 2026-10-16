@@ -1,4 +1,4 @@
-#import "VezmoPaymentElementView.h"
+#import "VezmoMethodsView.h"
 
 #import <react/renderer/components/VezmoReactNativeSpec/ComponentDescriptors.h>
 #import <react/renderer/components/VezmoReactNativeSpec/EventEmitters.h>
@@ -20,26 +20,26 @@ static std::string VZString(id value)
   return [value isKindOfClass:[NSString class]] ? std::string([(NSString *)value UTF8String]) : std::string();
 }
 
-@interface VezmoPaymentElementView () <RCTVezmoPaymentElementViewViewProtocol>
+@interface VezmoMethodsView () <RCTVezmoMethodsViewViewProtocol>
 @end
 
-@implementation VezmoPaymentElementView {
-  VezmoPaymentElementHost *_host;
+@implementation VezmoMethodsView {
+  VezmoMethodsHost *_host;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider
 {
-  return concreteComponentDescriptorProvider<VezmoPaymentElementViewComponentDescriptor>();
+  return concreteComponentDescriptorProvider<VezmoMethodsViewComponentDescriptor>();
 }
 
 - (instancetype)initWithFrame:(CGRect)frame
 {
   if (self = [super initWithFrame:frame]) {
-    static const auto defaultProps = std::make_shared<const VezmoPaymentElementViewProps>();
+    static const auto defaultProps = std::make_shared<const VezmoMethodsViewProps>();
     _props = defaultProps;
 
-    _host = [[VezmoPaymentElementHost alloc] initWithFrame:frame];
-    __weak VezmoPaymentElementView *weakSelf = self;
+    _host = [[VezmoMethodsHost alloc] initWithFrame:frame];
+    __weak VezmoMethodsView *weakSelf = self;
     _host.onEvent = ^(NSString *name, NSDictionary *body) {
       [weakSelf emit:name body:body];
     };
@@ -53,7 +53,7 @@ static std::string VZString(id value)
   if (!_eventEmitter) {
     return;
   }
-  auto emitter = std::static_pointer_cast<const VezmoPaymentElementViewEventEmitter>(_eventEmitter);
+  auto emitter = std::static_pointer_cast<const VezmoMethodsViewEventEmitter>(_eventEmitter);
   if ([name isEqualToString:@"loaded"]) {
     emitter->onLoaded({.ok = true});
   } else if ([name isEqualToString:@"loadFailed"]) {
@@ -72,8 +72,8 @@ static std::string VZString(id value)
 
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
 {
-  const auto &oldViewProps = *std::static_pointer_cast<VezmoPaymentElementViewProps const>(_props);
-  const auto &newViewProps = *std::static_pointer_cast<VezmoPaymentElementViewProps const>(props);
+  const auto &oldViewProps = *std::static_pointer_cast<VezmoMethodsViewProps const>(_props);
+  const auto &newViewProps = *std::static_pointer_cast<VezmoMethodsViewProps const>(props);
 
   if (oldViewProps.configJson != newViewProps.configJson || oldViewProps.intentJson != newViewProps.intentJson) {
     [_host setConfigJson:[NSString stringWithUTF8String:newViewProps.configJson.c_str()]
@@ -85,7 +85,7 @@ static std::string VZString(id value)
 
 - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
 {
-  RCTVezmoPaymentElementViewHandleCommand(self, commandName, args);
+  RCTVezmoMethodsViewHandleCommand(self, commandName, args);
 }
 
 - (void)confirm
@@ -105,7 +105,7 @@ static std::string VZString(id value)
 
 @end
 
-Class<RCTComponentViewProtocol> VezmoPaymentElementViewCls(void)
+Class<RCTComponentViewProtocol> VezmoMethodsViewCls(void)
 {
-  return VezmoPaymentElementView.class;
+  return VezmoMethodsView.class;
 }

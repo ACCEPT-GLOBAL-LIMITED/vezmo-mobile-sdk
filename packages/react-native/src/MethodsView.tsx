@@ -1,8 +1,8 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import NativeElement, { Commands } from './VezmoPaymentElementViewNativeComponent';
+import NativeElement, { Commands } from './VezmoMethodsViewNativeComponent';
 
-export interface PaymentElementHandle {
+export interface MethodsViewHandle {
   /** Pay with the selected method. The outcome arrives in `onConfirmResult`. */
   confirm(): void;
   /** Answer `onConfirmationToken` with the intent's client secret, or an error message to show. */
@@ -11,7 +11,7 @@ export interface PaymentElementHandle {
   clearSelection(): void;
 }
 
-export interface PaymentElementProps {
+export interface MethodsViewProps {
   configJson: string;
   intentJson: string;
   style?: StyleProp<ViewStyle>;
@@ -23,8 +23,8 @@ export interface PaymentElementProps {
 }
 
 /** The native element, sized to its own content (it reports its height as it changes). */
-export const PaymentElement = forwardRef<PaymentElementHandle, PaymentElementProps>(
-  function PaymentElement(props, ref) {
+export const MethodsView = forwardRef<MethodsViewHandle, MethodsViewProps>(
+  function MethodsView(props, ref) {
     const native = useRef<React.ElementRef<typeof NativeElement>>(null);
     const [height, setHeight] = useState(1);
 

@@ -24,7 +24,7 @@ final class SystemStyle: ObservableObject {
 final class SheetController: UIViewController {
   private let session: CheckoutSession
   private let cardFlow = CardFlowHost()
-  private let element = PaymentElementHost()
+  private let element = MethodsHost()
   private let qrForm = QrFormModel()
   private let system: SystemStyle
   private let props: SheetProps
@@ -134,7 +134,7 @@ extension View {
 struct SheetView: View {
   @ObservedObject var session: CheckoutSession
   @ObservedObject var cardFlow: CardFlowHost
-  @ObservedObject var element: PaymentElementHost
+  @ObservedObject var element: MethodsHost
   @ObservedObject var qrForm: QrFormModel
   @ObservedObject var system: SystemStyle
   let props: SheetProps

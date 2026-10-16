@@ -16,7 +16,7 @@ import { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
 import { dateText, formatAmount, planPriceText } from './flow';
 import { CardFlow, type CardFlowHandle } from './CardFlow';
-import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
+import { MethodsView, type MethodsViewHandle } from './MethodsView';
 import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
 import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import { markForBrand } from './marks';
@@ -61,7 +61,7 @@ export interface CheckoutSheetProps {
 export function CheckoutSheet(props: CheckoutSheetProps) {
   const { session } = props;
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  const element = useRef<PaymentElementHandle>(null);
+  const element = useRef<MethodsViewHandle>(null);
   const cardFlow = useRef<CardFlowHandle>(null);
   const systemScheme = useColorScheme();
   const scheme: 'light' | 'dark' =
@@ -321,7 +321,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                           />
                         )}
                         <View style={cardOn && elementRows && !elementLoading && !snap.elementError ? s.rowLine : undefined}>
-                          <PaymentElement
+                          <MethodsView
                             ref={element}
                             configJson={configJson}
                             intentJson={intentJson}

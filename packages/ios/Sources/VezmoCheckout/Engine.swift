@@ -390,7 +390,7 @@ struct WalletButtons: View {
 /// answers with the intent's client secret (`resolveConfirmation`) → the element finishes any step left (3D Secure, a
 /// provider) and reports the result.
 @MainActor
-final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentElementDelegate {
+final class MethodsHost: ObservableObject, ElementPort, EmbeddedPaymentElementDelegate {
   weak var session: CheckoutSession?
   weak var presenter: UIViewController?
   @Published private(set) var element: EmbeddedPaymentElement?
@@ -572,7 +572,7 @@ final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentEl
 
 /// The element's rows, in the sheet's group.
 struct ElementView: UIViewRepresentable {
-  @ObservedObject var host: PaymentElementHost
+  @ObservedObject var host: MethodsHost
 
   func makeUIView(context: Context) -> ElementContainer {
     let container = ElementContainer()
@@ -587,7 +587,7 @@ struct ElementView: UIViewRepresentable {
 }
 
 final class ElementContainer: UIView {
-  weak var host: PaymentElementHost?
+  weak var host: MethodsHost?
   private weak var shown: UIView?
 
   func show(_ view: UIView?) {

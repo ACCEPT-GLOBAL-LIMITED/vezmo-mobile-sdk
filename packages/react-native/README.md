@@ -264,7 +264,7 @@ it('shows the canceled state', async () => {
 
 ## Troubleshooting
 
-- **"VezmoPaymentElementView was not found in the UIManager"**: the app runs the old architecture, or is Expo Go. Turn
+- **"VezmoMethodsView was not found in the UIManager"**: the app runs the old architecture, or is Expo Go. Turn
   on the New Architecture and use a development build.
 - **No Apple Pay**: no `applePay.merchantId` on the provider, no card in the phone's Wallet, or the Apple Pay
   certificate isn't set up yet.
