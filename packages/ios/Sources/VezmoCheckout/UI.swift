@@ -376,17 +376,29 @@ struct Tick: View {
   var weight: CGFloat?
 
   var body: some View {
-    let w = weight ?? max(2, size * 0.14)
-    let a = size * 0.36, b = size * 0.68
-    // The L's corner points (inside its border), turned 45° about its centre and lifted a little.
-    let points = [CGPoint(x: -a / 2, y: b / 2 - w / 2), CGPoint(x: a / 2 - w / 2, y: b / 2 - w / 2), CGPoint(x: a / 2 - w / 2, y: -b / 2)]
-      .map { p in
-        CGPoint(x: (p.x - p.y) * 0.7071 + size / 2, y: (p.x + p.y) * 0.7071 + size / 2 - size * 0.08)
-      }
-    Path { path in path.addLines(points) }
+    let w: CGFloat = weight ?? max(2, size * 0.14)
+    Path { path in path.addLines(Tick.points(size: size, weight: w)) }
       .stroke(color, style: StrokeStyle(lineWidth: w, lineCap: .butt, lineJoin: .miter))
       .frame(width: size, height: size)
       .accessibilityHidden(true)
+  }
+
+  /// The L's corner points (inside its border), turned 45° about its centre and lifted a little.
+  static func points(size: CGFloat, weight w: CGFloat) -> [CGPoint] {
+    let a: CGFloat = size * 0.36
+    let b: CGFloat = size * 0.68
+    let corners: [CGPoint] = [
+      CGPoint(x: -a / 2, y: b / 2 - w / 2),
+      CGPoint(x: a / 2 - w / 2, y: b / 2 - w / 2),
+      CGPoint(x: a / 2 - w / 2, y: -b / 2),
+    ]
+    let k: CGFloat = 0.7071
+    let lift: CGFloat = size * 0.08
+    return corners.map { (p: CGPoint) -> CGPoint in
+      let x: CGFloat = (p.x - p.y) * k + size / 2
+      let y: CGFloat = (p.x + p.y) * k + size / 2 - lift
+      return CGPoint(x: x, y: y)
+    }
   }
 }
 
