@@ -14,6 +14,10 @@ The first release of the Vezmo payment sheet for native iOS apps (Swift Package 
   or secret in the app.
 - **Results**: `.succeeded`, `.processing`, `.canceled` or `.failed` with an error code and a message written for the
   buyer. A receipt in the sheet: who was paid, with what, and a reference.
+- **Subscriptions**: `prepare(subscriptionToken:)` starts a subscription in the app (the first payment, or a free
+  trial with the card saved); `.succeeded` and `.processing` carry the `SubscriptionResult` (`ref`, `status`). The
+  sheet shows what is due today, the plan and the authorization; Apple Pay shows it as a recurring payment (iOS 16+).
+- **Dynamic Type**: the sheet's text follows the buyer's text size, up to the first accessibility size.
 - **UIKit and SwiftUI**: `prepare(clientToken:)` and `present(from:)` with async/await, the `.vezmoCheckout` view
   modifier, and `VezmoCheckout.handleURL` for links back into the app.
 - iOS 15.1+.

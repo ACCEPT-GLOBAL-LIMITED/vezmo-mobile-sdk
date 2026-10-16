@@ -27,6 +27,9 @@ protocol CheckoutAPI {
   func checkoutPageURL(token: String) -> String
   func confirm(token: String, paymentIntentId: String) async throws
   func status(token: String) async throws -> SessionStatus
+  func subscription(token: String) async throws -> SubscriptionView
+  func subscriptionPay(token: String, confirmationToken: String, localOffer: String?, returnURL: String?) async throws -> SubscriptionPayResponse
+  func subscriptionConfirm(token: String, intentId: String) async throws -> SubscriptionConfirm
 }
 
 /// Everything is scoped by the session's client token; no merchant key ever reaches the app.
@@ -88,6 +91,33 @@ struct VezmoAPI: CheckoutAPI {
 
   func status(token: String) async throws -> SessionStatus {
     try await call("GET", "/secure-payments/\(encode(token))/status")
+  }
+
+  // MARK: Subscriptions (a subscription checkout's token)
+
+  /// The subscription checkout: plan, first charge or free trial, keys. A used or unknown link reads as expired.
+  func subscription(token: String) async throws -> SubscriptionView {
+    do {
+      return try await call("GET", "/subscription-checkout/\(encode(token))")
+    } catch let error as VezmoAPIError where error.httpStatus == 404 {
+      throw VezmoAPIError(.expired, "This subscription link is no longer valid.", httpStatus: 404)
+    } catch let error as VezmoAPIError
+      where error.httpStatus == 400 && error.message.range(of: "already set up", options: .caseInsensitive) != nil {
+      throw VezmoAPIError(.alreadyPaid, "This subscription is already set up.", httpStatus: 400)
+    }
+  }
+
+  /// Subscribe: our server confirms the first payment, or a free trial's card, with the confirmation token.
+  func subscriptionPay(token: String, confirmationToken: String, localOffer: String?, returnURL: String?) async throws -> SubscriptionPayResponse {
+    var body: [String: Any] = ["confirmationToken": confirmationToken, "integration": "ios"]
+    if let localOffer, !localOffer.isEmpty { body["localOffer"] = localOffer }
+    if let returnURL, !returnURL.isEmpty { body["returnUrl"] = returnURL }
+    return try await call("POST", "/subscription-checkout/\(encode(token))/pay", body: body)
+  }
+
+  /// Records a subscription start finished on the device (after 3D Secure): `pi_…`, or a free trial's `seti_…`.
+  func subscriptionConfirm(token: String, intentId: String) async throws -> SubscriptionConfirm {
+    try await call("POST", "/subscription-checkout/\(encode(token))/confirm", body: ["paymentIntentId": intentId])
   }
 
   // MARK: Transport

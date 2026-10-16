@@ -59,6 +59,8 @@ struct Shop: View {
         }
 
         sandbox
+
+        club
       }
       .padding(.horizontal, 20)
       .padding(.top, 12)
@@ -72,7 +74,7 @@ struct Shop: View {
     VStack(alignment: .leading, spacing: 14) {
       Headphones()
         .frame(maxWidth: .infinity)
-        .frame(height: 210)
+        .frame(height: 150)
         .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0xE9E7F7)))
       VStack(alignment: .leading, spacing: 4) {
         Text("Aurora wireless headphones").font(.system(size: 17, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
@@ -124,6 +126,13 @@ struct Shop: View {
           .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
       }
       .accessibilityIdentifier("new-session-mor")
+      Button { Task { await subscribe("?track=mor") } } label: {
+        Text("Subscribe, no trial · merchant of record").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
+          .frame(maxWidth: .infinity).frame(height: 44)
+          .background(Capsule(style: .circular).fill(Color.white))
+          .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
+      }
+      .accessibilityIdentifier("subscribe-now")
     }
     .padding(14)
     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(hex: 0xE1E3EC), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
@@ -149,6 +158,61 @@ struct Shop: View {
     }
   }
 
+  /// A subscription: the club with a 7-day free trial.
+  private var club: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(spacing: 12) {
+        Circle().strokeBorder(Color(hex: 0x2B2D3A), lineWidth: 7).frame(width: 26, height: 26)
+          .frame(width: 56, height: 56)
+          .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0xE9E7F7)))
+        VStack(alignment: .leading, spacing: 4) {
+          Text("Northwind Audio Club").font(.system(size: 17, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
+          Text("$9.99 / month · first 7 days free").font(.system(size: 15)).foregroundColor(Color(hex: 0x5A5F70))
+        }
+        .padding(.horizontal, 4)
+      }
+      Button { Task { await subscribe("?trial=1") } } label: {
+        Text("Try 7 days free").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
+          .frame(maxWidth: .infinity).frame(height: 52)
+          .background(Capsule(style: .circular).fill(Color(hex: 0x0B0C14)))
+      }
+      .accessibilityIdentifier("subscribe")
+    }
+    .padding(14)
+    .background(
+      RoundedRectangle(cornerRadius: 22).fill(Color.white)
+        .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 64 / 255).opacity(0.06), radius: 1, x: 0, y: 1)
+    )
+  }
+
+  /// A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken; here
+  /// the sandbox's demo endpoint does.
+  private func subscribe(_ query: String) async {
+    guard let demo = setting("VezmoDemoURL"),
+          let url = URL(string: demo.replacingOccurrences(of: "mobile-session", with: "mobile-subscription") + query) else {
+      status = "Set VEZMO_DEMO_URL."
+      return
+    }
+    typingToken = false
+    result = nil
+    status = "Loading checkout…"
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    do {
+      let (data, _) = try await URLSession.shared.data(for: request)
+      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+      let subscriptionToken = (json?["data"] as? [String: Any])?["subscriptionToken"] as? String ?? ""
+      if let error = await vezmo.prepare(subscriptionToken: subscriptionToken) {
+        status = "Could not load: \(error.message)"
+        return
+      }
+      status = ""
+      showing = true
+    } catch {
+      status = "Could not reach the demo endpoint."
+    }
+  }
+
   private func pay() async {
     typingToken = false
     result = nil
@@ -163,15 +227,20 @@ struct Shop: View {
 
   private func describe(_ result: CheckoutResult) -> String {
     switch result {
-    case .succeeded(let paymentId, let transactionId):
-      return #"{"status":"succeeded","paymentId":"\#(paymentId)","transactionId":"\#(transactionId ?? "")"}"#
-    case .processing(let paymentId):
-      return #"{"status":"processing","paymentId":"\#(paymentId)"}"#
+    case .succeeded(let paymentId, let transactionId, let subscription):
+      return #"{"status":"succeeded","paymentId":"\#(paymentId ?? "")","transactionId":"\#(transactionId ?? "")"\#(describe(subscription))}"#
+    case .processing(let paymentId, let subscription):
+      return #"{"status":"processing","paymentId":"\#(paymentId ?? "")"\#(describe(subscription))}"#
     case .canceled:
       return #"{"status":"canceled"}"#
     case .failed(let error):
       return #"{"status":"failed","error":{"code":"\#(error.code.rawValue)","message":"\#(error.message)"}}"#
     }
+  }
+
+  private func describe(_ subscription: SubscriptionResult?) -> String {
+    guard let subscription else { return "" }
+    return #","subscription":{"ref":"\#(subscription.ref)","status":"\#(subscription.status.rawValue)"}"#
   }
 }
 

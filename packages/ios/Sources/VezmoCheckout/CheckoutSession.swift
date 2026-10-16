@@ -77,8 +77,15 @@ struct SessionSnapshot: Equatable {
 
 private let priceChanged = "The price in your currency just changed. Check the new amount and pay again."
 
-/// One checkout, from the session's client token to a result. The money decisions are the server's: this only moves
-/// the buyer's confirmation token to Vezmo and the answer back to the engine.
+/// What the token is: an API checkout session's (a one-time payment) or a subscription checkout's (cards and Apple Pay;
+/// a first payment or a free trial).
+enum CheckoutKind {
+  case payment, subscription
+}
+
+/// One checkout, from the session's client token (or a subscription checkout's token) to a result. The money
+/// decisions are the server's: this only moves the buyer's confirmation token to Vezmo and the answer back to the
+/// engine.
 @MainActor
 final class CheckoutSession: ObservableObject {
   @Published private(set) var snapshot = SessionSnapshot()
@@ -86,6 +93,7 @@ final class CheckoutSession: ObservableObject {
   private let api: CheckoutAPI
   private let token: String
   private let returnURL: String?
+  private let kind: CheckoutKind
   private weak var element: ElementPort?
   private weak var cardFlow: CardFlowPort?
   /// Which engine view started the payment in progress (its confirmation is answered there).
@@ -97,10 +105,19 @@ final class CheckoutSession: ObservableObject {
   /// The card form was opened by the buyer: the card it returns becomes the selection.
   private var awaitingCard = false
 
-  init(api: CheckoutAPI, token: String, returnURL: String?) {
+  init(api: CheckoutAPI, token: String, returnURL: String?, kind: CheckoutKind = .payment) {
     self.api = api
     self.token = token
     self.returnURL = returnURL
+    self.kind = kind
+  }
+
+  private func fetchConfig() async throws -> CheckoutConfig {
+    if kind == .subscription {
+      let view = try await api.subscription(token: token)
+      return configFromSubscription(view)
+    }
+    return try await api.checkout(token: token)
   }
 
   private func set(_ change: (inout SessionSnapshot) -> Void) {
@@ -116,7 +133,7 @@ final class CheckoutSession: ObservableObject {
 
   func load() async {
     do {
-      let config = try await api.checkout(token: token)
+      let config = try await fetchConfig()
       // The buyer's own currency is offered first when there is an offer (as on the web checkout).
       apply(config, payLocal: config.localOffer != nil)
       set { $0.phase = .ready(error: nil) }
@@ -330,12 +347,14 @@ final class CheckoutSession: ObservableObject {
   /// The engine made a confirmation token: Vezmo prices and confirms the payment with it.
   func onConfirmationToken(_ id: String) async {
     do {
-      let res = try await api.pay(
-        token: token,
-        confirmationToken: id,
-        localOffer: snapshot.charge?.localOffer,
-        returnURL: returnURL
-      )
+      let localOffer = snapshot.charge?.localOffer
+      let res: PayResponse
+      if kind == .subscription {
+        let answer = try await api.subscriptionPay(token: token, confirmationToken: id, localOffer: localOffer, returnURL: returnURL)
+        res = payFromSubscription(answer)
+      } else {
+        res = try await api.pay(token: token, confirmationToken: id, localOffer: localOffer, returnURL: returnURL)
+      }
       lastPay = res
       if let method = res.method { set { $0.paidMethod = method } }
       resolve(res.clientSecret, res.clientSecret == nil ? declinedError.message : nil)
@@ -346,7 +365,7 @@ final class CheckoutSession: ObservableObject {
         lastError = message
         resolve(nil, message.message)
         // Fetch the new offer; the buyer sees the new amount before paying again.
-        if let config = try? await api.checkout(token: token) { apply(config, payLocal: snapshot.payLocal) }
+        if let config = try? await fetchConfig() { apply(config, payLocal: snapshot.payLocal) }
         return
       }
       let message = apiError?.vezmoError ?? VezmoError(code: .unknown, message: declinedError.message)
@@ -376,12 +395,28 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .done(result) }
       return
     }
-    if let intentId = intentIdOf(lastPay?.clientSecret) {
+    let intentId = intentIdOf(lastPay?.clientSecret)
+    if kind == .subscription {
+      let result = await startedSubscription(intentId)
+      set { $0.phase = .done(result) }
+      return
+    }
+    if let intentId {
       // The webhook records it either way; the status below is the answer.
       try? await api.confirm(token: token, paymentIntentId: intentId)
     }
     let result = await settledResult()
     set { $0.phase = .done(result) }
+  }
+
+  /// A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands.
+  private func startedSubscription(_ intentId: String?) async -> CheckoutResult {
+    if let intentId, let confirmed = try? await api.subscriptionConfirm(token: token, intentId: intentId) {
+      return resultFromSubscriptionConfirm(confirmed)
+    }
+    // Recorded from the processor's notice instead; the merchant's webhook tells them.
+    let ref = snapshot.config?.subscription?.ref ?? ""
+    return .processing(paymentId: nil, subscription: SubscriptionResult(ref: ref, status: .incomplete))
   }
 
   /// The session's state, polled briefly while the server catches up with a payment just made.
@@ -391,7 +426,7 @@ final class CheckoutSession: ObservableObject {
       try? await Task.sleep(nanoseconds: 1_500_000_000)
     }
     // Paid on the device and not yet visible: the webhook will tell the merchant's server.
-    return .processing(paymentId: snapshot.config?.paymentId ?? "")
+    return .processing(paymentId: snapshot.config?.paymentId ?? "", subscription: nil)
   }
 
   // MARK: Closing
