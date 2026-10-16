@@ -260,7 +260,8 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                     )}
 
                     {/* Express: the official Apple Pay / Google Pay button, when this phone and the business have one. */}
-                    <View style={walletsHeight > 1 ? s.section : { height: walletsHeight, overflow: 'hidden' }}>
+                    {/* Without wallet buttons it stays mounted (it holds the card form) but takes no room or gap. */}
+                    <View style={walletsHeight > 1 ? s.section : { height: 0, overflow: 'hidden', marginBottom: -24 }}>
                       <CardFlow
                         ref={cardFlow}
                         configJson={cardConfigJson}
