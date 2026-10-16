@@ -3,7 +3,7 @@ import React
 @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import UIKit
 
-/// The Vezmo payment element on iOS: the processor's native embedded element for the methods with rows of their own
+/// The Vezmo methods view on iOS: the processor's native embedded element for the methods with rows of their own
 /// (pay-later, Cash App…), configured from JSON that the JS layer builds and confirmed through Vezmo's server. Cards
 /// and wallets are the card flow's (`VezmoCardFlowHost`); with no other method the element is left out.
 ///
@@ -11,8 +11,8 @@ import UIKit
 /// calls our handler → we hand the token's id to JS (`confirmationToken`) → JS sends it to Vezmo's API, which prices
 /// and confirms the payment → JS answers with the intent's client secret (`resolveConfirmation`) → the element
 /// finishes any step left (3D Secure, a wallet, a provider) and reports `confirmResult`.
-@objc(VezmoPaymentElementHost)
-public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelegate {
+@objc(VezmoMethodsHost)
+public final class VezmoMethodsHost: UIView, EmbeddedPaymentElementDelegate {
   /// (event name, body) to the component view, which turns it into a React event.
   @objc public var onEvent: ((String, [String: Any]) -> Void)?
 

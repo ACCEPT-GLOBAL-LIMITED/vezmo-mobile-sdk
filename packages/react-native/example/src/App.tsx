@@ -4,19 +4,21 @@ import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } fro
 
 /**
  * The Vezmo SDK example: a small shop with one product and a Buy button that opens the Vezmo sheet. A real app gets
- * the session's client token from its own server; here it comes from the sandbox demo endpoint
- * (EXPO_PUBLIC_VEZMO_DEMO_URL) or is pasted in under Sandbox.
+ * the session's client token from its own server; here it comes from the sandbox demo endpoint or is pasted in under
+ * Sandbox.
  */
-const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL;
+// Vezmo's dev sandbox (TEST mode only): its demo endpoints make sessions with no key in the app.
+// EXPO_PUBLIC_VEZMO_API_BASE and EXPO_PUBLIC_VEZMO_DEMO_URL point it elsewhere.
+const API_BASE = process.env.EXPO_PUBLIC_VEZMO_API_BASE || 'https://api.dev.vezmo.com/api/v1';
+const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL || `${API_BASE}/demo/mobile-session`;
 // The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription.
-const SUBSCRIPTION_URL = DEMO_URL?.replace(/mobile-session$/, 'mobile-subscription');
-const API_BASE = process.env.EXPO_PUBLIC_VEZMO_API_BASE;
+const SUBSCRIPTION_URL = DEMO_URL.replace(/mobile-session$/, 'mobile-subscription');
 
 export default function App() {
   return (
     <VezmoProvider
       returnUrl="vezmoexample://vezmo"
-      apiBase={API_BASE || undefined}
+      apiBase={API_BASE}
       // The app's own Apple Merchant ID (Apple Developer → Identifiers → Merchant IDs): Apple Pay shows only with it.
       applePay={{ merchantId: 'merchant.com.vezmo.example' }}
     >
@@ -33,7 +35,6 @@ function Shop() {
 
   // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
   const newSession = async (track?: 'mor') => {
-    if (!DEMO_URL) return setStatus('Paste a client token, or set EXPO_PUBLIC_VEZMO_DEMO_URL.');
     setStatus('Creating a sandbox session…');
     try {
       const res = await fetch(track ? `${DEMO_URL}?track=${track}` : DEMO_URL, { method: 'POST' });
@@ -56,7 +57,6 @@ function Shop() {
 
   // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
   const subscribe = async (query: string) => {
-    if (!SUBSCRIPTION_URL) return setStatus('Set EXPO_PUBLIC_VEZMO_DEMO_URL.');
     setResult(null);
     setStatus('Loading checkout…');
     try {

@@ -89,8 +89,8 @@ public final class VezmoCardFlowHost: UIView {
   @MainActor
   private func build() async {
     guard !building,
-          let config = VezmoPaymentElementHost.parse(configJson),
-          let intent = VezmoPaymentElementHost.parse(intentJson) else { return }
+          let config = VezmoMethodsHost.parse(configJson),
+          let intent = VezmoMethodsHost.parse(intentJson) else { return }
     guard intent["card"] as? Bool == true else {
       removeWallets()
       flow = nil
@@ -139,7 +139,7 @@ public final class VezmoCardFlowHost: UIView {
 
   @MainActor
   private func update() {
-    guard let flow, let intent = VezmoPaymentElementHost.parse(intentJson) else { return }
+    guard let flow, let intent = VezmoMethodsHost.parse(intentJson) else { return }
     flow.update(intentConfiguration: intentConfiguration(from: intent)) { [weak self] error in
       if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
       self?.emitCardOption()
@@ -148,7 +148,7 @@ public final class VezmoCardFlowHost: UIView {
   }
 
   private func intentConfiguration(from intent: [String: Any]) -> PaymentSheet.IntentConfiguration {
-    VezmoPaymentElementHost.intentConfiguration(from: intent, types: ["card"]) { [weak self] tokenId in
+    VezmoMethodsHost.intentConfiguration(from: intent, types: ["card"]) { [weak self] tokenId in
       guard let self else { throw VezmoElementError(message: "") }
       return try await self.clientSecret(forToken: tokenId)
     }
@@ -233,7 +233,7 @@ public final class VezmoCardFlowHost: UIView {
       configuration.defaultBillingDetails.email = billing["email"] as? String
     }
     if let appearance = config["appearance"] as? [String: Any] {
-      configuration.appearance = VezmoPaymentElementHost.appearance(from: appearance)
+      configuration.appearance = VezmoMethodsHost.appearance(from: appearance)
     }
     return configuration
   }

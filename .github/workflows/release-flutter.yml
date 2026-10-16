@@ -39,8 +39,18 @@ jobs:
           VERSION="${GITHUB_REF_NAME#flutter-v}"
           PUBSPEC=$(grep '^version:' pubspec.yaml | awk '{print $2}')
           [ "$VERSION" = "$PUBSPEC" ] || { echo "::error::Tag $VERSION does not match version $PUBSPEC in packages/flutter/pubspec.yaml"; exit 1; }
-      # Sets up the pub.dev token from GitHub's OIDC identity; Flutter's pub picks it up.
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      # The plugin runs on the native SDKs it pins: both must be out before it is (Android on Maven Central, iOS as a
+      # tag at the repository root).
+      - name: The pinned native SDKs are released
+        run: |
+          ANDROID=$(sed -n 's/.*"com\.vezmo:vezmo-checkout:\([^"]*\)".*/\1/p' android/build.gradle.kts)
+          IOS=$(sed -n 's/.*\.package(url: repository, from: "\([^"]*\)").*/\1/p' ios/vezmo_checkout/Package.swift)
+          echo "Android SDK $ANDROID, iOS SDK $IOS"
+          [ -n "$ANDROID" ] && [ -n "$IOS" ] || { echo "::error::Could not read the native SDK versions from android/build.gradle.kts and ios/vezmo_checkout/Package.swift"; exit 1; }
+          curl -fsI "https://repo1.maven.org/maven2/com/vezmo/vezmo-checkout/$ANDROID/vezmo-checkout-$ANDROID.pom" > /dev/null \
+            || { echo "::error::com.vezmo:vezmo-checkout:$ANDROID is not on Maven Central yet. Release android-v$ANDROID (and release it in the Central Portal) first."; exit 1; }
+          git ls-remote --exit-code --tags origin "refs/tags/$IOS" > /dev/null \
+            || { echo "::error::The iOS SDK tag $IOS does not exist. Push the root tag $IOS first."; exit 1; }
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
@@ -49,4 +59,6 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter pub publish --dry-run
+      # Only now, right before publishing: the pub.dev token from GitHub's OIDC identity; Flutter's pub picks it up.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
       - run: flutter pub publish --force

@@ -3,7 +3,7 @@ import { elementAppearance, type SheetPalette, type VezmoAppearance } from './th
 import type { CheckoutConfig } from './types';
 
 export interface WalletOptions {
-  /** Apple Pay: your Apple Merchant ID (set up under Developers → Mobile apps). */
+  /** Apple Pay: your Apple Merchant ID (created in Apple Developer → Identifiers → Merchant IDs). */
   applePay?: { merchantId: string; merchantCountryCode?: string };
   /** Google Pay: `testEnv` for sandbox sessions is set automatically. */
   googlePay?: { merchantCountryCode?: string };

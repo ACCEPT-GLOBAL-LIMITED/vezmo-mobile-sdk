@@ -114,7 +114,7 @@ private fun Shop() {
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val configuration = remember {
-        VezmoConfiguration(returnUrl = "vezmoexample://vezmo", apiBase = BuildConfig.VEZMO_API_BASE)
+        VezmoConfiguration(apiBase = BuildConfig.VEZMO_API_BASE)
     }
     val vezmo = rememberVezmoCheckout(configuration) { result = it }
 

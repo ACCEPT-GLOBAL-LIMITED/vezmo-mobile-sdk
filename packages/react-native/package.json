@@ -20,7 +20,6 @@
     "android",
     "ios",
     "*.podspec",
-    "react-native.config.js",
     "app.plugin.js",
     "jest/mock.js",
     "CHANGELOG.md",
@@ -53,9 +52,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk.git"
+    "url": "git+https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk.git",
+    "directory": "packages/react-native"
   },
-  "author": "Vezmo <me@saifagl.com> (https://vezmo.com)",
+  "author": "Vezmo (https://vezmo.com)",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/issues"
@@ -78,7 +78,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "expo": ">=52.0.0",
+    "expo": ">=53.0.0",
     "react": ">=19.0.0",
     "react-native": ">=0.79.0"
   },
@@ -113,8 +113,8 @@
     },
     "ios": {
       "components": {
-        "VezmoPaymentElementView": {
-          "className": "VezmoPaymentElementView"
+        "VezmoMethodsView": {
+          "className": "VezmoMethodsView"
         },
         "VezmoCardFlowView": {
           "className": "VezmoCardFlowView"

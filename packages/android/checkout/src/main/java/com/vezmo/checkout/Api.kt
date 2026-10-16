@@ -175,11 +175,14 @@ internal class VezmoApi(
         private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
         fun codeFor(status: Int, errorCode: String?): VezmoError.Code =
-            when (status) {
-                410 -> VezmoError.Code.Expired
-                409 -> if (errorCode == "local_price_changed") VezmoError.Code.Unknown else VezmoError.Code.AlreadyPaid
-                400, 402 -> VezmoError.Code.Declined
-                401, 403, 404 -> VezmoError.Code.Config
+            when {
+                // The app's return link isn't registered for this business, or this way to pay is off for it.
+                errorCode == "return_url_not_registered" -> VezmoError.Code.Config
+                errorCode == "method_unavailable" -> VezmoError.Code.NotAvailable
+                status == 410 -> VezmoError.Code.Expired
+                status == 409 -> if (errorCode == "local_price_changed") VezmoError.Code.Unknown else VezmoError.Code.AlreadyPaid
+                status == 400 || status == 402 -> VezmoError.Code.Declined
+                status == 401 || status == 403 || status == 404 -> VezmoError.Code.Config
                 else -> VezmoError.Code.Unknown
             }
     }

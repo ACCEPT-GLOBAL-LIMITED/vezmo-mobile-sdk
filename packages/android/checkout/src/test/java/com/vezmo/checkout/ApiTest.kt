@@ -81,6 +81,20 @@ class ApiTest {
         }
         assertEquals("local_price_changed", priceChanged.reason)
         assertEquals(VezmoError.Code.Unknown, priceChanged.code)
+        val unregistered = failure {
+            api(
+                400,
+                """{"message":"Register acme://vezmo for this business.","errors":[{"code":"return_url_not_registered","message":"Register acme://vezmo for this business."}]}""",
+            ).pay("t", "c", null, null)
+        }
+        assertEquals(VezmoError.Code.Config, unregistered.code)
+        assertEquals("Register acme://vezmo for this business.", unregistered.message)
+        val unavailable = failure {
+            api(400, """{"errors":[{"code":"method_unavailable","message":"This way to pay is not available."}]}""")
+                .subscriptionPay("t", "c", null)
+        }
+        assertEquals(VezmoError.Code.NotAvailable, unavailable.code)
+        assertEquals("This way to pay is not available.", unavailable.message)
         assertEquals(VezmoError.Code.AlreadyPaid, failure { api(409, "{}").status("t") }.code)
         assertEquals(VezmoError.Code.Config, failure { api(404, "not json").status("t") }.code)
         val offline = VezmoApi("https://api.test/v1", { _, _, _, _ -> throw IOException("x") }, Dispatchers.Unconfined)

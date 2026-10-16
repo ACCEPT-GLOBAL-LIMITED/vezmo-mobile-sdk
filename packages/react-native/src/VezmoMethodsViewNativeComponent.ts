@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 
 /**
- * The native payment element: the methods with rows of their own (pay-later, Cash App…), drawn by the platform's own
+ * The native methods view: the methods with rows of their own (pay-later, Cash App…), drawn by the platform's own
  * UI. Cards and wallets are the card flow's (`VezmoCardFlowViewNativeComponent`). Inputs are JSON so the native side
  * stays a thin host (see `elementConfig.ts`).
  */
@@ -47,5 +47,5 @@ export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
 });
 
 export default codegenNativeComponent<NativeProps>(
-  'VezmoPaymentElementView',
+  'VezmoMethodsView',
 ) as HostComponent<NativeProps>;

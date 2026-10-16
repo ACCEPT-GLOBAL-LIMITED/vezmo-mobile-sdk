@@ -37,7 +37,7 @@ import kotlinx.coroutines.flow.consumeAsFlow
 import org.json.JSONObject
 
 /**
- * The Vezmo payment element on Android: the processor's native embedded element in Compose for the methods with rows
+ * The Vezmo methods view on Android: the processor's native embedded element in Compose for the methods with rows
  * of their own (pay-later, Cash App…), configured from JSON the JS layer builds and confirmed through Vezmo's server.
  * Cards and wallets are the card flow's ([VezmoCardFlowView]); with no other method the element is left unconfigured.
  *
@@ -50,7 +50,7 @@ import org.json.JSONObject
  * activity's lifecycle and saved state through the view tree.
  */
 @SuppressLint("ViewConstructor")
-class VezmoPaymentElementView(
+class VezmoMethodsView(
   private val reactContext: ThemedReactContext,
 ) : FrameLayout(reactContext) {
   /** What the element is set up with. */

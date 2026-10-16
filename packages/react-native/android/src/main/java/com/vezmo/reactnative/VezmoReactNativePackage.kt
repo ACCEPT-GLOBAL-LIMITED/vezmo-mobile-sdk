@@ -8,7 +8,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class VezmoReactNativePackage : BaseReactPackage() {
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
-    listOf(VezmoPaymentElementViewManager(), VezmoCardFlowViewManager())
+    listOf(VezmoMethodsViewManager(), VezmoCardFlowViewManager())
 
   override fun getModule(
     name: String,

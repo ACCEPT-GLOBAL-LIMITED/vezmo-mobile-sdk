@@ -68,7 +68,7 @@ scan a card:
   </dict>
 </array>
 <key>NSCameraUsageDescription</key>
-<string>Scan your card to fill in its number.</string>
+<string>Scan your card to fill in its details.</string>
 ```
 
 The plugin hands the links that come back to the app (3D Secure, bank apps, pay-later providers) to the sheet by
@@ -76,19 +76,25 @@ itself.
 
 ## Take a payment
 
-Your server creates the session with your API key (the same API checkout session as on the web) and sends its
-`clientToken` to the app:
+Your server creates the session (the same API checkout session as on the web) and sends
+`data.securePayment.clientToken` to the app:
 
 ```http
-POST /v1/merchant/secure-payments
+POST https://api.vezmo.com/api/v1/merchant/secure-payments
+Authorization: Bearer <access token>
+Content-Type: application/json
+
 {
   "title": "Order #1042",
   "amount": 49.00,
   "currency": "USD",
-  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" },
-  "app": { "returnUrl": "acme://vezmo" }
+  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" }
 }
 ```
+
+Get an access token with your API key and secret (`POST /api/v1/merchant/api-auth/login`, headers `x-api-key` and
+`x-api-secret`); see the [Secure Payments docs](https://user.vezmo.com/docs/v1/secure-payments). Add `app.returnUrl`
+only if you also open Checkout for apps.
 
 In the app, create one `VezmoCheckout` for the screens that take payments:
 
@@ -164,9 +170,13 @@ Start a subscription in the app: the first payment, or a free trial with the car
 creates the subscription with your API key and sends its `checkoutToken` to the app:
 
 ```http
-POST /v1/merchant/subscription
-{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
-→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+POST https://api.vezmo.com/api/v1/merchant/subscription
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "planId": "<plan_id>", "customerEmail": "ana@example.com", "trialDays": 7 }
+
+→ { "success": true, "data": { "subscriptionRef": "VS7K2P9Q4FXM", "status": "TRIALING", "checkoutToken": "…" } }
 ```
 
 In the app, pass it as `subscriptionToken`; everything else is the same:
@@ -176,7 +186,7 @@ final error = await vezmo.prepare(subscriptionToken: checkoutToken);
 if (error != null) return showError(error.message);
 final result = await vezmo.present();
 if (result case CheckoutSucceeded(:final paymentId, :final subscription?)) {
-  // subscription.ref: 'SUB-7Q2K9WX'; subscription.status: SubscriptionStatus.trialing or .active
+  // subscription.ref: 'VS7K2P9Q4FXM'; subscription.status: SubscriptionStatus.trialing or .active
   // paymentId is the first payment, or null for a free trial (nothing charged today)
 }
 ```
@@ -184,7 +194,8 @@ if (result case CheckoutSucceeded(:final paymentId, :final subscription?)) {
 The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
 authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards, Google Pay and Apple Pay (on iPhone,
 Apple Pay shows the plan as a recurring payment). Renewals are charged by Vezmo; your server hears about each one from
-the subscription webhooks.
+the subscription webhooks. When the buyer starts a free trial, Vezmo sends `subscription.trial_started`; the first
+charge sends `subscription.activated` (or `subscription.payment_failed`).
 
 ## What the buyer sees
 
@@ -239,7 +250,8 @@ how you take payments, and send the screenshots of your checkout that Google ask
 ## Testing
 
 Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
-CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 0002` is declined.
+CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 3220` always asks for 3D
+Secure. `4000 0000 0000 0002` is declined.
 
 The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/flutter/example) pays
 against Vezmo's sandbox with no setup: `cd example && flutter run`. In the sandbox, Apple Pay and Google Pay use the
@@ -278,8 +290,9 @@ flutter analyze && flutter test
 cd example && flutter run
 ```
 
-Until the Android SDK is on Maven Central, build it into Maven local first: `gradle -p packages/android
-:checkout:publishToMavenLocal` (Gradle 8.14, JDK 17).
+To build the Android side against this repository's Android SDK rather than a release, build it into Maven local
+first (`gradle -p packages/android :checkout:publishToMavenLocal`, Gradle 8.14, JDK 17) and set
+`ORG_GRADLE_PROJECT_vezmoMavenLocal=true` when you build the example.
 
 On iPhone, Xcode needs the plugin's folder to be named `vezmo_checkout` (as it is when installed from pub.dev). To run
 the example on an iPhone from this repository, reach the plugin through such a folder first:
@@ -299,8 +312,10 @@ the merchant-of-record track, a subscription's free trial and its first payment,
 iPhone simulator: a card with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, and a
 subscription's free trial and its first payment.
 
-To release, set `version` in `pubspec.yaml` and the `CHANGELOG.md` entry, then push a tag `flutter-v<version>`.
-`release-flutter.yml` publishes to pub.dev from GitHub Actions, with no stored secret.
+To release, push a tag `flutter-v<version>` after the Android and iOS SDKs it pins are out; the release order and
+every place the version lives are in the
+[root README](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk#releases). `release-flutter.yml` publishes
+to pub.dev from GitHub Actions, with no stored secret.
 
 ## License
 

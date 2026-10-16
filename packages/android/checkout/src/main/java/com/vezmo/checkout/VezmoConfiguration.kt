@@ -8,10 +8,7 @@ import kotlinx.parcelize.Parcelize
 /** How the Vezmo payment sheet is set up in your app. */
 @Parcelize
 data class VezmoConfiguration(
-    /**
-     * The link that opens your app after a bank app, a pay-later provider or 3D Secure, registered in the Vezmo
-     * dashboard under Developers → Mobile apps (for example `acme://vezmo`). Needed for redirect-based methods.
-     */
+    /** Not used on Android; kept so the settings read the same on every platform. */
     val returnUrl: String? = null,
     /**
      * Google Pay shows when the business offers it and the phone has it; sandbox sessions use Google's test

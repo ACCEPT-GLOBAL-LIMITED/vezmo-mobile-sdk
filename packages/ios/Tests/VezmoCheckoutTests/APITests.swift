@@ -96,6 +96,17 @@ final class APITests: XCTestCase {
     }
     XCTAssertEqual(priceChanged?.reason, "local_price_changed")
 
+    StubProtocol.answer = { _ in (400, ["message": "Register acme://vezmo for this business.", "errors": [["code": "return_url_not_registered", "message": "Register acme://vezmo for this business."]]] as [String: Any]) }
+    let unregistered = await assertThrows(code: .config) {
+      try await self.makeAPI().pay(token: "t", confirmationToken: "c", localOffer: nil, returnURL: "acme://vezmo")
+    }
+    XCTAssertEqual(unregistered?.message, "Register acme://vezmo for this business.")
+
+    StubProtocol.answer = { _ in (400, ["errors": [["code": "method_unavailable", "message": "This way to pay is not available."]]] as [String: Any]) }
+    await assertThrows(code: .notAvailable) {
+      try await self.makeAPI().subscriptionPay(token: "t", confirmationToken: "c", localOffer: nil, returnURL: nil)
+    }
+
     StubProtocol.answer = { _ in (409, ["message": "This checkout was already paid."]) }
     await assertThrows(code: .alreadyPaid) { try await self.makeAPI().status(token: "t") }
 

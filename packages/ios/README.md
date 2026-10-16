@@ -23,7 +23,7 @@ Choose the `VezmoCheckout` library. Or in your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk", from: "0.1.0"),
+  .package(url: "https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk", .upToNextMinor(from: "0.1.0")),
 ],
 targets: [
   .target(name: "MyApp", dependencies: [.product(name: "VezmoCheckout", package: "vezmo-mobile-sdk")]),
@@ -63,28 +63,43 @@ WindowGroup { RootView().onOpenURL { VezmoCheckout.handleURL($0) } }
 func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
   contexts.forEach { VezmoCheckout.handleURL($0.url) }
 }
+// …and, when your return link is a universal link (https):
+func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+  if let url = userActivity.webpageURL { VezmoCheckout.handleURL(url) }
+}
+
+// UIKit without scenes (app delegate)
+func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+  VezmoCheckout.handleURL(url)
+}
 ```
 
 ## Take a payment
 
-Your server creates the session with your API key (the same API checkout session as on the web) and sends its
-`clientToken` to the app:
+Your server creates the session (the same API checkout session as on the web) and sends
+`data.securePayment.clientToken` to the app:
 
 ```http
-POST /v1/merchant/secure-payments
+POST https://api.vezmo.com/api/v1/merchant/secure-payments
+Authorization: Bearer <access token>
+Content-Type: application/json
+
 {
   "title": "Order #1042",
   "amount": 49.00,
   "currency": "USD",
-  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" },
-  "app": { "returnUrl": "acme://vezmo" }
+  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" }
 }
 ```
+
+Get an access token with your API key and secret (`POST /api/v1/merchant/api-auth/login`, headers `x-api-key` and
+`x-api-secret`); see the [Secure Payments docs](https://user.vezmo.com/docs/v1/secure-payments). Add `app.returnUrl`
+only if you also open Checkout for apps.
 
 In the app (UIKit):
 
 ```swift
-func pay(orderId: String) async {
+func pay(orderId: String) async throws {
   let clientToken = try await myAPI.createVezmoSession(orderId)
 
   // Loads the session; call it as soon as you have the token.
@@ -155,9 +170,13 @@ Start a subscription in the app: the first payment, or a free trial with the car
 creates the subscription with your API key and sends its `checkoutToken` to the app:
 
 ```http
-POST /v1/merchant/subscription
-{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
-→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+POST https://api.vezmo.com/api/v1/merchant/subscription
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "planId": "<plan_id>", "customerEmail": "ana@example.com", "trialDays": 7 }
+
+→ { "success": true, "data": { "subscriptionRef": "VS7K2P9Q4FXM", "status": "TRIALING", "checkoutToken": "…" } }
 ```
 
 In the app, prepare with `subscriptionToken`; everything else is the same:
@@ -166,7 +185,7 @@ In the app, prepare with `subscriptionToken`; everything else is the same:
 if let error = await vezmo.prepare(subscriptionToken: checkoutToken) { return showError(error.message) }
 switch await vezmo.present(from: self) {
 case .succeeded(let paymentId, _, let subscription?):
-  // subscription.ref is "SUB-7Q2K9WX"; subscription.status is .trialing or .active.
+  // subscription.ref is "VS7K2P9Q4FXM"; subscription.status is .trialing or .active.
   // paymentId is the first payment, or nil for a free trial (nothing charged today).
   showSubscribed(subscription)
 case .processing(_, let subscription):
@@ -183,7 +202,8 @@ default:
 The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
 authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards and Apple Pay; Apple Pay shows the plan
 as a recurring payment (iOS 16+) and lists it in the buyer's Wallet with their page to manage it. Renewals are charged
-by Vezmo; your server hears about each one from the subscription webhooks.
+by Vezmo; your server hears about each one from the subscription webhooks. When the buyer starts a free trial, Vezmo
+sends `subscription.trial_started`; the first charge sends `subscription.activated` (or `subscription.payment_failed`).
 
 Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
 to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
@@ -232,8 +252,9 @@ The sheet's text follows the buyer's text size (Dynamic Type), up to the first a
 ## Testing
 
 Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
-CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 0002` is declined. In the
-sandbox, Apple Pay uses the cards in the phone's wallet without charging them.
+CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 3220` always asks for 3D
+Secure. `4000 0000 0000 0002` is declined. In the sandbox, Apple Pay uses the cards in the phone's wallet without
+charging them.
 
 The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/ios/Example) pays
 against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open `VezmoExample.xcodeproj`, and set the
@@ -243,12 +264,17 @@ against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open
 
 - **No Apple Pay**: no `applePay` in the configuration, the Apple Pay capability is missing, no card in the phone's
   Wallet, or the Apple Pay certificate isn't set up yet.
-- **The buyer doesn't come back to the app after 3D Secure or a bank app**: the session's `app.returnUrl` must be a
-  link registered under Developers → Mobile apps, your app must declare that URL scheme, and it must pass the link
-  to `VezmoCheckout.handleURL`.
+- **The buyer doesn't come back to the app after 3D Secure or a bank app**: the `returnURL` in your configuration
+  must be a link registered under Developers → Mobile apps, your app must declare that URL scheme, and it must pass
+  the link to `VezmoCheckout.handleURL`.
 - **`.config` from `present`**: call `prepare(clientToken:)` first, and present each prepared session once.
 - **"Couldn't load payment options" in the sheet**: the reason is in the app's console (Xcode or Console.app,
   subsystem `com.vezmo.checkout`). The buyer can tap **Try again**.
+
+## Releases
+
+Each release is a plain semver tag at the repository root (for example `0.1.0`), equal to `VezmoCheckout.version`.
+While the SDK is 0.x a minor release can change the API, so the snippet above stays on one minor version.
 
 ## License
 
