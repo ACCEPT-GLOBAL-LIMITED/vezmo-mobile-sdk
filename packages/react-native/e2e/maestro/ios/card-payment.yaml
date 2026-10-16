@@ -20,12 +20,14 @@ appId: com.vezmo.example
     visible: "Card number"
     timeout: 15000
 - tapOn: "Card number"
+# The form moves on by itself: card number, then expiry, then CVC.
 - inputText: "4242424242424242"
-- tapOn: "MM / YY"
 - inputText: "1234"
-- tapOn: "CVC"
 - inputText: "123"
-- tapOn: "ZIP Code"
+- takeScreenshot: 01b-card-form
+- tapOn:
+    text: "ZIP.*"
+    optional: true
 - inputText: "10001"
 - hideKeyboard
 - takeScreenshot: 02-card-filled
