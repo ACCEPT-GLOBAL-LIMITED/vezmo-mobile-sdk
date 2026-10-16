@@ -3,6 +3,7 @@ import {
   Animated,
   Easing,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -92,7 +93,11 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
       confirmCard: () => cardFlow.current?.confirmCard(),
       resolveConfirmation: (secret, message) => cardFlow.current?.resolveConfirmation(secret, message),
     });
+    // Back from a bank app, a pay-later provider or 3D Secure in the browser: the payment waiting on the app's
+    // return link finishes.
+    const links = Linking.addEventListener('url', ({ url }) => cardFlow.current?.handleURL(url));
     return () => {
+      links.remove();
       session.attachElement(null);
       session.attachCardFlow(null);
       session.dispose();

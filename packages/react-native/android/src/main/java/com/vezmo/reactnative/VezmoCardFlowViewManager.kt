@@ -62,6 +62,12 @@ class VezmoCardFlowViewManager :
     view.resolveConfirmation(clientSecret, errorMessage)
   }
 
+  // Android brings the buyer back from a bank app or a pay-later provider by itself.
+  override fun handleURL(
+    view: VezmoCardFlowView,
+    url: String,
+  ) = Unit
+
   override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
     mutableMapOf(
       "topLoaded" to mapOf("registrationName" to "onLoaded"),

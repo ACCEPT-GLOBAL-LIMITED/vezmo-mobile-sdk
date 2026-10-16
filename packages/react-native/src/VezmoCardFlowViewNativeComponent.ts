@@ -42,10 +42,12 @@ interface NativeCommands {
     clientSecret: string,
     errorMessage: string,
   ) => void;
+  /** The app was opened with a link (after a bank app, a pay-later provider or 3D Secure): hand it to the payment. */
+  handleURL: (viewRef: React.ElementRef<HostComponent<NativeProps>>, url: string) => void;
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ['presentCard', 'confirmCard', 'resolveConfirmation'],
+  supportedCommands: ['presentCard', 'confirmCard', 'resolveConfirmation', 'handleURL'],
 });
 
 export default codegenNativeComponent<NativeProps>('VezmoCardFlowView') as HostComponent<NativeProps>;

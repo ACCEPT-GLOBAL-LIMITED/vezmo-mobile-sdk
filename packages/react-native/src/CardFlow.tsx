@@ -8,6 +8,8 @@ export interface CardFlowHandle {
   confirmCard(): void;
   /** Answer `onConfirmationToken` with the intent's client secret, or an error message to show. */
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
+  /** The app was opened with a link: finishes a payment waiting on it (iOS; Android returns by itself). */
+  handleURL(url: string): void;
 }
 
 export interface CardFlowProps {
@@ -39,6 +41,9 @@ export const CardFlow = forwardRef<CardFlowHandle, CardFlowProps>(function CardF
     },
     resolveConfirmation(clientSecret, errorMessage) {
       if (native.current) Commands.resolveConfirmation(native.current, clientSecret ?? '', errorMessage ?? '');
+    },
+    handleURL(url) {
+      if (native.current) Commands.handleURL(native.current, url);
     },
   }));
 

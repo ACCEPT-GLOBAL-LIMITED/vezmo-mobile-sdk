@@ -1,6 +1,7 @@
 import Foundation
 import React
 @_spi(STP) @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
+import StripeCore
 import SwiftUI
 import UIKit
 
@@ -47,6 +48,13 @@ public final class VezmoCardFlowHost: UIView {
   }
 
   // MARK: Commands
+
+  /// The app was opened with its return link (after a bank app, a pay-later provider or 3D Secure in the browser
+  /// sheet): the payment waiting on it finishes and the browser sheet closes.
+  @objc(handleURL:) public func handleURL(_ url: String) {
+    guard let link = URL(string: url) else { return }
+    _ = StripeAPI.handleURLCallback(with: link)
+  }
 
   @objc public func presentCard() {
     guard let flow, let presenter = RCTPresentedViewController() else { return }

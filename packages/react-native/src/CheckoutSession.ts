@@ -187,6 +187,8 @@ export class CheckoutSession {
   }
 
   setElementError(message: string | null) {
+    // The platform's own reason, for the app's developer (the buyer sees "Couldn't load payment options").
+    if (message) console.warn(`[Vezmo] Payment options could not load: ${message}`);
     this.set({ elementError: message, ...(message ? { canPay: false } : {}) });
   }
 

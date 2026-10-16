@@ -104,6 +104,11 @@ static std::string VZCardString(id value)
   [_host resolveConfirmationWithClientSecret:clientSecret errorMessage:errorMessage];
 }
 
+- (void)handleURL:(NSString *)url
+{
+  [_host handleURL:url];
+}
+
 @end
 
 Class<RCTComponentViewProtocol> VezmoCardFlowViewCls(void)
