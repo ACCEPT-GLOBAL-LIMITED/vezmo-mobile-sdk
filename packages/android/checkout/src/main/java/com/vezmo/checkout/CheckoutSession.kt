@@ -346,8 +346,19 @@ internal class CheckoutSession(
         if (snapshot.phase is SessionPhase.Closed) return
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
-            ConfirmStatus.Failed -> set {
-                copy(phase = SessionPhase.Ready(lastError ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
+            ConfirmStatus.Failed -> {
+                // The engine lost a step it was finishing on the device (a browser or 3D Secure): Vezmo's server
+                // knows whether the money moved.
+                if (lastError == null && lastPay?.state == "requires_action") {
+                    val result = runCatching { resultFromStatus(api.status(token)) }.getOrNull()
+                    if (result != null && result !is CheckoutResult.Failed) {
+                        set { copy(phase = SessionPhase.Done(result)) }
+                        return
+                    }
+                }
+                set {
+                    copy(phase = SessionPhase.Ready(lastError ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
+                }
             }
             ConfirmStatus.Completed -> {
                 // A payment our server already recorded is done; one finished on the device (3D Secure, a redirect)

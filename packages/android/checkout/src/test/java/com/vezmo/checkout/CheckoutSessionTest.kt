@@ -150,6 +150,29 @@ class CheckoutSessionTest {
     }
 
     @Test
+    fun `the engine losing a redirect step it finished - the server's answer wins`() = test { t ->
+        t.api.pay = { PayResponse("requires_action", "pay_1", null, "pi_9_secret_b", null) }
+        t.session.setOption("Cash App Pay")
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        t.session.onConfirmResult(ConfirmStatus.Failed, "engine text")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+
+        // Not paid after all: the buyer can try again.
+        t.api.status = SessionStatus("open", "pay_1", null)
+        val u = Setup(this)
+        u.api.pay = { PayResponse("requires_action", "pay_1", null, "pi_9_secret_b", null) }
+        u.api.status = SessionStatus("open", "pay_1", null)
+        u.session.load()
+        u.session.setOption("Cash App Pay")
+        u.session.pay()
+        u.session.onConfirmationToken("ctoken_1")
+        u.session.onConfirmResult(ConfirmStatus.Failed, "")
+        assertEquals(SessionPhase.Ready(DECLINED), u.snap.phase)
+        u.session.dispose()
+    }
+
+    @Test
     fun `a decline goes back to the engine in our words and leaves the sheet ready to retry`() = test { t ->
         t.api.pay = { throw VezmoApiError(VezmoError.Code.Declined, "Your bank declined this card.", 400) }
         t.session.setOption("Klarna")
