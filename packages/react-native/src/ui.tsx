@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Image,
   Easing,
   Platform,
   Pressable,
@@ -10,6 +11,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { VEZMO_LOGO } from './logo';
 import type { SheetPalette } from './theme';
 
 /**
@@ -87,9 +89,12 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
       letterSpacing: -0.9,
       fontVariant: ['tabular-nums'],
     },
-    body: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 8, gap: 24 },
+    body: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 16, gap: 24 },
+    // The pinned bottom: the main button and "Secured by", always in reach however long the content above.
+    dock: { paddingHorizontal: 20, paddingTop: 12, gap: 14, backgroundColor: p.surface },
+    dockLine: { borderTopWidth: HAIRLINE, borderTopColor: p.line },
     section: { gap: 8 },
-    label: { ...font, color: p.ink3, fontSize: 13, fontWeight: '500' },
+    label: { ...font, color: p.ink2, fontSize: 13, fontWeight: '500' },
     hint: { ...font, color: p.ink3, fontSize: 12.5, lineHeight: 17 },
     // Segmented choice: a quiet track, the chosen side raised.
     segTrack: { flexDirection: 'row', padding: 3, borderRadius: radius, backgroundColor: p.surface2, gap: 3 },
@@ -156,7 +161,8 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
     ghost: { height: 50, borderRadius: 999, backgroundColor: p.surface2, alignItems: 'center', justifyContent: 'center' },
     ghostText: { ...font, color: p.ink, fontSize: 15, fontWeight: '600' },
     link: { ...font, color: p.accent, fontSize: 14, fontWeight: '600', textAlign: 'center' },
-    footer: { ...font, color: p.ink3, fontSize: 12.5, fontWeight: '500', textAlign: 'center' },
+    footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+    footerText: { ...font, color: p.ink3, fontSize: 12.5, fontWeight: '500' },
     input: {
       ...font,
       borderWidth: 1,
@@ -308,6 +314,20 @@ export function MethodRow(props: {
   );
 }
 
+/** "Secured by" and the Vezmo logo, as under the embedded checkout (white in dark themes). */
+export function SecuredBy({ s, dark }: { s: Styles; dark: boolean }) {
+  return (
+    <View style={s.footer} accessible accessibilityLabel="Secured by Vezmo">
+      <Text style={s.footerText}>Secured by</Text>
+      <Image
+        source={{ uri: VEZMO_LOGO.uri }}
+        style={{ width: VEZMO_LOGO.width, height: VEZMO_LOGO.height, ...(dark ? { tintColor: '#FFFFFF', opacity: 0.85 } : {}) }}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
+
 /** Something went wrong with the payment, said kindly. */
 export function Banner(props: { text: string; s: Styles; p: SheetPalette; testID?: string }) {
   const { s, p } = props;
@@ -388,7 +408,7 @@ export type MarkKind = 'good' | 'bad' | 'wait' | 'neutral';
 /** A flat status disc: a check (paid), a mark (problem), a clock (on its way, or ran out of time). */
 export function Mark({ kind, size, p }: { kind: MarkKind; size: number; p: SheetPalette }) {
   const fill = kind === 'good' ? p.good : kind === 'bad' ? p.bad : kind === 'wait' ? p.accent : p.surface2;
-  const ink = kind === 'neutral' ? p.ink3 : '#FFFFFF';
+  const ink = kind === 'neutral' ? p.ink2 : '#FFFFFF';
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: fill, alignItems: 'center', justifyContent: 'center' }} accessible={false}>
       {kind === 'good' && <Tick color={ink} size={size * 0.56} weight={Math.max(2, size * 0.075)} />}
@@ -403,30 +423,28 @@ export function Mark({ kind, size, p }: { kind: MarkKind; size: number; p: Sheet
   );
 }
 
-/** The result's mark, arriving with a small spring (and a soft halo when there is news). */
+/** The result's mark, arriving with a small spring inside a soft halo; one geometry for every outcome. */
 export function ResultMark({ kind, p }: { kind: MarkKind; p: SheetPalette }) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(t, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start();
   }, [t]);
-  const halo = kind === 'good' ? p.good : kind === 'bad' ? p.bad : kind === 'wait' ? p.accent : null;
+  const halo = kind === 'good' ? p.good : kind === 'bad' ? p.bad : kind === 'wait' ? p.accent : '#767680';
   return (
     <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
-      {halo && (
-        <Animated.View
-          style={{
-            position: 'absolute',
-            width: 96,
-            height: 96,
-            borderRadius: 48,
-            backgroundColor: halo,
-            opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] }),
-            transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
-          }}
-        />
-      )}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 96,
+          height: 96,
+          borderRadius: 48,
+          backgroundColor: halo,
+          opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0, kind === 'neutral' ? 0.08 : 0.12] }),
+          transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+        }}
+      />
       <Animated.View style={{ opacity: t, transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }] }}>
-        <Mark kind={kind} size={halo ? 64 : 56} p={p} />
+        <Mark kind={kind} size={64} p={p} />
       </Animated.View>
     </View>
   );
@@ -505,12 +523,14 @@ export function Skeleton({ s }: { s: Styles }) {
       <View style={s.body}>
         <View style={s.section}>
           {block({ width: 110, height: 12 })}
-          <View style={[s.group, { borderColor: 'transparent' }]}>
-            <RowsSkeleton s={s} rows={4} still />
+          <View style={s.group}>
+            <RowsSkeleton s={s} rows={5} still />
           </View>
         </View>
+      </View>
+      <View style={s.dock}>
         {block({ height: 56, borderRadius: 999 })}
-        {block({ width: 120, height: 10, alignSelf: 'center' })}
+        {block({ width: 120, height: 12, alignSelf: 'center' })}
       </View>
     </Animated.View>
   );

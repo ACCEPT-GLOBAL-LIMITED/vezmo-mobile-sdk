@@ -38,8 +38,10 @@ export interface SessionSnapshot {
   methods: SheetMethods | null;
   /** The element has a method selected and can be paid. */
   canPay: boolean;
-  /** The selected method as the element names it ("•••• 4242", "Klarna"), for the receipt. */
+  /** The selected method as the element names it ("•••• 4242", "Klarna"). */
   option: string | null;
+  /** The method the buyer paid with, kept for the receipt (the element clears its selection after paying). */
+  paidWith: string | null;
   /** The element couldn't load (shown in the sheet with Try again). */
   elementError: string | null;
   /** Bumped by Try again: rebuilds the native element. */
@@ -63,6 +65,7 @@ export class CheckoutSession {
     methods: null,
     canPay: false,
     option: null,
+    paidWith: null,
     elementError: null,
     elementAttempt: 0,
     method: 'element',
@@ -147,7 +150,7 @@ export class CheckoutSession {
   /** Start UPI or Pix: the UPI app link or the Pix code comes back; then we watch the session until it is paid. */
   async payWithQr(method: 'upi' | 'pix', billing: QrBilling) {
     if (this.snapshot.phase.name !== 'ready') return;
-    this.set({ phase: { name: 'paying' } });
+    this.set({ phase: { name: 'paying' }, paidWith: method === 'upi' ? 'UPI' : 'Pix' });
     try {
       const intent = await this.api.intent(this.token, this.snapshot.charge?.localOffer ?? null);
       this.qrIntentId = intent.id;
@@ -219,7 +222,7 @@ export class CheckoutSession {
     if (this.snapshot.phase.name !== 'ready' || !this.element) return;
     this.lastPay = null;
     this.lastError = null;
-    this.set({ phase: { name: 'paying' } });
+    this.set({ phase: { name: 'paying' }, paidWith: this.snapshot.option });
     this.element.confirm();
   }
 

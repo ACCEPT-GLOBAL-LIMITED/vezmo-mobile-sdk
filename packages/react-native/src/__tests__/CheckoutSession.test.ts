@@ -134,6 +134,10 @@ describe('CheckoutSession', () => {
     expect(t.session.getSnapshot()).toMatchObject({ canPay: false, option: null, method: 'upi' });
     t.session.setOption({ label: 'Klarna' });
     expect(t.session.getSnapshot()).toMatchObject({ canPay: true, option: 'Klarna', method: 'element' });
+    // The receipt keeps what was paid with, though the element clears its selection after paying.
+    t.session.pay();
+    t.session.setOption(null);
+    expect(t.session.getSnapshot().paidWith).toBe('Klarna');
   });
 
   it('UPI: starts on the session intent, waits for the bank app, records it when paid', async () => {

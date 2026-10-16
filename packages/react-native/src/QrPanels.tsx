@@ -1,23 +1,30 @@
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { AppState, Image, Linking, Pressable, Share, Text, TextInput, View } from 'react-native';
 import type { CheckoutSession } from './CheckoutSession';
 import type { SheetPalette } from './theme';
 import type { QrBilling, QrPayment } from './types';
 import { Banner, PrimaryButton, Pulse, type Styles } from './ui';
 
+export interface QrFormHandle {
+  /** Check the details and start the payment (the sheet's pinned button calls this). */
+  submit(): void;
+}
+
 /** Who pays, for UPI or Pix: name and address (and the CPF or CNPJ for Pix), as the web checkout asks. */
-export function QrForm(props: {
-  method: 'upi' | 'pix';
-  defaultName: string;
-  country: string | null;
-  busy: boolean;
-  amount: string;
-  /** The last try failed (shown above the button). */
-  error: string | null;
-  p: SheetPalette;
-  s: Styles;
-  onPay(billing: QrBilling): void;
-}) {
+export const QrForm = forwardRef<
+  QrFormHandle,
+  {
+    method: 'upi' | 'pix';
+    defaultName: string;
+    country: string | null;
+    busy: boolean;
+    /** The last try failed. */
+    error: string | null;
+    p: SheetPalette;
+    s: Styles;
+    onPay(billing: QrBilling): void;
+  }
+>(function QrForm(props, ref) {
   const { method, s, p } = props;
   const [name, setName] = useState(props.defaultName);
   const [line1, setLine1] = useState('');
@@ -34,6 +41,21 @@ export function QrForm(props: {
         : null;
   const [tried, setTried] = useState(false);
 
+  useImperativeHandle(ref, () => ({
+    submit() {
+      setTried(true);
+      if (problem) return;
+      props.onPay({
+        name: name.trim(),
+        line1: line1.trim(),
+        ...(city.trim() ? { city: city.trim() } : {}),
+        ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
+        ...(props.country ? { country: props.country } : {}),
+        ...(method === 'pix' ? { taxId: taxId.trim() } : {}),
+      });
+    },
+  }));
+
   const field = (label: string, value: string, set: (v: string) => void, extra: object = {}) => (
     <View style={{ gap: 6 }}>
       <Text style={s.label}>{label}</Text>
@@ -41,7 +63,7 @@ export function QrForm(props: {
         value={value}
         onChangeText={set}
         style={s.input}
-        placeholderTextColor={p.ink3}
+        placeholderTextColor={p.onDisabled}
         accessibilityLabel={label}
         editable={!props.busy}
         {...extra}
@@ -52,39 +74,28 @@ export function QrForm(props: {
   const shown = (tried && problem) || props.error;
   return (
     <View style={{ gap: 14 }}>
-      {field('Full name', name, setName, { autoComplete: 'name', textContentType: 'name' })}
-      {field('Address', line1, setLine1, { autoComplete: 'street-address', textContentType: 'fullStreetAddress' })}
+      {field('Full name', name, setName, { autoComplete: 'name', textContentType: 'name', placeholder: 'First and last name' })}
+      {field('Address', line1, setLine1, {
+        autoComplete: 'street-address',
+        textContentType: 'fullStreetAddress',
+        placeholder: 'Street and number',
+      })}
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <View style={{ flex: 1 }}>{field('City', city, setCity, { textContentType: 'addressCity' })}</View>
+        <View style={{ flex: 1 }}>{field('City', city, setCity, { textContentType: 'addressCity', placeholder: 'City' })}</View>
         <View style={{ flex: 1 }}>
-          {field('Postal code', postalCode, setPostalCode, { textContentType: 'postalCode' })}
+          {field('Postal code', postalCode, setPostalCode, {
+            textContentType: 'postalCode',
+            keyboardType: 'number-pad',
+            placeholder: method === 'upi' ? 'PIN code' : 'CEP',
+          })}
         </View>
       </View>
       {method === 'pix' &&
         field('CPF or CNPJ', taxId, setTaxId, { keyboardType: 'number-pad', placeholder: '000.000.000-00' })}
       {!!shown && <Banner text={shown} s={s} p={p} />}
-      <PrimaryButton
-        lock
-        label={method === 'upi' ? `Pay ${props.amount} with UPI` : `Get Pix code for ${props.amount}`}
-        busy={props.busy}
-        s={s}
-        p={p}
-        onPress={() => {
-          setTried(true);
-          if (problem) return;
-          props.onPay({
-            name: name.trim(),
-            line1: line1.trim(),
-            ...(city.trim() ? { city: city.trim() } : {}),
-            ...(postalCode.trim() ? { postalCode: postalCode.trim() } : {}),
-            ...(props.country ? { country: props.country } : {}),
-            ...(method === 'pix' ? { taxId: taxId.trim() } : {}),
-          });
-        }}
-      />
     </View>
   );
-}
+});
 
 /** Minutes and seconds left until `expiresAt` (Unix seconds), ticking. */
 function useCountdown(expiresAt: number | null | undefined) {
@@ -96,7 +107,7 @@ function useCountdown(expiresAt: number | null | undefined) {
   }, [expiresAt]);
   if (!expiresAt) return null;
   const left = Math.max(0, Math.round(expiresAt - now / 1000));
-  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+  return { text: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`, seconds: left };
 }
 
 /** The buyer pays in their bank app; we open it (UPI), show the code (Pix), and check when they come back. */
@@ -110,6 +121,7 @@ export function QrWaiting(props: {
 }) {
   const { session, method, qr, s, p } = props;
   const left = useCountdown(qr.qr?.expiresAt);
+  const hurry = !!left && left.seconds < 60;
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -139,10 +151,11 @@ export function QrWaiting(props: {
 
   return (
     <View style={{ gap: 20 }}>
-      <View style={s.status} accessibilityLiveRegion="polite">
-        <Pulse color={p.accent} />
-        <Text style={s.statusText}>
-          {left === '0:00' ? 'Code expired' : `Waiting for your payment${left ? ` · ${left} left` : ''}`}
+      {/* The last minute turns amber. */}
+      <View style={[s.status, hurry && { backgroundColor: p.warnSoft }]} accessibilityLiveRegion="polite">
+        <Pulse color={hurry ? p.warnInk : p.accent} />
+        <Text style={[s.statusText, hurry && { color: p.warnInk }]}>
+          {left?.seconds === 0 ? 'Code expired' : `Waiting for your payment${left ? ` · ${left.text} left` : ''}`}
         </Text>
       </View>
 

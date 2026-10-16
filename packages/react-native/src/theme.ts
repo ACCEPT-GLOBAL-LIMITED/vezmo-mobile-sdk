@@ -33,6 +33,9 @@ export interface SheetPalette {
   badSoft: string;
   /** The test-mode badge (as on the hosted checkout). */
   warn: string;
+  /** Time running out (the last minute of a UPI or Pix code). */
+  warnInk: string;
+  warnSoft: string;
   /** Behind the business's monogram. */
   logoTile: string;
   scrim: string;
@@ -63,6 +66,8 @@ export const LIGHT: SheetPalette = {
   bad: '#D12C4B',
   badSoft: 'rgba(209,44,75,0.07)',
   warn: '#EA580C',
+  warnInk: '#B45309',
+  warnSoft: '#FEF3C7',
   logoTile: '#FFFFFF',
   scrim: 'rgba(11,12,20,0.42)',
 };
@@ -90,6 +95,8 @@ export const DARK: SheetPalette = {
   bad: '#FF6B85',
   badSoft: 'rgba(255,107,133,0.1)',
   warn: '#EA580C',
+  warnInk: '#FBBF24',
+  warnSoft: 'rgba(251,191,36,0.14)',
   logoTile: '#1D1D28',
   scrim: 'rgba(0,0,0,0.62)',
 };

@@ -15,7 +15,7 @@ import type { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
 import { formatAmount } from './flow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
-import { QrForm, QrWaiting } from './QrPanels';
+import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
 import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutResult } from './types';
 import {
@@ -26,6 +26,7 @@ import {
   PrimaryButton,
   ResultMark,
   RowsSkeleton,
+  SecuredBy,
   Segmented,
   Skeleton,
   type MarkKind,
@@ -119,6 +120,14 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const paying = phase.name === 'paying';
   const finished = phase.name === 'done' || phase.name === 'closed';
   const own = methods?.upi ? ('upi' as const) : methods?.pix ? ('pix' as const) : null;
+  const qrForm = useRef<QrFormHandle>(null);
+  // Placeholders for the rows the element is about to draw: its methods, and this phone's wallet when offered.
+  const expectedRows = methods
+    ? Math.max(1, methods.elementTypes.length + (Platform.OS === 'ios' ? (methods.applePay && props.wallets?.applePay ? 1 : 0) : methods.googlePay ? 1 : 0))
+    : 3;
+  // A hairline over the pinned bottom only while content scrolls under it.
+  const [scroll, setScroll] = useState({ content: 0, frame: 0 });
+  const scrolls = scroll.content > scroll.frame + 1;
 
   return (
     <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
@@ -153,7 +162,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               result={phase.result}
               amount={amount}
               merchant={merchant}
-              paidWith={snap.option}
+              paidWith={snap.paidWith}
               s={s}
               p={p}
               onDone={() => close(phase.result)}
@@ -161,7 +170,17 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
           )}
 
           {!finished && phase.name !== 'loading' && config && charge && methods && (
-            <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
+            <>
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+              onLayout={(e) => {
+                const frame = e.nativeEvent.layout.height;
+                setScroll((v) => (v.frame === frame ? v : { ...v, frame }));
+              }}
+              onContentSizeChange={(_, content) => setScroll((v) => (v.content === content ? v : { ...v, content }))}
+            >
               <View style={s.header}>
                 <View style={s.who}>
                   <View style={s.logo}>
@@ -238,7 +257,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                           onConfirmationToken={(id) => void session.onConfirmationToken(id)}
                           onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
                         />
-                        {elementLoading && <RowsSkeleton s={s} rows={3} />}
+                        {elementLoading && <RowsSkeleton s={s} rows={expectedRows} />}
                         {!!snap.elementError && (
                           <View style={s.empty} accessibilityLiveRegion="polite">
                             <Text testID="vezmo-element-error" style={s.emptyTitle}>
@@ -264,40 +283,51 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
 
                     {snap.method !== 'element' ? (
                       <QrForm
+                        ref={qrForm}
                         method={snap.method}
                         defaultName={config.customerName ?? ''}
                         country={config.localOffer?.country ?? null}
                         busy={paying}
-                        amount={amount}
                         error={phase.name === 'ready' ? (phase.error?.message ?? null) : null}
                         p={p}
                         s={s}
                         onPay={(billing) => void session.payWithQr(snap.method as 'upi' | 'pix', billing)}
                       />
                     ) : (
-                      <>
-                        {phase.name === 'ready' && phase.error && <Banner text={phase.error.message} s={s} p={p} />}
-                        {snap.elementError ? (
-                          <PrimaryButton testID="vezmo-retry" label="Try again" onPress={() => session.retryElement()} s={s} p={p} />
-                        ) : (
-                          <PrimaryButton
-                            testID="vezmo-pay"
-                            label={`Pay ${amount}`}
-                            lock
-                            disabled={!snap.canPay}
-                            busy={paying}
-                            onPress={() => session.pay()}
-                            s={s}
-                            p={p}
-                          />
-                        )}
-                      </>
+                      phase.name === 'ready' && phase.error && <Banner text={phase.error.message} s={s} p={p} />
                     )}
                   </>
                 )}
-                <Text style={s.footer}>Secured by Vezmo</Text>
               </View>
             </ScrollView>
+
+            <View style={[s.dock, scrolls && s.dockLine]}>
+              {phase.name === 'waiting' ? null : snap.method !== 'element' ? (
+                <PrimaryButton
+                  lock
+                  label={snap.method === 'upi' ? `Pay ${amount} with UPI` : `Get Pix code for ${amount}`}
+                  busy={paying}
+                  onPress={() => qrForm.current?.submit()}
+                  s={s}
+                  p={p}
+                />
+              ) : snap.elementError ? (
+                <PrimaryButton testID="vezmo-retry" label="Try again" onPress={() => session.retryElement()} s={s} p={p} />
+              ) : (
+                <PrimaryButton
+                  testID="vezmo-pay"
+                  label={`Pay ${amount}`}
+                  lock
+                  disabled={!snap.canPay}
+                  busy={paying}
+                  onPress={() => session.pay()}
+                  s={s}
+                  p={p}
+                />
+              )}
+              <SecuredBy s={s} dark={scheme === 'dark'} />
+            </View>
+            </>
           )}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -344,10 +374,12 @@ function ResultView(props: {
               ? { title: 'Payment not completed', body: result.error.message, kind: 'bad', action: 'Close' }
               : { title: 'Payment canceled', body: '', kind: 'neutral', action: 'Close' };
   const paymentId = result.status === 'succeeded' || result.status === 'processing' ? result.paymentId : '';
+  // The short transaction reference the buyer can quote; the payment's own id until there is one.
+  const reference = (result.status === 'succeeded' && result.transactionId) || paymentId;
   const rows = [
     ['Paid to', props.merchant],
     ['Paid with', props.paidWith ?? ''],
-    ['Reference', paymentId],
+    ['Reference', reference],
   ].filter(([, v]) => !!v);
   return (
     <View style={s.result}>
@@ -362,7 +394,7 @@ function ResultView(props: {
           {rows.map(([k, v], i) => (
             <View key={k} style={[s.receiptRow, i > 0 && s.rowLine]}>
               <Text style={s.receiptKey}>{k}</Text>
-              <Text style={s.receiptValue} numberOfLines={1} selectable>
+              <Text style={s.receiptValue} numberOfLines={1} ellipsizeMode="middle" selectable>
                 {v}
               </Text>
             </View>
