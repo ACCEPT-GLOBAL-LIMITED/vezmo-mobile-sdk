@@ -1,0 +1,45 @@
+# A declined card (4000 0000 0000 0002): the sheet shows the reason and stays ready for another card.
+appId: com.vezmo.example.nativeapp
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "new-session"
+    timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- tapOn: "Card"
+- extendedWaitUntil:
+    visible: "Card number"
+    timeout: 15000
+- tapOn: "Card number"
+- inputText: "4000000000000002"
+- inputText: "1234"
+- inputText: "123"
+- tapOn: "ZIP Code"
+- inputText: "10001"
+- hideKeyboard
+- tapOn: "Continue"
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "vezmo-pay"
+# The bank says no: the sheet stays open with the reason, ready for another card.
+- extendedWaitUntil:
+    visible: "(?i).*(declined|didn.t go through).*"
+    timeout: 60000
+- takeScreenshot: decline-01-message
+- assertVisible:
+    id: "vezmo-pay"

@@ -1,0 +1,71 @@
+name: Release Android SDK
+
+# Publishes com.vezmo:vezmo-checkout to Maven Central when a tag like `android-v1.2.3` is pushed. The tag's version
+# must match VERSION_NAME in packages/android/gradle.properties. Needs the repository secrets MAVEN_CENTRAL_USERNAME and
+# MAVEN_CENTRAL_PASSWORD (a Central Portal user token for the com.vezmo namespace), SIGNING_KEY (the ASCII-armored
+# private PGP key) and SIGNING_KEY_PASSWORD. The upload is validated, then released by hand in the Central Portal.
+on:
+  push:
+    tags: ['android-v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-android
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: packages/android
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Release secrets are set
+        working-directory: .
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in MAVEN_CENTRAL_USERNAME MAVEN_CENTRAL_PASSWORD SIGNING_KEY SIGNING_KEY_PASSWORD; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing. Add them under Settings → Secrets and variables → Actions, then push the tag again."
+            exit 1
+          fi
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Tag matches the SDK version
+        run: |
+          VERSION="${GITHUB_REF_NAME#android-v}"
+          PROP=$(grep '^VERSION_NAME=' gradle.properties | cut -d= -f2)
+          [ "$VERSION" = "$PROP" ] || { echo "::error::Tag $VERSION does not match VERSION_NAME $PROP in packages/android/gradle.properties"; exit 1; }
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: '8.14.3'
+          cache-provider: basic
+          cache-disabled: true
+      - name: Accept Android SDK licences
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+      - name: Unit tests and lint
+        run: gradle :checkout:testDebugUnitTest :checkout:lintRelease
+      - name: Publish to Maven Central (signed)
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: gradle :checkout:publishToMavenCentral

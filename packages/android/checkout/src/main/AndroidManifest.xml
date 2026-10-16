@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <application>
+    <!-- The Vezmo payment sheet: a see-through activity over the app that draws its own dimmed backdrop and sheet. -->
+    <activity
+      android:name="com.vezmo.checkout.VezmoCheckoutActivity"
+      android:exported="false"
+      android:theme="@style/vezmo_Theme.Checkout"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
+      android:windowSoftInputMode="adjustResize" />
+
+    <!-- Google Pay in the Vezmo payment sheet. Merged into the app's manifest automatically. -->
+    <meta-data
+      android:name="com.google.android.gms.wallet.api.enabled"
+      android:value="true" />
+  </application>
+</manifest>

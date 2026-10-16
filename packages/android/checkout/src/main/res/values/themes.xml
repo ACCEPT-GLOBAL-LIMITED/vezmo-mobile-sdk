@@ -1,0 +1,11 @@
+<resources>
+  <!-- See-through and edge to edge: the sheet draws its own backdrop, sheet and entrance. -->
+  <style name="vezmo_Theme.Checkout" parent="@android:style/Theme.Translucent.NoTitleBar">
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowAnimationStyle">@null</item>
+    <item name="android:backgroundDimEnabled">false</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+  </style>
+</resources>
