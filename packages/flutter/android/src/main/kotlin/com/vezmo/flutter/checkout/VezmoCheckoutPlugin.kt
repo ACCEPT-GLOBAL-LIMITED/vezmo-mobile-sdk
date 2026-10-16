@@ -30,8 +30,7 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     private lateinit var channel: MethodChannel
     private val scope = MainScope()
     private var context: Context? = null
-    private var launcher: CheckoutLauncher? = null
-    private var checkout: Pair<VezmoConfiguration, VezmoCheckout>? = null
+    private var checkout: VezmoCheckout? = null
     private var pending: MethodChannel.Result? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
@@ -44,12 +43,17 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
         scope.cancel()
     }
 
-    // The sheet's result launcher is registered as soon as the activity attaches. It needs a ComponentActivity:
-    // the app's MainActivity extends FlutterFragmentActivity.
+    // VezmoCheckout registers for the sheet's result, so it is made as soon as the activity attaches (before the
+    // activity starts). It needs a ComponentActivity: the app's MainActivity extends FlutterFragmentActivity. The
+    // settings come from Dart with each prepare.
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         val activity = binding.activity as? ComponentActivity ?: return
         context = activity
-        launcher = CheckoutLauncher(activity.activityResultRegistry, ::finish)
+        checkout = try {
+            VezmoCheckout(activity, VezmoConfiguration(), ::finish)
+        } catch (_: IllegalStateException) {
+            null // attached after the activity started (an engine added to a running screen): prepare says so
+        }
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) = onAttachedToActivity(binding)
@@ -57,8 +61,6 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     override fun onDetachedFromActivityForConfigChanges() = onDetachedFromActivity()
 
     override fun onDetachedFromActivity() {
-        launcher?.unregister()
-        launcher = null
         checkout = null
         context = null
     }
@@ -72,12 +74,8 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     }
 
     private fun prepare(call: MethodCall, result: MethodChannel.Result) {
-        val launcher = launcher ?: return result.success(
-            VezmoError(VezmoError.Code.Config, NO_ACTIVITY).toMap(),
-        )
-        val configuration = configuration(call.argument<Map<String, Any?>>("configuration").orEmpty())
-        val vezmo = checkout?.takeIf { it.first == configuration }?.second
-            ?: launcher.checkout(configuration, ::finish).also { checkout = configuration to it }
+        val vezmo = checkout ?: return result.success(VezmoError(VezmoError.Code.Config, NO_ACTIVITY).toMap())
+        vezmo.configuration = configuration(call.argument<Map<String, Any?>>("configuration").orEmpty())
         scope.launch {
             val error = vezmo.prepare(
                 clientToken = call.argument("clientToken"),
@@ -89,8 +87,7 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
     }
 
     private fun present(result: MethodChannel.Result) {
-        val vezmo = checkout?.second
-            ?: return result.success(failed("Call prepare() before present()."))
+        val vezmo = checkout ?: return result.success(failed("Call prepare() before present()."))
         if (pending != null) return result.success(failed("The checkout is already open."))
         pending = result
         // The result comes back in finish(), from the sheet (or at once, when nothing was prepared).
@@ -147,6 +144,7 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
                 fontResId = (appearance?.get("fontFamily") as? String)?.let(::fontRes),
             ),
             apiBase = map["apiBase"] as? String,
+            sdk = map["sdk"] as? String,
         )
     }
 

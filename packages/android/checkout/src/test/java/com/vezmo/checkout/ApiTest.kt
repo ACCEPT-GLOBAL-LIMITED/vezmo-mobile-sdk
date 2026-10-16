@@ -52,6 +52,22 @@ class ApiTest {
     }
 
     @Test
+    fun `a Vezmo wrapper names itself in the SDK header`() = runTest {
+        val calls = mutableListOf<Recorded>()
+        val wrapped = VezmoApi(
+            "https://api.test/v1",
+            { method, url, headers, b ->
+                calls += Recorded(method, url, headers, b)
+                VezmoApi.Response(410, "{}")
+            },
+            Dispatchers.Unconfined,
+            sdk = "flutter/0.1.0",
+        )
+        failure { wrapped.status("t") }
+        assertEquals("flutter/0.1.0", calls.single().headers["Vezmo-SDK"])
+    }
+
+    @Test
     fun `turns failures into Vezmo's own codes and words`() = runTest {
         assertEquals(
             VezmoError.Code.Expired,

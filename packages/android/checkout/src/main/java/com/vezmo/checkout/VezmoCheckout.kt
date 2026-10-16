@@ -35,10 +35,16 @@ import kotlinx.coroutines.withContext
  * In Compose, use [rememberVezmoCheckout].
  */
 class VezmoCheckout internal constructor(
-    private val configuration: VezmoConfiguration,
+    configuration: VezmoConfiguration,
     private val launcher: ActivityResultLauncher<CheckoutRequest>,
     private val onResult: (CheckoutResult) -> Unit,
 ) {
+    /**
+     * The settings the next [prepare] uses. Apps pass them to the constructor and leave this alone. Setting it later
+     * is for Vezmo's own wrappers (the Flutter plugin), whose settings arrive after the activity is created.
+     */
+    var configuration: VezmoConfiguration = configuration
+
     /**
      * @param activity your activity, in its `onCreate` (before it is started).
      * @param onResult called with the result each time the sheet closes. Never with an exception.
@@ -49,7 +55,6 @@ class VezmoCheckout internal constructor(
         onResult: (CheckoutResult) -> Unit,
     ) : this(configuration, activity.registerForActivityResult(CheckoutContract()) { onResult(it) }, onResult)
 
-    private val api by lazy { VezmoApi(configuration.apiBase ?: DEFAULT_API_BASE) }
     private var prepared: CheckoutRequest? = null
 
     /**
@@ -80,7 +85,10 @@ class VezmoCheckout internal constructor(
         }
         val subscription = !subscriptionToken.isNullOrBlank()
         val token = (if (subscription) subscriptionToken else clientToken)!!.trim()
-        val session = CheckoutSession(api, token, configuration.returnUrl, subscription = subscription)
+        // The settings as they are now, for this session and the sheet that shows it.
+        val config = configuration
+        val api = VezmoApi(config.apiBase ?: DEFAULT_API_BASE, sdk = config.sdk ?: DEFAULT_SDK)
+        val session = CheckoutSession(api, token, config.returnUrl, subscription = subscription)
         session.load()
         val phase = session.state.value.phase
         if (phase is SessionPhase.Closed && phase.result is CheckoutResult.Failed) {
@@ -88,7 +96,7 @@ class VezmoCheckout internal constructor(
             return phase.result.error
         }
         PreparedSessions.put(session)
-        prepared = CheckoutRequest(token, merchantDisplayName, configuration, subscription)
+        prepared = CheckoutRequest(token, merchantDisplayName, config, subscription)
         return null
     }
 

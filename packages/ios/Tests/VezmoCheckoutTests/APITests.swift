@@ -53,6 +53,14 @@ final class APITests: XCTestCase {
     VezmoAPI(base: URL(string: "https://api.test/v1")!, urlSession: StubProtocol.session())
   }
 
+  func testAVezmoWrapperNamesItselfInTheSDKHeader() async throws {
+    StubProtocol.answer = { _ in (200, ["success": true, "data": ["state": "processing", "paymentId": "p", "clientSecret": NSNull()] as [String: Any]]) }
+    let api = VezmoAPI(base: URL(string: "https://api.test/v1")!, urlSession: StubProtocol.session(), sdk: "flutter/0.1.0")
+    _ = try await api.pay(token: "t", confirmationToken: "c", localOffer: nil, returnURL: nil)
+    let sent = try XCTUnwrap(StubProtocol.requests.first)
+    XCTAssertEqual(sent.request.value(forHTTPHeaderField: "Vezmo-SDK"), "flutter/0.1.0")
+  }
+
   func testPaysWithTheTokenOurIntegrationAndSDKHeaderAndUnwrapsTheData() async throws {
     StubProtocol.answer = { _ in (200, ["success": true, "data": ["state": "processing", "paymentId": "p", "clientSecret": NSNull()] as [String: Any]]) }
     let api = makeAPI()

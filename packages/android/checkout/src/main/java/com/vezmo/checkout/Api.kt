@@ -15,6 +15,9 @@ import org.json.JSONObject
 
 internal const val DEFAULT_API_BASE = "https://api.vezmo.com/api/v1"
 
+/** This SDK in the `Vezmo-SDK` header. */
+internal const val DEFAULT_SDK = "android/" + BuildConfig.SDK_VERSION
+
 /** A failed call, already in Vezmo's words (the API never names its processor to a buyer). */
 internal class VezmoApiError(
     val code: VezmoError.Code,
@@ -61,6 +64,8 @@ internal class VezmoApi(
     private val apiBase: String = DEFAULT_API_BASE,
     private val transport: Transport = HttpTransport,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Sent as `Vezmo-SDK` so a payment records which SDK took it: this one, or a Vezmo wrapper around it. */
+    private val sdk: String = DEFAULT_SDK,
 ) : CheckoutApi {
     /** One HTTP exchange. Throws [IOException] when there is no answer. */
     fun interface Transport {
@@ -73,7 +78,7 @@ internal class VezmoApi(
         val headers = buildMap {
             put("Accept", "application/json")
             if (body != null) put("Content-Type", "application/json")
-            put("Vezmo-SDK", "android/${BuildConfig.SDK_VERSION}")
+            put("Vezmo-SDK", sdk)
         }
         val res =
             try {

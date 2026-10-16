@@ -38,12 +38,15 @@ struct VezmoAPI: CheckoutAPI {
 
   let base: String
   let urlSession: URLSession
+  /// Sent as `Vezmo-SDK` so a payment records which SDK took it: this one, or a Vezmo wrapper around it.
+  let sdk: String
 
-  init(base: URL = VezmoAPI.defaultBase, urlSession: URLSession = .shared) {
+  init(base: URL = VezmoAPI.defaultBase, urlSession: URLSession = .shared, sdk: String? = nil) {
     var s = base.absoluteString
     while s.hasSuffix("/") { s.removeLast() }
     self.base = s
     self.urlSession = urlSession
+    self.sdk = sdk ?? "ios/\(VezmoCheckout.version)"
   }
 
   func checkout(token: String) async throws -> CheckoutConfig {
@@ -129,7 +132,7 @@ struct VezmoAPI: CheckoutAPI {
     var request = URLRequest(url: url)
     request.httpMethod = method
     request.setValue("application/json", forHTTPHeaderField: "Accept")
-    request.setValue("ios/\(VezmoCheckout.version)", forHTTPHeaderField: "Vezmo-SDK")
+    request.setValue(sdk, forHTTPHeaderField: "Vezmo-SDK")
     if let body {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)

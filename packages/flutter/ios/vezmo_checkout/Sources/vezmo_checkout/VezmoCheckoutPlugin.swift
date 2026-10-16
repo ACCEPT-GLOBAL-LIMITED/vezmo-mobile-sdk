@@ -105,6 +105,7 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
     if let base = (map["apiBase"] as? String).flatMap(URL.init(string:)) {
       configuration.apiBase = base
     }
+    configuration.sdk = map["sdk"] as? String
     if let appearance = map["appearance"] as? [String: Any] {
       var colors: [VezmoCheckout.Appearance.ColorKey: UIColor] = [:]
       for (key, value) in appearance["colors"] as? [String: [String: NSNumber]] ?? [:] {
