@@ -202,7 +202,9 @@ gradle :example:installRelease                             # the example app on 
 ```
 
 CI (`.github/workflows/android.yml`) runs the tests, lint and a local Maven publish, then pays end to end on an
-Android emulator with Maestro (`e2e/maestro`), including 3D Secure and dark-mode screenshots.
+Android emulator with Maestro (`e2e/maestro`): a card with 3D Secure, a decline, cancel, a bad token, Cash App on the
+merchant-of-record track, dark-mode screenshots, and screenshots of the UPI, Pix and result states
+(`checkout/src/androidTest`).
 
 To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>`.
 `release-android.yml` signs and uploads to Maven Central (needs the `MAVEN_CENTRAL_USERNAME`,

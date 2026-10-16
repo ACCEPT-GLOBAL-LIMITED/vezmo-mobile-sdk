@@ -16,4 +16,7 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
   the buyer. A receipt in the sheet: who was paid, with what, and a reference.
 - **API**: `VezmoCheckout(activity, configuration) { result -> }` for activities, `rememberVezmoCheckout` for
   Compose; `prepare(clientToken)` and `present()`.
+- **Return link**: `VezmoReturnActivity` brings the buyer back to the open sheet after a bank app, a pay-later
+  provider or a browser step. Add your registered return link to it in your manifest.
+- Both business models: sessions of a merchant-of-record business (no connected account) load and pay the same way.
 - Android 7.0+ (API 24), compiled against SDK 36.
