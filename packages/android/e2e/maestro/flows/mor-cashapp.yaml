@@ -24,8 +24,16 @@ appId: com.vezmo.example.nativeapp
 - tapOn:
     id: "pay"
 - extendedWaitUntil:
-    visible: "Cash App Pay"
+    visible: "Card"
     timeout: 60000
+# Outside the US the sheet first offers the runner's own currency, and Cash App, Klarna and Amazon Pay are
+# USD-only: pay in USD.
+- tapOn:
+    text: "(.*[0-9][ ,]+)?USD"
+    optional: true
+- extendedWaitUntil:
+    visible: "Cash App Pay"
+    timeout: 30000
 - takeScreenshot: cashapp-01-sheet
 - tapOn: "Cash App Pay"
 - waitForAnimationToEnd:

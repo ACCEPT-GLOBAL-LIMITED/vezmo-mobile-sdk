@@ -234,7 +234,7 @@ merchant-of-record track, a subscription's free trial and its first payment, dar
 of the UPI, Pix, subscription and result states (`checkout/src/androidTest`).
 
 To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>` (first of the four SDKs;
-see the [root README](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk#releases)).
+see [RELEASING.md](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/blob/main/RELEASING.md)).
 `release-android.yml` signs and uploads to Maven Central (needs the `MAVEN_CENTRAL_USERNAME`,
 `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_KEY_PASSWORD` secrets); release the validated upload in the
 Central Portal.

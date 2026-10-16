@@ -1,78 +1,162 @@
 # Vezmo Mobile SDK
 
-Take payments in your iPhone and Android apps with Vezmo: cards, Apple Pay, Google Pay, pay-later methods, Cash App,
-UPI and Pix, in the buyer's own currency, with 3D Secure, in a native payment sheet. Start subscriptions too: a free
-trial or a first payment, with the card saved for the renewals.
+[![React Native](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/react-native.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/react-native.yml)
+[![React Native e2e](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/react-native-e2e.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/react-native-e2e.yml)
+[![iOS](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/ios.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/ios.yml)
+[![Android](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/android.yml)
+[![Flutter](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/flutter.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/flutter.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-| Package | Status |
-|---|---|
-| [`@vezmopay/react-native`](packages/react-native) (React Native and Expo) | 0.1.0, release candidate (payments and subscriptions) |
-| [Android, `com.vezmo:vezmo-checkout`](packages/android) (Kotlin, Compose or Views) | 0.1.0, release candidate (payments and subscriptions) |
-| [iOS, Swift Package `VezmoCheckout`](packages/ios) (SwiftUI or UIKit) | 0.1.0, release candidate (payments and subscriptions) |
-| [Flutter, `vezmo_checkout`](packages/flutter) (on the native SDKs) | 0.1.0, release candidate (payments and subscriptions) |
+Take payments in your iPhone and Android apps with Vezmo, in a native payment sheet: cards with 3D Secure, Apple Pay,
+Google Pay, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency. Start
+subscriptions too, with a free trial or a first payment, and the card saved for the renewals.
 
-Apps without the SDK can use [Checkout for apps](https://user.vezmo.com/docs/v1/mobile/checkout-for-apps): open
-Vezmo's hosted checkout in the phone's secure browser sheet and get the buyer back with the result.
+![The Vezmo payment sheet: card and Apple Pay on iPhone, pay later and Cash App on Android, a $9.99 monthly subscription, dark mode, and the receipt](docs/images/sheet-hero.jpg)
+
+<sub>Screens from the example apps against Vezmo's sandbox, as the end-to-end tests capture them.</sub>
+
+> [!NOTE]
+> **0.1.0 release candidate.** The SDKs are complete and tested end to end, and are being prepared for their first
+> release to npm, Swift Package Manager, Maven Central and pub.dev. The online guides on
+> [user.vezmo.com](https://user.vezmo.com/docs/v1) go live with that release; until then each package's README below
+> is its full guide.
+
+## Choose your SDK
+
+| Your app | Package | Install | Guide |
+| --- | --- | --- | --- |
+| React Native or Expo | [`@vezmopay/react-native`](packages/react-native) | `npx expo install @vezmopay/react-native` | [README](packages/react-native#readme) |
+| iOS, Swift (SwiftUI or UIKit) | [`VezmoCheckout`](packages/ios) Swift package | Xcode → Add Package Dependencies → this repository's URL | [README](packages/ios#readme) |
+| Android, Kotlin (Compose or Views) | [`com.vezmo:vezmo-checkout`](packages/android) | `implementation("com.vezmo:vezmo-checkout:0.1.0")` | [README](packages/android#readme) |
+| Flutter | [`vezmo_checkout`](packages/flutter) (on the native SDKs) | `flutter pub add vezmo_checkout` | [README](packages/flutter#readme) |
+
+All four draw the same sheet and return the same results. Apps without an SDK can open Vezmo's hosted checkout in the
+phone's secure browser sheet instead (Checkout for apps, in the online guides).
+
+### Requirements
+
+| | Minimum |
+| --- | --- |
+| React Native | React Native 0.79 with the New Architecture; Expo SDK 53 with a development build (not Expo Go) |
+| iOS | iOS 15.1, Xcode 16, Swift 5.9 |
+| Android | Android 7.0 (API 24); compile SDK 36, Kotlin 2.1, Java 17 |
+| Flutter | Flutter 3.41 (Dart 3.11) |
+
+Every app also needs a Vezmo business with your app added under **Developers → Mobile apps** in the dashboard. On
+iPhone that is where you register the return link (for example `acme://vezmo`) the buyer comes back through after
+3D Secure, a bank app or a pay-later provider.
+
+## What the sheet does
+
+- **Payment methods**: cards with 3D Secure and card scanning, Apple Pay, Google Pay, Klarna, Affirm, Afterpay,
+  Amazon Pay, Cash App, UPI (India) and Pix (Brazil). The sheet shows the methods your business offers that work for
+  the buyer.
+- **The buyer's own currency**: the buyer can choose to see and pay the total in their own currency, where Vezmo
+  offers one.
+- **Subscriptions**: a free trial (the card is saved, nothing is charged today) or a first payment, with the renewals
+  charged by Vezmo. Apple Pay shows the recurring terms on iOS 16 and later.
+- **Native look**: light and dark mode, the phone's text size, screen reader labels, and your own colors, corner
+  radius and font.
+- **Results your app can act on**: `succeeded`, `processing` (UPI, Pix or a bank debit still settling), `canceled`
+  or `failed`, with an error code. The sheet never throws.
 
 ## How a payment works
 
-1. Your server creates an API checkout session with your Vezmo API key and passes its client token
-   (`data.securePayment.clientToken`) to the app.
-2. The app opens the Vezmo payment sheet with that token.
-3. The buyer pays. Vezmo's servers price and confirm the payment; your app gets the result.
-4. Your server fulfils the order from the `payment.success` webhook.
-
-No API key or secret ever goes into the app.
-
-## Development
-
-```sh
-cd packages/react-native
-node .yarn/releases/yarn-4.11.0.cjs install
-node .yarn/releases/yarn-4.11.0.cjs tsc     # types
-node .yarn/releases/yarn-4.11.0.cjs jest    # unit tests
-node .yarn/releases/yarn-4.11.0.cjs prepare # builds lib/
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Your app
+    participant Server as Your server
+    participant Vezmo
+    App->>Server: Checkout
+    Server->>Vezmo: Create a checkout session (API key)
+    Vezmo-->>Server: clientToken
+    Server-->>App: clientToken
+    App->>Vezmo: prepare(clientToken), then present() the sheet
+    Note over App,Vezmo: The buyer pays. Vezmo prices and confirms the payment, including 3D Secure.
+    Vezmo-->>App: Result: succeeded, processing, canceled or failed
+    Vezmo->>Server: payment.success webhook
+    Server->>Server: Fulfil the order
 ```
 
-- **Example app** (`packages/react-native/example`): a small shop that pays against Vezmo's dev sandbox. Run
-  `yarn example expo run:ios` or `yarn example expo run:android`; `EXPO_PUBLIC_VEZMO_DEMO_URL` and
-  `EXPO_PUBLIC_VEZMO_API_BASE` point it at another API.
-- **CI** (`.github/workflows`): `react-native.yml` checks types, tests and both native builds on every push;
-  `react-native-e2e.yml` pays end to end with Maestro on an Android emulator (Pixel 7) and an iPhone simulator: cards
-  with 3D Secure, a decline, cancel, a bad token, both business models, a Cash App redirect back into the app,
-  subscriptions with and without a free trial, and dark mode. `android.yml` and `ios.yml` run the native SDKs' unit
-  and Maestro tests (Android also screenshot tests); `flutter.yml` runs the Flutter plugin's tests and its example
-  app on an Android emulator and an iPhone simulator.
-- **TestFlight**: `testflight-example.yml` (run by hand) signs the example app with a temporary distribution
-  certificate made through the App Store Connect API key and uploads it; `testflight-status.yml` shows where builds
-  are and adds a ready build to the internal testers.
+1. Your server creates an API checkout session (`POST /api/v1/merchant/secure-payments`) with your Vezmo API key and
+   sends its client token (`data.securePayment.clientToken`) to the app. For a subscription it creates the
+   subscription (`POST /api/v1/merchant/subscription`) and sends its `checkoutToken`.
+2. The app prepares the sheet with that token and presents it.
+3. The buyer pays. Vezmo's servers price and confirm the payment; the app gets the result.
+4. Your server fulfils the order from the `payment.success` webhook (or `subscription.*` for subscriptions), not from
+   the app's result alone.
 
-## Releases
+Your API key and secret stay on your server. The app only ever holds a session's client token.
 
-Release in this order (each tag runs its own workflow):
+In React Native, for example:
 
-1. **Android**: push `android-v<version>`. `release-android.yml` signs and uploads to Maven Central (needs
-   `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_KEY_PASSWORD`: a Central Portal
-   account with the `com.vezmo` namespace verified); then release the validated upload in the Central Portal.
-2. **iOS**: push the plain semver tag `<version>` (for example `0.1.0`) at the repository root; Swift Package Manager
-   reads it directly. `release-ios.yml` checks that it equals `VezmoCheckout.version`.
-3. **React Native**: push `react-native-v<version>`. `release-react-native.yml` publishes to npm with provenance (the
-   `NPM_TOKEN` secret of the `vezmopay` npm org).
-4. **Flutter**, last: push `flutter-v<version>`. The plugin runs on the native SDKs, so it needs 1 and 2 out first;
-   `release-flutter.yml` checks both, then publishes to pub.dev with GitHub's login (the one-time pub.dev setup is in
-   that file's header).
+```tsx
+const { prepareCheckout, presentCheckout } = useVezmoCheckout();
 
-Bump every place a version lives (and each package's `CHANGELOG.md`) before tagging:
+const prep = await prepareCheckout({ clientToken });
+if (prep.error) return showError(prep.error.message);
 
-| Package | Version |
+const result = await presentCheckout(); // 'succeeded' | 'processing' | 'canceled' | 'failed'
+```
+
+The [iOS](packages/ios#take-a-payment), [Android](packages/android#take-a-payment) and
+[Flutter](packages/flutter#take-a-payment) READMEs have the same steps in Swift, Kotlin and Dart.
+
+## Try it in the sandbox
+
+Create sessions with your sandbox API key, then pay with:
+
+| Card | What happens |
 | --- | --- |
-| React Native | `packages/react-native/package.json` and `packages/react-native/src/version.ts` |
-| iOS | `VezmoCheckout.version` in `packages/ios/Sources/VezmoCheckout/VezmoCheckout.swift` |
-| Android | `VERSION_NAME` in `packages/android/gradle.properties` |
-| Flutter | `packages/flutter/pubspec.yaml`, `VezmoCheckout.version` in `packages/flutter/lib/vezmo_checkout.dart`, `version` and the `com.vezmo:vezmo-checkout` pin in `packages/flutter/android/build.gradle.kts`, and the iOS SDK pin in `packages/flutter/ios/vezmo_checkout/Package.swift` |
+| `4242 4242 4242 4242` | Paid. 3D Secure, when asked, shows a test page where you approve or fail it. |
+| `4000 0000 0000 3220` | Always asks for 3D Secure. |
+| `4000 0000 0000 0002` | Declined. |
 
-The READMEs link to the guides on user.vezmo.com: make sure those docs are live before publishing.
+Any future expiry date and any CVC. In the sandbox, Apple Pay and Google Pay use the cards in the phone's wallet
+without charging them.
+
+Each package has an example app (a small shop called Northwind Audio) that pays against Vezmo's sandbox:
+
+| Example | Run it |
+| --- | --- |
+| [React Native](packages/react-native/example) | `yarn example expo run:ios` or `yarn example expo run:android` from `packages/react-native` |
+| [iOS](packages/ios/Example) | `xcodegen generate` in `packages/ios/Example`, then open `VezmoExample.xcodeproj` |
+| [Android](packages/android/example) | `gradle :example:installRelease` from `packages/android` |
+| [Flutter](packages/flutter/example) | `flutter run` from `packages/flutter/example` |
+
+## Repository layout
+
+```text
+packages/
+  react-native/   @vezmopay/react-native: TypeScript, native modules, Expo config plugin, example app, Maestro flows
+  ios/            VezmoCheckout: Swift sources, unit tests, example app (XcodeGen), Maestro flows
+  android/        vezmo-checkout: Kotlin library, example app, Maestro flows
+  flutter/        vezmo_checkout: Dart plugin on the iOS and Android SDKs, tests, example app, Maestro flows
+Package.swift     Swift Package Manager manifest for the iOS SDK (at the root so the repository URL installs it)
+.github/          CI, end-to-end, release and TestFlight workflows
+```
+
+CI runs each package's tests on its pull requests and on `main`, and pays end to end from the example apps on an
+Android emulator and an iPhone simulator with [Maestro](https://maestro.dev): cards with 3D Secure, a decline, cancel,
+a bad token, both business models, a Cash App redirect back into the app, subscriptions with and without a free
+trial, and dark mode. [CONTRIBUTING.md](CONTRIBUTING.md#ci) lists what each workflow covers.
+
+## Versions
+
+The SDKs are 0.x: a minor release (0.1 → 0.2) can change the API, so pin to a minor version. Each package's
+`CHANGELOG.md` lists its changes: [React Native](packages/react-native/CHANGELOG.md),
+[iOS](packages/ios/CHANGELOG.md), [Android](packages/android/CHANGELOG.md), [Flutter](packages/flutter/CHANGELOG.md).
+Maintainers release in the order in [RELEASING.md](RELEASING.md).
+
+## Help and security
+
+- **Questions about your Vezmo account, payments or payouts**: [support@vezmo.com](mailto:support@vezmo.com).
+- **A bug in an SDK**: [open an issue](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/issues/new/choose)
+  with the SDK, its version and the phone.
+- **A security problem**: report it privately, never in a public issue; see [SECURITY.md](SECURITY.md).
+- **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)
