@@ -41,8 +41,10 @@ appId: com.vezmo.example.flutter
 - tapOn: "Continue"
 - waitForAnimationToEnd:
     timeout: 5000
+# A busy simulator can drop a tap while the card form closes: tap again if nothing changed.
 - tapOn:
     id: "vezmo-pay"
+    retryTapIfNoChange: true
 # The bank says no: the sheet stays open with the reason, ready for another card.
 - extendedWaitUntil:
     visible: "(?i).*(declined|didn.t go through).*"

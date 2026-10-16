@@ -172,8 +172,10 @@ jobs:
           # The test driver can take a while to start on a cold CI simulator.
           export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
           flows() { maestro --device "$UDID" test e2e/maestro/ios --test-output-dir e2e/out-ios 2>&1 | tee e2e/maestro.txt; return "${PIPESTATUS[0]}"; }
-          # A busy CI Mac sometimes starts Maestro's driver too late: try once more then, never after a failed flow.
-          flows || { grep -q "iOS driver not ready" e2e/maestro.txt && flows; } || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; cp -R ~/Library/Logs/DiagnosticReports e2e/out-ios/crashes 2>/dev/null; exit 1)
+          # A busy CI Mac sometimes starts Maestro's driver too late: then restart the simulator and try once more
+          # (never after a failed flow).
+          restart() { xcrun simctl shutdown "$UDID"; xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b; }
+          flows || { grep -q "iOS driver not ready" e2e/maestro.txt && restart && flows; } || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; cp -R ~/Library/Logs/DiagnosticReports e2e/out-ios/crashes 2>/dev/null; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
