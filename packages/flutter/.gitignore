@@ -34,3 +34,6 @@ migrate_working_dir/
 
 # The repository ignores lib/ (React Native build output); Dart sources live in lib/.
 !lib/
+# Maestro output.
+e2e/out*/
+e2e/maestro.txt
