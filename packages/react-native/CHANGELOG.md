@@ -14,4 +14,5 @@ The first release of the Vezmo payment sheet for React Native and Expo.
 - **Results**: `succeeded`, `processing`, `canceled` or `failed` with an error code and a message written for the
   buyer. A receipt in the sheet: who was paid, with what, and a reference.
 - **Expo config plugin** for Apple Pay and the card-scanning camera text.
+- **Jest mock** (`@vezmopay/react-native/jest/mock`) so your own tests run without native views or network.
 - iOS 15.1+ and Android 7.0+, React Native 0.79+ with the New Architecture.

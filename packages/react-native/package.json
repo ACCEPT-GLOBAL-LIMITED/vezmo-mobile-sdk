@@ -11,6 +11,7 @@
       "default": "./lib/module/index.js"
     },
     "./app.plugin.js": "./app.plugin.js",
+    "./jest/mock": "./jest/mock.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -21,6 +22,7 @@
     "*.podspec",
     "react-native.config.js",
     "app.plugin.js",
+    "jest/mock.js",
     "CHANGELOG.md",
     "!ios/build",
     "!android/build",

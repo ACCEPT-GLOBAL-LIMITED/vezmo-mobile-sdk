@@ -180,6 +180,26 @@ sandbox, Apple Pay and Google Pay use the cards in the phone's wallet without ch
 The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/react-native/example)
 pays against Vezmo's sandbox with no setup.
 
+### In your Jest tests
+
+The package ships a mock with no native views and no network. `presentCheckout()` resolves with a successful payment
+unless you pick another result:
+
+```ts
+jest.mock('@vezmopay/react-native', () => require('@vezmopay/react-native/jest/mock'));
+
+import * as vezmo from '@vezmopay/react-native';
+
+beforeEach(() => (vezmo as any).mockReset());
+
+it('shows the canceled state', async () => {
+  (vezmo as any).mockNextResult({ status: 'canceled' });
+  // render your screen and press Pay…
+});
+```
+
+`mockPrepareError({ code, message })` makes `prepareCheckout()` fail. Both hook functions are `jest.fn()`s.
+
 ## Troubleshooting
 
 - **"VezmoPaymentElementView was not found in the UIManager"**: the app runs the old architecture, or is Expo Go. Turn
