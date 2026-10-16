@@ -12,6 +12,7 @@ import type { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
 import { formatAmount } from './flow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
+import { QrForm, QrWaiting } from './QrPanels';
 import { paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutResult } from './types';
 
@@ -51,7 +52,10 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
       confirm: () => element.current?.confirm(),
       resolveConfirmation: (secret, message) => element.current?.resolveConfirmation(secret, message),
     });
-    return () => session.attachElement(null);
+    return () => {
+      session.attachElement(null);
+      session.dispose();
+    };
   }, [session]);
 
   const { config, charge, methods, phase } = snap;
@@ -113,6 +117,12 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
           <ResultView result={phase.result} amount={amount} s={s} onDone={() => close(phase.result)} />
         )}
 
+        {phase.name === 'waiting' && (
+          <View style={s.body}>
+            <QrWaiting session={session} method={phase.method} qr={phase.qr} p={p} s={s} />
+          </View>
+        )}
+
         {(phase.name === 'ready' || phase.name === 'paying') && config && charge && methods && (
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
             {config.localOffer && (
@@ -146,31 +156,71 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               </View>
             )}
 
-            <PaymentElement
-              ref={element}
-              configJson={configJson}
-              intentJson={intentJson}
-              onPaymentOptionChange={(option) => session.setCanPay(!!option)}
-              onLoadFailed={() => session.setCanPay(false)}
-              onConfirmationToken={(id) => void session.onConfirmationToken(id)}
-              onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
-            />
-
-            {phase.name === 'ready' && phase.error && (
-              <Text style={s.error} accessibilityLiveRegion="polite">
-                {phase.error.message}
-              </Text>
+            {(methods.upi || methods.pix) && (
+              <View style={s.pills} accessibilityRole="tablist">
+                {(['element', methods.upi ? 'upi' : 'pix'] as const).map((m) => {
+                  const on = snap.method === m;
+                  return (
+                    <Pressable
+                      key={m}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: on, disabled: paying }}
+                      disabled={paying}
+                      onPress={() => session.chooseMethod(m)}
+                      style={[s.pill, on && s.pillOn]}
+                    >
+                      <Text style={[s.pillText, on && s.pillTextOn]}>
+                        {m === 'element' ? 'Card' : m === 'upi' ? 'UPI' : 'Pix'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             )}
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !snap.canPay || paying, busy: paying }}
-              disabled={!snap.canPay || paying}
-              onPress={() => session.pay()}
-              style={[s.pay, (!snap.canPay || paying) && s.payDisabled]}
-            >
-              {paying ? <ActivityIndicator color={p.onAccent} /> : <Text style={s.payText}>Pay {amount}</Text>}
-            </Pressable>
+            {snap.method === 'element' ? (
+              <>
+              <PaymentElement
+                ref={element}
+                configJson={configJson}
+                intentJson={intentJson}
+                onPaymentOptionChange={(option) => session.setCanPay(!!option)}
+                onLoadFailed={() => session.setCanPay(false)}
+                onConfirmationToken={(id) => void session.onConfirmationToken(id)}
+                onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
+              />
+
+              {phase.name === 'ready' && phase.error && (
+                <Text style={s.error} accessibilityLiveRegion="polite">
+                  {phase.error.message}
+                </Text>
+              )}
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !snap.canPay || paying, busy: paying }}
+                disabled={!snap.canPay || paying}
+                onPress={() => session.pay()}
+                style={[s.pay, (!snap.canPay || paying) && s.payDisabled]}
+              >
+                {paying ? <ActivityIndicator color={p.onAccent} /> : <Text style={s.payText}>Pay {amount}</Text>}
+              </Pressable>
+              </>
+            ) : (
+              <>
+                {phase.name === 'ready' && phase.error && <Text style={s.error}>{phase.error.message}</Text>}
+                <QrForm
+                  method={snap.method}
+                  defaultName={config.customerName ?? ''}
+                  country={config.localOffer?.country ?? null}
+                  busy={paying}
+                  amount={amount}
+                  p={p}
+                  s={s}
+                  onPay={(billing) => void session.payWithQr(snap.method as 'upi' | 'pix', billing)}
+                />
+              </>
+            )}
             <Text style={s.secured}>Payments secured by Vezmo{config.livemode ? '' : ' · Test mode'}</Text>
           </ScrollView>
         )}
@@ -265,6 +315,18 @@ function styles(p: SheetPalette, radius: number, fontFamily?: string) {
     payDisabled: { opacity: 0.45 },
     payText: { ...font, color: p.onAccent, fontSize: 16, fontWeight: '600' },
     secured: { ...font, color: p.ink3, fontSize: 12, textAlign: 'center' },
+    input: {
+      ...font,
+      borderWidth: 1,
+      borderColor: p.fieldLine,
+      backgroundColor: p.field,
+      borderRadius: radius,
+      paddingHorizontal: 14,
+      height: 48,
+      color: p.ink,
+      fontSize: 15,
+    },
+    link: { ...font, color: p.accent, fontSize: 15, fontWeight: '600' },
     resultTitle: { ...font, fontSize: 21, fontWeight: '700', textAlign: 'center' },
     resultBody: { ...font, color: p.ink2, fontSize: 15, textAlign: 'center' },
     good: { color: p.good },

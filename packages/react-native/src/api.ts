@@ -1,5 +1,5 @@
 import { SDK_VERSION } from './version';
-import type { CheckoutConfig, PayResponse, SessionStatus, VezmoError } from './types';
+import type { CheckoutConfig, PayResponse, QrBilling, QrPayment, SessionStatus, VezmoError } from './types';
 
 export const DEFAULT_API_BASE = 'https://api.vezmo.com/api/v1';
 
@@ -84,6 +84,40 @@ export class VezmoApi {
       ...(body.localOffer ? { localOffer: body.localOffer } : {}),
       ...(body.returnUrl ? { returnUrl: body.returnUrl } : {}),
     });
+  }
+
+  /** The session's intent, made or reused (UPI and Pix start from it). */
+  intent(token: string, localOffer: string | null) {
+    return this.call<{ id: string; clientSecret: string; connectedAccountId: string | null; livemode: boolean }>(
+      'POST',
+      `/secure-payments/${encodeURIComponent(token)}/intent?redirectMethods=1`,
+      localOffer ? { localOffer } : {},
+    );
+  }
+
+  /** Start UPI or Pix on the intent: the UPI app link, or the Pix code to paste in a bank app. */
+  startQr(
+    method: 'upi' | 'pix',
+    body: {
+      clientSecret: string;
+      connectedAccountId: string | null;
+      livemode: boolean;
+      returnUrl: string;
+      billing: QrBilling;
+    },
+  ) {
+    return this.call<QrPayment>('POST', `/checkout/${method}`, {
+      clientSecret: body.clientSecret,
+      ...(body.connectedAccountId ? { connectedAccountId: body.connectedAccountId } : {}),
+      livemode: body.livemode,
+      returnUrl: body.returnUrl,
+      billing: body.billing,
+    });
+  }
+
+  /** The session's own checkout page (https): where UPI and Pix send a buyer who comes back by browser. */
+  checkoutPageUrl(token: string) {
+    return `${this.apiBase}/secure-payments/${encodeURIComponent(token)}`;
   }
 
   /** Records a payment that finished on the device (after 3D Secure or a redirect). */

@@ -100,3 +100,24 @@ export interface SessionStatus {
   transactionId: string | null;
   livemode: boolean;
 }
+
+/** Who pays with UPI or Pix (Pix also needs the CPF or CNPJ). */
+export interface QrBilling {
+  name: string;
+  line1: string;
+  city?: string;
+  postalCode?: string;
+  country?: string;
+  email?: string;
+  taxId?: string;
+}
+
+/** A started UPI or Pix payment. */
+export interface QrPayment {
+  status: string;
+  qr: { svg: string | null; png: string | null; expiresAt: number | null } | null;
+  /** UPI: opens the buyer's UPI app on this phone. */
+  link: string | null;
+  /** Pix: the code to paste in a bank app. */
+  code: string | null;
+}

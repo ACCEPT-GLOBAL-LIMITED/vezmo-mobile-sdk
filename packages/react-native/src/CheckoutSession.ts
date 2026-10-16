@@ -10,7 +10,7 @@ import {
   type Charge,
   type SheetMethods,
 } from './flow';
-import type { CheckoutConfig, CheckoutResult, PayResponse, VezmoError } from './types';
+import type { CheckoutConfig, CheckoutResult, PayResponse, QrBilling, QrPayment, VezmoError } from './types';
 
 /** What the element can be asked to do (the native view's commands). */
 export interface ElementPort {
@@ -22,6 +22,8 @@ export type SessionPhase =
   | { name: 'loading' }
   | { name: 'ready'; error: VezmoError | null }
   | { name: 'paying' }
+  /** UPI or Pix started: the buyer finishes in their bank app; we watch the session. */
+  | { name: 'waiting'; method: 'upi' | 'pix'; qr: QrPayment }
   | { name: 'done'; result: CheckoutResult }
   /** The session can't be paid (expired, already paid, the business can't take payments). */
   | { name: 'closed'; result: CheckoutResult };
@@ -35,6 +37,8 @@ export interface SessionSnapshot {
   methods: SheetMethods | null;
   /** The element has a method selected and can be paid. */
   canPay: boolean;
+  /** Which way to pay is showing: the element (cards, wallets, pay-later), or our UPI or Pix panel. */
+  method: 'element' | 'upi' | 'pix';
 }
 
 const PRICE_CHANGED = 'The price in your currency just changed. Check the new amount and pay again.';
@@ -51,11 +55,14 @@ export class CheckoutSession {
     charge: null,
     methods: null,
     canPay: false,
+    method: 'element',
   };
   private listeners = new Set<() => void>();
   private element: ElementPort | null = null;
   private lastPay: PayResponse | null = null;
   private lastError: VezmoError | null = null;
+  private watching: ReturnType<typeof setInterval> | null = null;
+  private qrIntentId: string | null = null;
 
   constructor(
     private readonly api: VezmoApi,
@@ -102,7 +109,87 @@ export class CheckoutSession {
 
   private apply(config: CheckoutConfig, payLocal: boolean) {
     const charge = chargeOf(config, payLocal && !!config.localOffer);
-    this.set({ config, payLocal: !!charge.localOffer, charge, methods: sheetMethods(config, charge) });
+    const methods = sheetMethods(config, charge);
+    // A panel that this currency doesn't offer falls back to the element.
+    const method = this.snapshot.method === 'upi' && !methods.upi ? 'element'
+      : this.snapshot.method === 'pix' && !methods.pix ? 'element' : this.snapshot.method;
+    this.set({ config, payLocal: !!charge.localOffer, charge, methods, method });
+  }
+
+  chooseMethod(method: 'element' | 'upi' | 'pix') {
+    if (this.snapshot.phase.name !== 'ready') return;
+    this.set({ method, phase: { name: 'ready', error: null } });
+  }
+
+  // ── UPI and Pix ────────────────────────────────────────────────────────
+  /** Start UPI or Pix: the UPI app link or the Pix code comes back; then we watch the session until it is paid. */
+  async payWithQr(method: 'upi' | 'pix', billing: QrBilling) {
+    if (this.snapshot.phase.name !== 'ready') return;
+    this.set({ phase: { name: 'paying' } });
+    try {
+      const intent = await this.api.intent(this.token, this.snapshot.charge?.localOffer ?? null);
+      this.qrIntentId = intent.id;
+      const qr = await this.api.startQr(method, {
+        clientSecret: intent.clientSecret,
+        connectedAccountId: intent.connectedAccountId,
+        livemode: intent.livemode,
+        returnUrl: this.api.checkoutPageUrl(this.token),
+        billing,
+      });
+      this.set({ phase: { name: 'waiting', method, qr } });
+      this.watch();
+    } catch (e) {
+      const err = e instanceof VezmoApiError ? e.toVezmoError() : { code: 'unknown' as const, message: DECLINED.message };
+      if (err.code === 'expired' || err.code === 'already_paid') return this.close(e);
+      this.set({ phase: { name: 'ready', error: err } });
+    }
+  }
+
+  /** The buyer gave up waiting: back to the sheet (a payment made meanwhile still settles). */
+  stopWaiting() {
+    this.unwatch();
+    if (this.snapshot.phase.name === 'waiting') this.set({ phase: { name: 'ready', error: null } });
+  }
+
+  /** Check now (the buyer came back from their bank app). */
+  async checkNow() {
+    if (this.snapshot.phase.name !== 'waiting') return;
+    let status;
+    try {
+      status = await this.api.status(this.token);
+    } catch {
+      return;
+    }
+    const result = resultFromStatus(status);
+    if (!result || this.snapshot.phase.name !== 'waiting') return;
+    this.unwatch();
+    if (result.status === 'failed') {
+      this.set({ phase: { name: 'ready', error: { code: 'declined', message: 'The payment didn’t go through. Try again.' } } });
+      return;
+    }
+    // Recorded now rather than when the webhook arrives (as the web checkout does).
+    if (this.qrIntentId) await this.api.confirm(this.token, this.qrIntentId).catch(() => undefined);
+    this.set({ phase: { name: 'done', result } });
+  }
+
+  private watch() {
+    this.unwatch();
+    const started = Date.now();
+    this.watching = setInterval(() => {
+      // A code lasts 10 minutes; stop watching a little after.
+      if (Date.now() - started > 11 * 60_000) return this.stopWaiting();
+      void this.checkNow();
+    }, 2000);
+  }
+
+  private unwatch() {
+    if (this.watching) clearInterval(this.watching);
+    this.watching = null;
+  }
+
+  /** The sheet is going away. */
+  dispose() {
+    this.unwatch();
   }
 
   // ── paying ─────────────────────────────────────────────────────────────

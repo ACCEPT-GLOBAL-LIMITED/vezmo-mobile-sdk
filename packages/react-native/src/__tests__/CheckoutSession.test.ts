@@ -28,6 +28,9 @@ function setup() {
     pay: jest.fn<any>(),
     confirm: jest.fn<any>().mockResolvedValue({ payment: { id: 'pay_1', transactionId: 'VT1' } }),
     status: jest.fn<any>().mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', livemode: false }),
+    intent: jest.fn<any>().mockResolvedValue({ id: 'pi_7', clientSecret: 'pi_7_secret_q', connectedAccountId: 'acct_1', livemode: false }),
+    startQr: jest.fn<any>().mockResolvedValue({ status: 'requires_action', qr: null, link: 'upi://pay?pa=x', code: null }),
+    checkoutPageUrl: jest.fn((t: string) => `https://api.test/v1/secure-payments/${t}`),
   };
   const element = { confirm: jest.fn(), resolveConfirmation: jest.fn() };
   const session = new CheckoutSession(api as any, 'tok', 'acme://vezmo/return');
@@ -120,5 +123,40 @@ describe('CheckoutSession', () => {
     u.session.choosePayLocal(false);
     expect(u.session.getSnapshot().charge?.currency).toBe('USD');
     expect(u.session.getSnapshot().methods?.elementTypes).toEqual(['card', 'klarna']);
+  });
+
+  it('UPI: starts on the session intent, waits for the bank app, records it when paid', async () => {
+    const local = {
+      ...config,
+      enabledMethods: { card: true, upi: true },
+      localOffer: {
+        currency: 'INR', amount: 4200, amountMinor: 420000, price: 49, rate: 85.7, markupPercent: 2,
+        usdPerUnit: 0.0117, expiresAt: '2026-10-16T00:00:00Z', country: 'IN', methods: ['upi'], token: 'offer',
+      },
+    };
+    const u = setup();
+    u.api.checkout.mockResolvedValue(local);
+    await u.session.load();
+    expect(u.session.getSnapshot().methods?.upi).toBe(true);
+    u.session.chooseMethod('upi');
+    u.api.status.mockResolvedValueOnce({ state: 'requires_action', paymentId: 'pay_1', transactionId: null, livemode: false });
+
+    await u.session.payWithQr('upi', { name: 'Asha Rao', line1: '12 MG Road', country: 'IN' });
+    expect(u.api.intent).toHaveBeenCalledWith('tok', 'offer');
+    expect(u.api.startQr).toHaveBeenCalledWith('upi', {
+      clientSecret: 'pi_7_secret_q',
+      connectedAccountId: 'acct_1',
+      livemode: false,
+      returnUrl: 'https://api.test/v1/secure-payments/tok',
+      billing: { name: 'Asha Rao', line1: '12 MG Road', country: 'IN' },
+    });
+    expect(u.session.getSnapshot().phase).toMatchObject({ name: 'waiting', method: 'upi', qr: { link: 'upi://pay?pa=x' } });
+
+    await u.session.checkNow(); // still in the bank app
+    expect(u.session.getSnapshot().phase.name).toBe('waiting');
+    await u.session.checkNow(); // paid
+    expect(u.api.confirm).toHaveBeenCalledWith('tok', 'pi_7');
+    expect(u.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'succeeded' } });
+    u.session.dispose();
   });
 });
