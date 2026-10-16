@@ -58,7 +58,7 @@ struct PrimaryButton: View {
       .frame(maxWidth: .infinity)
       .frame(height: 56)
       .background(fill(off: off))
-      .contentShape(Capsule())
+      .contentShape(Capsule(style: .circular))
     }
     .buttonStyle(PressStyle())
     .disabled(disabled || busy)
@@ -68,21 +68,21 @@ struct PrimaryButton: View {
   @ViewBuilder private func fill(off: Bool) -> some View {
     let p = look.p
     if off {
-      Capsule().fill(look.c(p.disabled))
+      Capsule(style: .circular).fill(look.c(p.disabled))
     } else if ink {
-      Capsule().fill(look.c(p.ink))
+      Capsule(style: .circular).fill(look.c(p.ink))
     } else {
       ZStack {
         // The lift: 0 1px 2px, and 0 8px 18px -8px (a blurred copy, smaller than the button).
         if let shadow = p.payShadow {
-          Capsule().fill(look.c(shadow)).padding(.horizontal, 8).padding(.vertical, 8)
+          Capsule(style: .circular).fill(look.c(shadow)).padding(.horizontal, 8).padding(.vertical, 8)
             .offset(y: 8).blur(radius: 9).opacity(p.accentGradient ? 0.45 : 0.3)
         }
         if p.accentGradient {
-          Capsule().fill(LinearGradient(stops: Palette.gradient, startPoint: UnitPoint(x: 0, y: -0.054), endPoint: UnitPoint(x: 1, y: 1.054)))
+          Capsule(style: .circular).fill(LinearGradient(stops: Palette.gradient, startPoint: UnitPoint(x: 0, y: -0.054), endPoint: UnitPoint(x: 1, y: 1.054)))
             .shadow(color: look.c(p.payShadow ?? .clear).opacity(0.22), radius: 1, x: 0, y: 1)
         } else {
-          Capsule().fill(look.c(p.accent))
+          Capsule(style: .circular).fill(look.c(p.accent))
             .shadow(color: look.c(p.payShadow ?? .clear).opacity(0.16), radius: 1, x: 0, y: 1)
         }
       }
@@ -125,7 +125,7 @@ struct Segmented: View {
             .frame(maxWidth: .infinity)
             .frame(height: 38)
             .background(
-              RoundedRectangle(cornerRadius: look.radius - 3, style: .continuous)
+              RoundedRectangle(cornerRadius: look.radius - 3)
                 .fill(look.c(on ? p.raised : .clear))
                 .shadow(color: on ? Color(rgba(16, 24, 64, 0.08)) : .clear, radius: 1, x: 0, y: 1)
                 .shadow(color: on ? Color(rgba(16, 24, 64, 0.10)) : .clear, radius: 4, x: 0, y: 3)
@@ -138,7 +138,7 @@ struct Segmented: View {
       }
     }
     .padding(3)
-    .background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(p.surface2)))
+    .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(p.surface2)))
     .accessibilityElement(children: .contain)
     .accessibilityLabel("Pay in")
   }
@@ -297,7 +297,7 @@ struct Banner: View {
     }
     .padding(.vertical, 11)
     .padding(.horizontal, 12)
-    .background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(look.p.badSoft)))
+    .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(look.p.badSoft)))
     .accessibilityElement(children: .combine)
   }
 }
@@ -448,7 +448,7 @@ struct StatusMark: View {
         Tick(color: ink, size: size * 0.56, weight: max(2, size * 0.075))
       case .bad:
         VStack(spacing: size * 0.07) {
-          Capsule().fill(ink).frame(width: bar, height: size * 0.3)
+          Capsule(style: .circular).fill(ink).frame(width: bar, height: size * 0.3)
           Circle().fill(ink).frame(width: bar, height: bar)
         }
       case .wait, .neutral:
@@ -591,9 +591,9 @@ extension View {
   /// The ways to pay: one rounded group on the field colour, its 1pt border outside the rows (as a CSS border).
   func methodGroup(_ look: Look) -> some View {
     padding(1)
-      .background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(look.p.field)))
-      .clipShape(RoundedRectangle(cornerRadius: look.radius, style: .continuous))
-      .overlay(RoundedRectangle(cornerRadius: look.radius, style: .continuous).strokeBorder(look.c(look.p.fieldLine), lineWidth: 1))
+      .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(look.p.field)))
+      .clipShape(RoundedRectangle(cornerRadius: look.radius))
+      .overlay(RoundedRectangle(cornerRadius: look.radius).strokeBorder(look.c(look.p.fieldLine), lineWidth: 1))
   }
 }
 

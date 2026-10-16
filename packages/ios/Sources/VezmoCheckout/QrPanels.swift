@@ -80,7 +80,7 @@ struct QrFormView: View {
     keyboard: UIKeyboardType = .default
   ) -> some View {
     let p = look.p
-    let shape = RoundedRectangle(cornerRadius: look.radius, style: .continuous)
+    let shape = RoundedRectangle(cornerRadius: look.radius)
     return VStack(alignment: .leading, spacing: 6) {
       Text(label).label(look)
       TextField("", text: text, prompt: Text(placeholder).foregroundColor(look.c(p.onDisabled)))
@@ -132,7 +132,7 @@ struct QrWaiting: View {
           .padding(.horizontal, 14)
           .padding(.vertical, 12)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(p.surface2)))
+          .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(p.surface2)))
           PrimaryButton(label: copied ? "Copied" : "Copy Pix code", look: look) {
             UIPasteboard.general.string = code
             copied = true
@@ -162,8 +162,8 @@ struct QrWaiting: View {
           QrImage(source: png)
             .frame(width: 100, height: 100)
             .padding(10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(look.c(p.fieldLine), lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 14).fill(Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(look.c(p.fieldLine), lineWidth: 1))
             .accessibilityLabel("\(method == .upi ? "UPI" : "Pix") QR code")
           Text("Paying from another phone? Scan this code in its \(method == .upi ? "UPI" : "bank") app.")
             .font(look.font(13.5)).foregroundColor(look.c(p.ink3)).lineSpacing(3)
@@ -176,8 +176,8 @@ struct QrWaiting: View {
           Text("Check status").font(look.font(15, .semibold)).foregroundColor(look.c(p.ink))
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Capsule().fill(look.c(p.surface2)))
-            .contentShape(Capsule())
+            .background(Capsule(style: .circular).fill(look.c(p.surface2)))
+            .contentShape(Capsule(style: .circular))
         }
         .buttonStyle(PressStyle())
         Button { session.stopWaiting() } label: {
@@ -208,7 +208,7 @@ struct QrWaiting: View {
     }
     .padding(.horizontal, 12)
     .frame(height: 30)
-    .background(Capsule().fill(look.c(hurry ? p.warnSoft : p.accentSoft)))
+    .background(Capsule(style: .circular).fill(look.c(hurry ? p.warnSoft : p.accentSoft)))
     .accessibilityElement(children: .combine)
   }
 

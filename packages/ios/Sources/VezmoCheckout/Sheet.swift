@@ -312,10 +312,10 @@ struct SheetView: View {
         Text(initial).font(look.font(17, .bold)).foregroundColor(look.c(p.accent))
           .frame(width: 42, height: 42)
           .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(look.c(p.logoTile))
+            RoundedRectangle(cornerRadius: 12).fill(look.c(p.logoTile))
               .shadow(color: Color(rgba(16, 24, 64, 0.06)), radius: 1, x: 0, y: 1)
           )
-          .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(look.c(p.fieldLine), lineWidth: look.hairline))
+          .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(look.c(p.fieldLine), lineWidth: look.hairline))
           .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 1) {
           HStack(spacing: 8) {
@@ -324,7 +324,7 @@ struct SheetView: View {
               Text("TEST MODE").font(look.font(10, .bold)).tracking(0.6).foregroundColor(.white)
                 .padding(.horizontal, 7)
                 .frame(height: 20)
-                .background(Capsule().fill(look.c(p.warn)))
+                .background(Capsule(style: .circular).fill(look.c(p.warn)))
             }
           }
           if let title = config.title, !title.isEmpty {
@@ -637,7 +637,7 @@ struct ResultView: View {
           }
         }
         .padding(.horizontal, 16)
-        .background(RoundedRectangle(cornerRadius: look.radius + 2, style: .continuous).fill(look.c(p.surface2)))
+        .background(RoundedRectangle(cornerRadius: look.radius + 2).fill(look.c(p.surface2)))
         .padding(.top, 18)
       }
       PrimaryButton(label: copy.action, look: look, ink: true, action: onDone)

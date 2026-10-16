@@ -72,7 +72,7 @@ struct Shop: View {
       Headphones()
         .frame(maxWidth: .infinity)
         .frame(height: 210)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(hex: 0xE9E7F7)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0xE9E7F7)))
       VStack(alignment: .leading, spacing: 4) {
         Text("Aurora wireless headphones").font(.system(size: 17, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
         Text("$49.00").font(.system(size: 15)).foregroundColor(Color(hex: 0x5A5F70))
@@ -81,7 +81,7 @@ struct Shop: View {
       Button { Task { await pay() } } label: {
         Text("Buy now").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
           .frame(maxWidth: .infinity).frame(height: 52)
-          .background(Capsule().fill(Color(hex: 0x0B0C14)))
+          .background(Capsule(style: .circular).fill(Color(hex: 0x0B0C14)))
       }
       .disabled(!ready)
       .opacity(ready ? 1 : 0.35)
@@ -89,7 +89,7 @@ struct Shop: View {
     }
     .padding(14)
     .background(
-      RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.white)
+      RoundedRectangle(cornerRadius: 22).fill(Color.white)
         .shadow(color: Color(red: 16 / 255, green: 24 / 255, blue: 64 / 255).opacity(0.06), radius: 1, x: 0, y: 1)
     )
   }
@@ -110,16 +110,16 @@ struct Shop: View {
       Button { Task { await newSession() } } label: {
         Text("New sandbox session").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
           .frame(maxWidth: .infinity).frame(height: 44)
-          .background(Capsule().fill(Color.white))
-          .overlay(Capsule().strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
+          .background(Capsule(style: .circular).fill(Color.white))
+          .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
       }
       .accessibilityIdentifier("new-session")
       // The sandbox's merchant-of-record business (Cash App, Klarna and Amazon Pay on).
       Button { Task { await newSession(track: "mor") } } label: {
         Text("New session · merchant of record").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
           .frame(maxWidth: .infinity).frame(height: 44)
-          .background(Capsule().fill(Color.white))
-          .overlay(Capsule().strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
+          .background(Capsule(style: .circular).fill(Color.white))
+          .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
       }
       .accessibilityIdentifier("new-session-mor")
     }
