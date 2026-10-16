@@ -39,7 +39,12 @@ jobs:
         run: |
           test -n "$ASC_KEY_ID" && test -n "$ASC_ISSUER_ID" && test -n "$ASC_KEY_P8" || { echo "Add ASC_KEY_ID, ASC_ISSUER_ID and VEZMOAPPLE (the .p8) to the repo's Actions secrets."; exit 1; }
           echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
-          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          # Rebuild the .p8 from what was pasted (a paste often loses its line breaks or the BEGIN/END lines).
+          body=$(printf '%s' "$ASC_KEY_P8" | sed -e 's/-----BEGIN PRIVATE KEY-----//g' -e 's/-----END PRIVATE KEY-----//g' | tr -d ' \r\n\t')
+          # Only shapes are printed, never the key: an App Store Connect key is about 184 base64 characters.
+          echo "The key secret: ${#body} base64 characters, BEGIN line $(printf '%s' "$ASC_KEY_P8" | grep -c 'BEGIN PRIVATE KEY')."
+          case "$body" in *[!A-Za-z0-9+/=]*) echo "The key secret holds characters a .p8 never has: paste the .p8 file's text again."; exit 1;; esac
+          { echo '-----BEGIN PRIVATE KEY-----'; printf '%s\n' "$body" | fold -w 64; echo '-----END PRIVATE KEY-----'; } > "$RUNNER_TEMP/AuthKey.p8"
       - name: Prebuild the example app (installs pods)
         run: yarn example expo prebuild --platform ios
       - name: Archive (signed automatically through the key)
