@@ -4,6 +4,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,16 @@ internal interface CheckoutApi {
     suspend fun confirm(token: String, paymentIntentId: String)
 
     suspend fun status(token: String): SessionStatus
+
+    // ── a subscription checkout (its token) ──
+    /** The plan, the first charge or free trial, the keys. A used or unknown link reads as expired. */
+    suspend fun subscription(token: String, currency: String? = null): CheckoutConfig
+
+    /** Subscribe: Vezmo confirms the first payment, or a free trial's card, with the confirmation token. */
+    suspend fun subscriptionPay(token: String, confirmationToken: String, localOffer: String?): PayResponse
+
+    /** Records a subscription start finished on the device (after 3D Secure). */
+    suspend fun subscriptionConfirm(token: String, intentId: String): CheckoutResult
 }
 
 /**
@@ -124,6 +135,33 @@ internal class VezmoApi(
     }
 
     override suspend fun status(token: String) = SessionStatus.from(call("GET", "/secure-payments/${enc(token)}/status"))
+
+    override suspend fun subscription(token: String, currency: String?): CheckoutConfig {
+        val q = currency?.let { "?currency=${enc(it)}" } ?: ""
+        val json = try {
+            call("GET", "/subscription-checkout/${enc(token)}$q")
+        } catch (e: VezmoApiError) {
+            if (e.httpStatus == 404) throw VezmoApiError(VezmoError.Code.Expired, "This subscription link is no longer valid.", 404)
+            if (e.httpStatus == 400 && e.message.contains("already set up", ignoreCase = true)) {
+                throw VezmoApiError(VezmoError.Code.AlreadyPaid, "This subscription is already set up.", 400)
+            }
+            throw e
+        }
+        return CheckoutConfig.fromSubscription(json)
+    }
+
+    override suspend fun subscriptionPay(token: String, confirmationToken: String, localOffer: String?): PayResponse {
+        val body = JSONObject()
+            .put("confirmationToken", confirmationToken)
+            .put("integration", INTEGRATION)
+        if (!localOffer.isNullOrEmpty()) body.put("localOffer", localOffer)
+        return PayResponse.fromSubscription(call("POST", "/subscription-checkout/${enc(token)}/pay", body))
+    }
+
+    override suspend fun subscriptionConfirm(token: String, intentId: String): CheckoutResult {
+        val j = call("POST", "/subscription-checkout/${enc(token)}/confirm", JSONObject().put("paymentIntentId", intentId))
+        return resultFromSubscriptionConfirm(j.str("status") ?: "", j.str("subscriptionRef") ?: "", j.str("paymentId"), j.str("transactionId"))
+    }
 
     companion object {
         const val INTEGRATION = "android"
@@ -217,8 +255,44 @@ internal data class CheckoutConfig(
     val theme: String?,
     val paymentId: String,
     val localOffer: LocalOffer?,
+    /** A subscription checkout: the plan, and what starting it means. Null for a one-time payment. */
+    val subscription: SubscriptionPlan? = null,
 ) {
     companion object {
+        /** A subscription checkout as the sheet's config: cards and Google Pay only, the plan beside the price. */
+        fun fromSubscription(v: JSONObject): CheckoutConfig {
+            val currency = v.str("currency") ?: "USD"
+            val planName = v.str("planName") ?: ""
+            val customer = v.optJSONObject("customer")
+            return CheckoutConfig(
+                publishableKey = v.str("publishableKey") ?: "",
+                connectedAccountId = v.str("connectedAccountId"),
+                livemode = v.optBoolean("livemode"),
+                amountMinor = (v.optDouble("amount", 0.0) * 100).roundToLong(),
+                currency = currency,
+                title = planName,
+                merchantName = v.optJSONObject("merchant")?.str("name"),
+                enabledMethods = setOf("card", "googlePay"),
+                customerName = customer?.str("name"),
+                customerEmail = customer?.str("email"),
+                theme = null,
+                paymentId = "",
+                localOffer = v.optJSONObject("localOffer")?.let(LocalOffer::from),
+                subscription = SubscriptionPlan(
+                    ref = v.str("subscriptionRef") ?: "",
+                    mode = v.str("mode") ?: "payment",
+                    planName = planName,
+                    recurringAmount = v.optDouble("recurringAmount", 0.0),
+                    currency = currency,
+                    interval = v.str("interval") ?: "MONTH",
+                    intervalCount = v.optInt("intervalCount", 1),
+                    trialDays = if (v.isNull("trialDays")) null else v.optInt("trialDays"),
+                    nextChargeAt = v.str("nextChargeAt"),
+                    consentText = v.str("consentText") ?: "",
+                ),
+            )
+        }
+
         fun from(j: JSONObject): CheckoutConfig {
             val on = j.optJSONObject("enabledMethods")
             return CheckoutConfig(
@@ -247,23 +321,65 @@ internal data class PaidMethod(val type: String, val brand: String?, val last4: 
     }
 }
 
+/** What the buyer subscribes to (from the subscription checkout). */
+internal data class SubscriptionPlan(
+    val ref: String,
+    /** `payment`: the first period is charged now. `setup`: a free trial; the card is saved, nothing is charged today. */
+    val mode: String,
+    val planName: String,
+    /** The price of each period, in the plan's currency (major units). */
+    val recurringAmount: Double,
+    val currency: String,
+    /** HOUR, DAY, WEEK, MONTH or YEAR. */
+    val interval: String,
+    val intervalCount: Int,
+    val trialDays: Int?,
+    /** When the plan's price is next charged: the trial's end, or the end of the first period (ISO 8601). */
+    val nextChargeAt: String?,
+    /** The recurring authorization the buyer agrees to by subscribing. */
+    val consentText: String,
+) {
+    val trial get() = mode == "setup"
+}
+
 /** POST …/pay: what the server did with the buyer's confirmation token. */
 internal data class PayResponse(
     /** succeeded, processing or requires_action. */
     val state: String,
-    val paymentId: String,
+    /** Null for a free trial (nothing charged) or a step still to finish. */
+    val paymentId: String?,
     val transactionId: String?,
     val clientSecret: String?,
     val method: PaidMethod?,
+    /** A subscription checkout's subscription. */
+    val subscription: SubscriptionResult? = null,
 ) {
     companion object {
         fun from(j: JSONObject) = PayResponse(
             state = j.str("state") ?: "",
-            paymentId = j.str("paymentId") ?: "",
+            paymentId = j.str("paymentId"),
             transactionId = j.str("transactionId"),
             clientSecret = j.str("clientSecret"),
             method = j.optJSONObject("method")?.let(PaidMethod::from),
         )
+
+        /** A subscription /pay answer in the shape the session handles for every payment. */
+        fun fromSubscription(j: JSONObject): PayResponse {
+            val state = j.str("state") ?: ""
+            val ref = j.str("subscriptionRef") ?: ""
+            return PayResponse(
+                state = state,
+                paymentId = if (state == "requires_action") null else j.str("paymentId"),
+                transactionId = if (state == "succeeded") j.str("transactionId") else null,
+                clientSecret = j.str("clientSecret"),
+                method = j.optJSONObject("method")?.let(PaidMethod::from),
+                subscription = when (state) {
+                    "succeeded" -> subscriptionOf(ref, j.str("subscriptionStatus") ?: "")
+                    "processing" -> subscriptionOf(ref, "incomplete")
+                    else -> null
+                },
+            )
+        }
     }
 }
 

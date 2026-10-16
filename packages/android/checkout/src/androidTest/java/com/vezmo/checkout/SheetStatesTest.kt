@@ -54,6 +54,13 @@ class SheetStatesTest {
         override suspend fun confirm(token: String, paymentIntentId: String) = Unit
 
         override suspend fun status(token: String) = status
+
+        // A subscription checkout reads the same config (with its plan).
+        override suspend fun subscription(token: String, currency: String?) = config()
+
+        override suspend fun subscriptionPay(token: String, confirmationToken: String, localOffer: String?): PayResponse = error("not used")
+
+        override suspend fun subscriptionConfirm(token: String, intentId: String): CheckoutResult = error("not used")
     }
 
     private fun config(
@@ -78,8 +85,13 @@ class SheetStatesTest {
     private val inr = LocalOffer("INR", 420_000, 85.7143, "IN", listOf("upi"), "offer_inr")
     private val brl = LocalOffer("BRL", 26_950, 5.5, "BR", listOf("pix"), "offer_brl")
 
-    private fun open(api: CheckoutApi, dark: Boolean = false, drive: suspend CheckoutSession.() -> Unit = { load() }): CheckoutSession {
-        val s = CheckoutSession(api, "tok", "vezmoexample://vezmo")
+    private fun open(
+        api: CheckoutApi,
+        dark: Boolean = false,
+        subscription: Boolean = false,
+        drive: suspend CheckoutSession.() -> Unit = { load() },
+    ): CheckoutSession {
+        val s = CheckoutSession(api, "tok", "vezmoexample://vezmo", subscription = subscription)
         session = s
         runBlocking { s.drive() }
         rule.setContent {
@@ -212,6 +224,41 @@ class SheetStatesTest {
         open(FakeApi({ throw VezmoApiError(VezmoError.Code.AlreadyPaid, "This checkout has already been paid.", 409) }), dark = true)
         rule.onNodeWithText("Already paid").assertExists()
         shoot("result-already-paid-dark")
+    }
+
+    private fun trial() = config().copy(
+        amountMinor = 0,
+        title = "Northwind Audio Club",
+        subscription = SubscriptionPlan(
+            ref = "SUB-7Q2K9WX",
+            mode = "setup",
+            planName = "Northwind Audio Club",
+            recurringAmount = 9.99,
+            currency = "USD",
+            interval = "MONTH",
+            intervalCount = 1,
+            trialDays = 7,
+            nextChargeAt = "2026-10-23T07:00:00.000Z",
+            consentText = "I authorize Northwind Audio to charge my payment method \$9.99 every month after my 7-day free trial, until I cancel.",
+        ),
+    )
+
+    @Test
+    fun subscriptionTrialDark() {
+        open(FakeApi({ trial() }), dark = true, subscription = true)
+        rule.onNodeWithText("Start free trial").assertExists()
+        shoot("subscription-trial-dark")
+    }
+
+    @Test
+    fun subscriptionPendingResult() {
+        open(FakeApi({ trial() }), subscription = true) {
+            load()
+            // A first payment still settling after 3D Secure.
+            onConfirmResult(ConfirmStatus.Completed, "")
+        }
+        rule.onNodeWithText("Subscription received").assertExists()
+        shoot("subscription-received")
     }
 
     @Test

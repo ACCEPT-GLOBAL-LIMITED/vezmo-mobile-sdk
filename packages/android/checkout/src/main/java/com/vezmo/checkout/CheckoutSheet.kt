@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -110,7 +111,7 @@ internal fun CheckoutSheet(
             )
         }
     }
-    val intent = remember(charge, methods) { if (charge != null && methods != null) engineIntent(charge, methods) else null }
+    val intent = remember(charge, methods, config) { if (charge != null && methods != null) engineIntent(charge, methods, config) else null }
     LaunchedEffect(settings, intent) {
         if (useEngine && settings != null && intent != null) engine.configure(context, settings, intent)
     }
@@ -182,6 +183,7 @@ internal fun CheckoutSheet(
                             result = (phase as? SessionPhase.Done)?.result ?: (phase as SessionPhase.Closed).result,
                             amount = amount,
                             merchant = merchant,
+                            plan = config?.subscription,
                             paidWith = snap.paidWith,
                             paidMethod = snap.paidMethod,
                             onDone = onClose,
@@ -235,6 +237,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
     val p = look.p
     val phase = snap.phase
     val paying = phase == SessionPhase.Paying
+    // A subscription checkout: what is due today, the plan after it, and a button that says what it starts.
+    val plan = config.subscription
     val own = when {
         methods.upi -> QrMethod.Upi
         methods.pix -> QrMethod.Pix
@@ -411,13 +415,22 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
             )
             snap.elementError != null -> PrimaryButton("Try again", onClick = { session.retryElement() }, tag = "vezmo-retry")
             else -> PrimaryButton(
-                label = "Pay $amount",
+                // A subscription's button says what it starts.
+                label = when {
+                    plan == null -> "Pay $amount"
+                    plan.trial -> "Start free trial"
+                    else -> "Subscribe · $amount"
+                },
                 lock = true,
                 disabled = !CheckoutSession.canPay(snap),
                 busy = paying,
                 onClick = { session.pay() },
                 tag = "vezmo-pay",
             )
+        }
+        // The recurring authorization, small, right above the button that gives it.
+        if (plan != null && phase !is SessionPhase.Waiting) {
+            Txt(plan.consentText, 12f, p.ink3, lineHeight = 16f, align = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
         SecuredBy()
     }
@@ -459,9 +472,49 @@ private fun Header(config: CheckoutConfig, merchant: String, amount: String) {
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Label("Total")
+            Label(if (config.subscription != null) "Due today" else "Total")
             Txt(amount, 34f, p.ink, weight = FontWeight.Bold, lineHeight = 40f, letterSpacing = -0.9f, tabular = true)
         }
+        config.subscription?.let { PlanSummary(it) }
+    }
+}
+
+/** The plan under the total: "7-day free trial · Today", then "$9.99 / month · From Oct 23, 2026". */
+@Composable
+private fun PlanSummary(plan: SubscriptionPlan) {
+    val look = LocalLook.current
+    val p = look.p
+    val next = dateText(plan.nextChargeAt)
+    val price = planPriceText(plan)
+    val trialText = plan.trialDays?.let { "$it-day free trial" } ?: "Free trial"
+    val whenText = if (next.isEmpty()) "" else if (plan.trial) "From $next" else "Renews $next"
+    val label = listOfNotNull(if (plan.trial) "$trialText, starting today" else null, price, whenText.ifEmpty { null }).joinToString(". ")
+    val hair = hairline()
+    // One element for screen readers (and the tests): both lines in one label.
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(look.radius))
+            .background(p.surface2)
+            .padding(horizontal = 14.dp)
+            .clearAndSetSemantics { contentDescription = label },
+    ) {
+        @Composable
+        fun line(title: String, sub: String, first: Boolean) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (first) Modifier else Modifier.topLine(p.line, hair))
+                    .padding(vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Txt(title, 15f, p.ink, weight = FontWeight.SemiBold, tabular = true, modifier = Modifier.weight(1f))
+                if (sub.isNotEmpty()) Txt(sub, 13f, p.ink3, tabular = true)
+            }
+        }
+        if (plan.trial) line(trialText, "Today", first = true)
+        line(price, whenText, first = !plan.trial)
     }
 }
 
@@ -470,6 +523,7 @@ private fun ResultView(
     result: CheckoutResult,
     amount: String,
     merchant: String,
+    plan: SubscriptionPlan?,
     paidWith: String?,
     paidMethod: PaidMethod?,
     onDone: (CheckoutResult) -> Unit,
@@ -477,10 +531,17 @@ private fun ResultView(
     val look = LocalLook.current
     val p = look.p
     val failed = result as? CheckoutResult.Failed
+    val sub = (result as? CheckoutResult.Succeeded)?.subscription ?: (result as? CheckoutResult.Processing)?.subscription
+    val trialing = sub?.status == SubscriptionResult.Status.Trialing
+    val next = dateText(plan?.nextChargeAt)
     data class Copy(val title: String, val body: String, val kind: MarkKind, val action: String)
     val copy = when {
+        result is CheckoutResult.Succeeded && sub != null && trialing ->
+            Copy("Your free trial has started", if (next.isEmpty()) "" else "Nothing is charged until $next.", MarkKind.Good, "Done")
+        result is CheckoutResult.Succeeded && sub != null -> Copy("You’re subscribed", "", MarkKind.Good, "Done")
         result is CheckoutResult.Succeeded -> Copy("Payment successful", "", MarkKind.Good, "Done")
-        result is CheckoutResult.Processing -> Copy("Payment received", "Your payment is on its way. You’ll get a confirmation when it clears.", MarkKind.Wait, "Done")
+        result is CheckoutResult.Processing ->
+            Copy(if (sub != null) "Subscription received" else "Payment received", "Your payment is on its way. You’ll get a confirmation when it clears.", MarkKind.Wait, "Done")
         failed == null -> Copy("Payment canceled", "", MarkKind.Neutral, "Close")
         failed.error.code == VezmoError.Code.Expired -> Copy("Checkout expired", "Return to ${merchant.ifEmpty { "the app" }} to start again.", MarkKind.Neutral, "Close")
         failed.error.code == VezmoError.Code.AlreadyPaid -> Copy("Already paid", failed.error.message, MarkKind.Good, "Done")
@@ -489,10 +550,10 @@ private fun ResultView(
     val paymentId = when (result) {
         is CheckoutResult.Succeeded -> result.paymentId
         is CheckoutResult.Processing -> result.paymentId
-        else -> ""
-    }
-    // The short transaction reference the buyer can quote; the payment's own id until there is one.
-    val reference = (result as? CheckoutResult.Succeeded)?.transactionId?.ifEmpty { null } ?: paymentId
+        else -> null
+    } ?: ""
+    // The short reference the buyer can quote: the subscription's, else the transaction's, else the payment's own id.
+    val reference = sub?.ref?.ifEmpty { null } ?: (result as? CheckoutResult.Succeeded)?.transactionId?.ifEmpty { null } ?: paymentId
     // Paid with: the network's mark and last four from Vezmo's server, else the engine's own label (or UPI / Pix).
     val mark = Mark.forBrand(paidMethod?.brand) ?: when (paidWith) {
         "UPI" -> Mark.Upi
@@ -505,11 +566,20 @@ private fun ResultView(
         mark == Mark.Upi || mark == Mark.Pix -> ""
         else -> paidWith ?: ""
     }
-    val rows = listOf(
-        Triple("Paid to", merchant, null),
-        Triple("Paid with", paidText, mark),
-        Triple("Reference", reference, null),
-    ).filter { (_, v, m) -> v.isNotEmpty() || m != null }
+    val rows = if (sub != null) {
+        listOf(
+            Triple("Plan", plan?.let { "${it.planName} · ${planPriceText(it)}" } ?: "", null),
+            Triple(if (trialing) "First charge" else "Next charge", next, null),
+            Triple(if (trialing) "Card" else "Paid with", paidText, mark),
+            Triple("Reference", reference, null),
+        )
+    } else {
+        listOf(
+            Triple("Paid to", merchant, null),
+            Triple("Paid with", paidText, mark),
+            Triple("Reference", reference, null),
+        )
+    }.filter { (_, v, m) -> v.isNotEmpty() || m != null }
 
     Column(
         Modifier
@@ -531,11 +601,11 @@ private fun ResultView(
                 .testTag("vezmo-result-title")
                 .semantics { heading() },
         )
-        if (result is CheckoutResult.Succeeded && amount.isNotEmpty()) {
+        if (result is CheckoutResult.Succeeded && amount.isNotEmpty() && !trialing) {
             Txt(amount, 34f, p.ink, weight = FontWeight.Bold, lineHeight = 40f, letterSpacing = -0.9f, tabular = true)
         }
         if (copy.body.isNotEmpty()) Txt(copy.body, 15f, p.ink2, lineHeight = 21f, align = TextAlign.Center)
-        if (paymentId.isNotEmpty()) {
+        if (paymentId.isNotEmpty() || sub != null) {
             val hair = hairline()
             Column(
                 Modifier

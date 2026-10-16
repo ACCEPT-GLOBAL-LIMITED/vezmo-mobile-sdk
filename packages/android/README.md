@@ -96,7 +96,7 @@ alone. The result tells your app what to show.
 
 | Result | Meaning |
 | --- | --- |
-| `Succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. |
+| `Succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
 | `Processing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
 | `Canceled` | The buyer closed the sheet (or pressed Back). Not an error. |
 | `Failed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
@@ -112,6 +112,38 @@ alone. The result tells your app what to show.
 | `Unknown` | Anything else. Let the buyer try again. |
 
 `prepare()` returns the same `VezmoError` when the session can't be paid (expired, already paid, a bad token).
+
+## Subscriptions
+
+Start a subscription in the app: the first payment, or a free trial with the card saved for the renewals. Your server
+creates the subscription with your API key and sends its `checkoutToken` to the app:
+
+```http
+POST /v1/merchant/subscription
+{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
+→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+```
+
+In the app, pass it as `subscriptionToken`; everything else is the same:
+
+```kotlin
+vezmo.prepare(subscriptionToken = checkoutToken)?.let { error -> return@launch showError(error.message) }
+vezmo.present()
+
+// In your result callback:
+if (result is CheckoutResult.Succeeded && result.subscription != null) {
+    // result.subscription: SubscriptionResult(ref = "SUB-7Q2K9WX", status = Trialing or Active)
+    // result.paymentId is the first payment, or null for a free trial (nothing charged today)
+}
+```
+
+The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
+authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards and Google Pay. Renewals are charged
+by Vezmo; your server hears about each one from the subscription webhooks.
+
+Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
+to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
+classes, rentals, services.
 
 ## Configuration
 
@@ -184,8 +216,8 @@ gradle :example:installRelease                             # the example app on 
 
 CI (`.github/workflows/android.yml`) runs the tests, lint and a local Maven publish, then pays end to end on an
 Android emulator with Maestro (`e2e/maestro`): a card with 3D Secure, a decline, cancel, a bad token, Cash App on the
-merchant-of-record track, dark-mode screenshots, and screenshots of the UPI, Pix and result states
-(`checkout/src/androidTest`).
+merchant-of-record track, a subscription's free trial and its first payment, dark-mode screenshots, and screenshots
+of the UPI, Pix, subscription and result states (`checkout/src/androidTest`).
 
 To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>`.
 `release-android.yml` signs and uploads to Maven Central (needs the `MAVEN_CENTRAL_USERNAME`,

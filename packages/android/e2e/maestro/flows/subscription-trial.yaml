@@ -1,0 +1,72 @@
+# A subscription with a 7-day free trial, started in the app: nothing due today, the card saved for the renewals
+# (a setup on our server), and the subscription back in the app as trialing.
+appId: com.vezmo.example.nativeapp
+---
+# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # A just-booted emulator can show a system "isn't responding" dialog over the app.
+      - tapOn:
+          text: "Wait"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "new-session"
+          timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "subscribe"
+    direction: DOWN
+- tapOn:
+    id: "subscribe"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- assertVisible: "Due today"
+# The plan block reads as one element to screen readers: its label holds both lines.
+- assertVisible: ".*7-day free trial.*"
+- takeScreenshot: sub-trial-01-sheet
+- tapOn: "Card"
+- extendedWaitUntil:
+    visible: "Card number"
+    timeout: 15000
+- tapOn: "Card number"
+# The form moves on by itself: card number, then expiry, then CVC.
+- inputText: "4242424242424242"
+- inputText: "1234"
+- inputText: "123"
+- tapOn: "ZIP Code"
+- inputText: "10001"
+- hideKeyboard
+- takeScreenshot: sub-trial-02-card-filled
+- tapOn: "Continue"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: sub-trial-03-card-chosen
+- tapOn:
+    id: "vezmo-pay"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: sub-trial-04-after-pay
+# 3D Secure (the platform asks for it on every card): the test challenge, if shown.
+- tapOn:
+    text: "(?i)complete.*"
+    optional: true
+- tapOn:
+    text: "(?i)submit"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-result-title"
+    timeout: 90000
+- takeScreenshot: sub-trial-05-result
+- assertVisible: "Your free trial has started"
+- tapOn:
+    id: "vezmo-done"
+- assertVisible:
+    id: "result"
+    text: ".*trialing.*"
+- takeScreenshot: sub-trial-06-back-in-app

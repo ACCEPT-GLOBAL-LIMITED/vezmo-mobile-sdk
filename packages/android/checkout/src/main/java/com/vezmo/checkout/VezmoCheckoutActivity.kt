@@ -47,8 +47,13 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
         val holder = ViewModelProvider(this)[Holder::class.java]
         // Prepared in this process; or, after the process was killed, loaded again from its token.
         val session = holder.session
-            ?: PreparedSessions.take(request.clientToken)
-            ?: CheckoutSession(VezmoApi(request.configuration.apiBase ?: DEFAULT_API_BASE), request.clientToken, request.configuration.returnUrl).also { s ->
+            ?: PreparedSessions.take(request.token)
+            ?: CheckoutSession(
+                VezmoApi(request.configuration.apiBase ?: DEFAULT_API_BASE),
+                request.token,
+                request.configuration.returnUrl,
+                subscription = request.subscription,
+            ).also { s ->
                 s.post { s.load() }
             }
         holder.session = session
