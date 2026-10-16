@@ -44,11 +44,11 @@ class ApiTest {
         assertEquals("POST", call.method)
         assertTrue(call.headers["Vezmo-SDK"]!!.matches(Regex("""^android/\d+\.\d+\.\d+.*""")))
         val body = JSONObject(call.body!!)
-        assertEquals(setOf("confirmationToken", "integration", "localOffer", "returnUrl"), body.keys().asSequence().toSet())
+        // No returnUrl: the confirmation token's own return link brings the buyer back into the sheet.
+        assertEquals(setOf("confirmationToken", "integration", "localOffer"), body.keys().asSequence().toSet())
         assertEquals("ctoken_1", body.getString("confirmationToken"))
         assertEquals("android", body.getString("integration"))
         assertEquals("o", body.getString("localOffer"))
-        assertEquals("acme://vezmo", body.getString("returnUrl"))
     }
 
     @Test

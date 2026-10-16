@@ -95,7 +95,9 @@ internal class VezmoApi(
             .put("confirmationToken", confirmationToken)
             .put("integration", INTEGRATION)
         if (!localOffer.isNullOrEmpty()) body.put("localOffer", localOffer)
-        if (!returnUrl.isNullOrEmpty()) body.put("returnUrl", returnUrl)
+        // No returnUrl: the confirmation token carries the payment engine's own return link, which brings the buyer
+        // back into the open sheet after a bank app or pay-later provider. The app's link there would open the app but
+        // leave the payment waiting. (`returnUrl` stays in the signature for the other platforms' shape.)
         return PayResponse.from(call("POST", "/secure-payments/${enc(token)}/pay", body))
     }
 

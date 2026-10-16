@@ -23,23 +23,8 @@ dependencies {
 
 The library is on Maven Central; `mavenCentral()` must be in your repositories.
 
-Add your return link to the library's return screen in your app's `AndroidManifest.xml`, so the buyer comes back to
-the open sheet after a bank app, a pay-later provider or a browser step:
-
-```xml
-<application>
-  <activity android:name="com.vezmo.checkout.VezmoReturnActivity" android:exported="true">
-    <intent-filter>
-      <action android:name="android.intent.action.VIEW" />
-      <category android:name="android.intent.category.DEFAULT" />
-      <category android:name="android.intent.category.BROWSABLE" />
-      <data android:scheme="acme" android:host="vezmo" />
-    </intent-filter>
-  </activity>
-</application>
-```
-
-Don't put the same link on a `singleTask` activity of your own: opening it would close the sheet.
+Nothing else to set up: after a bank app, a pay-later provider or 3D Secure in the browser, the buyer comes back to
+the open sheet by itself.
 
 ## Take a payment
 
@@ -132,7 +117,7 @@ alone. The result tells your app what to show.
 
 | `VezmoConfiguration` | What it does |
 | --- | --- |
-| `returnUrl` | Your registered return link. Needed for bank apps and pay-later methods. |
+| `returnUrl` | Optional on Android: your registered return link. The buyer comes back from bank apps and pay-later providers by themselves. |
 | `googlePay` | `GooglePayOptions(merchantCountryCode = "US")`. Google Pay shows when your business offers it and the phone has it; sandbox sessions use Google's test environment. |
 | `style` | `VezmoStyle.Automatic` (follow the phone, default), `Light` or `Dark`. |
 | `appearance` | Colors, corner radius and font, below. |
@@ -188,10 +173,6 @@ pays against Vezmo's sandbox with no setup.
 - **The `Config` error "Call prepare() before present()"**: `present()` needs a successful `prepare()` first, each
   time.
 - **No Google Pay**: the business doesn't offer it yet, or the phone has no Google Wallet card.
-- **The buyer doesn't come back to the app after a bank app**: the session's `app.returnUrl` must be a link
-  registered under Developers → Mobile apps, and `VezmoReturnActivity` must have that link (the intent filter above).
-- **The result is `Canceled` after a bank app or pay-later provider**: the return link opened a `singleTask` activity
-  of your own, which closed the sheet. Give the link to `VezmoReturnActivity` only.
 
 ## Development
 
