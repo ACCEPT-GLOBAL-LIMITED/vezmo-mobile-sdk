@@ -1,0 +1,6 @@
+<resources>
+  <color name="page">#F4F5F8</color>
+  <style name="Theme.Example" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:windowBackground">@color/page</item>
+  </style>
+</resources>

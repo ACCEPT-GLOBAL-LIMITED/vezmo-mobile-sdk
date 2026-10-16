@@ -1,0 +1,13 @@
+<resources>
+  <!-- See-through and edge to edge: the sheet draws its own backdrop, sheet and entrance. -->
+  <style name="vezmo_Theme.Checkout" parent="@android:style/Theme.Translucent.NoTitleBar">
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowAnimationStyle">@null</item>
+    <item name="android:backgroundDimEnabled">false</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <!-- The pre-Material parent leaves the bars to the system (opaque black): the sheet draws behind them. -->
+    <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+  </style>
+</resources>

@@ -1,0 +1,47 @@
+# The buyer closes the sheet: the app gets "canceled".
+appId: com.vezmo.example.nativeapp
+---
+# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # A just-booted emulator can show a system "isn't responding" dialog over the app.
+      - tapOn:
+          text: "Wait"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "new-session"
+          timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- takeScreenshot: cancel-01-sheet
+# Closing the sheet is not an error: the app gets "canceled".
+- tapOn: "Close"
+- extendedWaitUntil:
+    visible:
+      id: "result"
+      text: ".*canceled.*"
+    timeout: 15000
+# The back button cancels too.
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- back
+- extendedWaitUntil:
+    visible:
+      id: "result"
+      text: ".*canceled.*"
+    timeout: 15000

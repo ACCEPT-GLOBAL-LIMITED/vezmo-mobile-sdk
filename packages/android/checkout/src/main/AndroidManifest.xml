@@ -1,0 +1,30 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.INTERNET" />
+
+  <application>
+    <!-- The Vezmo payment sheet: a see-through activity over the app that draws its own dimmed backdrop and sheet. -->
+    <activity
+      android:name="com.vezmo.checkout.VezmoCheckoutActivity"
+      android:exported="false"
+      android:theme="@style/vezmo_Theme.Checkout"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode"
+      android:windowSoftInputMode="adjustResize" />
+
+    <!--
+      Your return link lands here (add it in your app's manifest, see the README): it brings the open sheet back over
+      the browser step it opened, or your app when no sheet is open.
+    -->
+    <activity
+      android:name="com.vezmo.checkout.VezmoReturnActivity"
+      android:exported="true"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:theme="@android:style/Theme.NoDisplay" />
+
+    <!-- Google Pay in the Vezmo payment sheet. Merged into the app's manifest automatically. -->
+    <meta-data
+      android:name="com.google.android.gms.wallet.api.enabled"
+      android:value="true" />
+  </application>
+</manifest>
