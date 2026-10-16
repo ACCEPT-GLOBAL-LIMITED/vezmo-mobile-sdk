@@ -46,6 +46,15 @@ android {
         getByName("main") {
             java.srcDirs("src/main/kotlin")
         }
+        getByName("test") {
+            java.srcDirs("src/test/kotlin")
+        }
+    }
+
+    // The plugin's lifecycle runs against real activities (Robolectric) and the real native SDK, talking to a local
+    // server: `./gradlew :vezmo_checkout:testDebugUnitTest` from example/android, after a `flutter build`.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     defaultConfig {
@@ -63,4 +72,8 @@ dependencies {
     // The native SDK, pinned exactly: the plugin's version and the SDK's move together.
     implementation("com.vezmo:vezmo-checkout:0.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }

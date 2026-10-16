@@ -84,6 +84,11 @@ jobs:
       - name: Build the example app (release)
         working-directory: packages/flutter/example
         run: flutter build apk --release --target-platform android-x64 --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE
+      # The plugin's activity lifecycle (Robolectric, with the native SDK built above and a local server). AGP runs unit
+      # tests on the debug build type only.
+      - name: Plugin unit tests (Android)
+        working-directory: packages/flutter/example/android
+        run: ./gradlew :vezmo_checkout:testDebugUnitTest --console=plain
       - name: Enable KVM for the emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
