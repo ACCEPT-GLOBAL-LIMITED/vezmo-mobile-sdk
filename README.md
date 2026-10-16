@@ -7,7 +7,7 @@ trial or a first payment, with the card saved for the renewals.
 | Package | Status |
 |---|---|
 | [`@vezmopay/react-native`](packages/react-native) (React Native and Expo) | 0.1.0, release candidate (payments and subscriptions) |
-| [Android, `com.vezmo:vezmo-checkout`](packages/android) (Kotlin, Compose or Views) | 0.1.0, release candidate (payments; subscriptions coming) |
+| [Android, `com.vezmo:vezmo-checkout`](packages/android) (Kotlin, Compose or Views) | 0.1.0, release candidate (payments and subscriptions) |
 | iOS (Swift Package) | In progress |
 | Flutter | Planned, on the native SDKs |
 
