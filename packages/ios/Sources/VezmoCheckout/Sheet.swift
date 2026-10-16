@@ -141,6 +141,7 @@ struct SheetView: View {
   let close: (CheckoutResult) -> Void
 
   @Environment(\.pixelLength) private var pixel
+  @Environment(\.sizeCategory) private var sizeCategory
   @State private var entered = false
   @State private var walletsHeight: CGFloat = 0
   @State private var contentHeight: CGFloat = 0
@@ -171,7 +172,8 @@ struct SheetView: View {
       radius: props.appearance?.cornerRadius ?? defaultRadius,
       fontFamily: props.appearance?.fontFamily,
       dark: dark,
-      hairline: pixel
+      hairline: pixel,
+      textScale: Look.textScale(sizeCategory)
     )
   }
 
@@ -193,11 +195,12 @@ struct SheetView: View {
         radius: look.radius,
         fontFamily: look.fontFamily,
         applePay: methods.applePay ? props.applePay : nil,
+        applePayRecurring: ApplePayRecurring(config: config, charge: charge, merchant: merchant),
         billingName: config.customerName,
         billingEmail: config.customerEmail,
         attempt: snap.elementAttempt
       ),
-      intent: EngineIntent(charge: charge, methods: methods)
+      intent: EngineIntent(charge: charge, methods: methods, plan: config.subscription)
     )
   }
 
@@ -257,6 +260,7 @@ struct SheetView: View {
           merchant: merchant,
           paidWith: snap.paidWith,
           paidMethod: snap.paidMethod,
+          plan: snap.config?.subscription,
           look: look
         ) { close(result) }
       default:
@@ -342,7 +346,7 @@ struct SheetView: View {
             if !config.livemode {
               Text("TEST MODE").font(look.font(10, .bold)).tracking(0.6).foregroundColor(.white)
                 .padding(.horizontal, 7)
-                .frame(height: 20)
+                .frame(minHeight: 20)
                 .background(Capsule(style: .circular).fill(look.c(p.warn)))
             }
           }
@@ -354,10 +358,10 @@ struct SheetView: View {
       }
       .padding(.trailing, 44)
       VStack(alignment: .leading, spacing: 2) {
-        Text("Total").label(look)
+        Text(config.subscription != nil ? "Due today" : "Total").label(look)
         Text(amount).font(look.font(34, .bold).monospacedDigit()).tracking(-0.9).foregroundColor(look.c(p.ink))
       }
-      .accessibilityElement(children: .combine)
+      if let plan = config.subscription { PlanSummary(plan: plan, look: look) }
     }
     .padding(.horizontal, 20)
     .padding(.top, 14)
@@ -501,6 +505,12 @@ struct SheetView: View {
     }
   }
 
+  /// The main button's words: what it pays for, or what it starts (a subscription).
+  private var payLabel: String {
+    guard let plan = snap.config?.subscription else { return "Pay \(amount)" }
+    return plan.trial ? "Start free trial" : "Subscribe · \(amount)"
+  }
+
   /// The pinned bottom: the main button and "Secured by", always in reach however long the content above.
   private func dock(_ look: Look) -> some View {
     VStack(spacing: 14) {
@@ -520,7 +530,7 @@ struct SheetView: View {
             .accessibilityIdentifier("vezmo-retry")
         } else {
           PrimaryButton(
-            label: "Pay \(amount)",
+            label: payLabel,
             look: look,
             disabled: !CheckoutSession.canPay(snap),
             busy: paying,
@@ -528,6 +538,13 @@ struct SheetView: View {
           ) { session.pay() }
             .accessibilityIdentifier("vezmo-pay")
         }
+      }
+      // The recurring authorization, small, right above the button that gives it.
+      if let plan = snap.config?.subscription, !snap.phase.isWaiting {
+        Text(plan.consentText).font(look.font(12)).foregroundColor(look.c(look.p.ink3)).lineSpacing(1.7)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+          .frame(maxWidth: .infinity)
       }
       SecuredBy(look: look)
     }
@@ -562,8 +579,20 @@ struct ResultView: View {
   let merchant: String
   let paidWith: String?
   let paidMethod: PaidMethod?
+  /// A subscription checkout's plan.
+  let plan: SubscriptionPlan?
   let look: Look
   let onDone: () -> Void
+
+  /// The subscription the checkout started, if it was one.
+  private var subscription: SubscriptionResult? {
+    switch result {
+    case .succeeded(_, _, let s), .processing(_, let s): return s
+    default: return nil
+    }
+  }
+
+  private var trialing: Bool { subscription?.status == .trialing }
 
   private struct Copy {
     let title: String
@@ -573,11 +602,21 @@ struct ResultView: View {
   }
 
   private var copy: Copy {
+    let next = dateText(plan?.nextChargeAt)
     switch result {
+    case .succeeded where trialing:
+      return Copy(title: "Your free trial has started", body: next.isEmpty ? "" : "Nothing is charged until \(next).", kind: .good, action: "Done")
+    case .succeeded where subscription != nil:
+      return Copy(title: "You’re subscribed", body: "", kind: .good, action: "Done")
     case .succeeded:
       return Copy(title: "Payment successful", body: "", kind: .good, action: "Done")
     case .processing:
-      return Copy(title: "Payment received", body: "Your payment is on its way. You’ll get a confirmation when it clears.", kind: .wait, action: "Done")
+      return Copy(
+        title: subscription != nil ? "Subscription received" : "Payment received",
+        body: "Your payment is on its way. You’ll get a confirmation when it clears.",
+        kind: .wait,
+        action: "Done"
+      )
     case .failed(let error) where error.code == .expired:
       return Copy(title: "Checkout expired", body: "Return to \(merchant.isEmpty ? "the app" : merchant) to start again.", kind: .neutral, action: "Close")
     case .failed(let error) where error.code == .alreadyPaid:
@@ -591,16 +630,18 @@ struct ResultView: View {
 
   private var paymentId: String {
     switch result {
-    case .succeeded(let id, _), .processing(let id): return id
+    case .succeeded(let id, _, _), .processing(let id, _): return id ?? ""
     default: return ""
     }
   }
 
   /// Receipt rows: Paid to, Paid with (the network's mark and last four from Vezmo's server, else what the buyer
-  /// chose, or UPI / Pix), and the reference the buyer can quote.
+  /// chose, or UPI / Pix), and the reference the buyer can quote: the subscription's, else the transaction's, else the
+  /// payment's own id. A subscription's receipt shows the plan and its next charge instead of who was paid.
   private var rows: [(key: String, value: String, mark: Mark?)] {
     var reference = paymentId
-    if case .succeeded(_, let transactionId?) = result, !transactionId.isEmpty { reference = transactionId }
+    if case .succeeded(_, let transactionId?, _) = result, !transactionId.isEmpty { reference = transactionId }
+    if let ref = subscription?.ref, !ref.isEmpty { reference = ref }
     let mark = Mark.forBrand(paidMethod?.brand) ?? (paidWith == "UPI" ? .upi : paidWith == "Pix" ? .pix : nil)
     let paidText: String
     if let last4 = paidMethod?.last4, !last4.isEmpty {
@@ -608,11 +649,19 @@ struct ResultView: View {
     } else {
       paidText = mark == .upi || mark == .pix ? "" : (paidWith ?? "")
     }
-    return [
-      ("Paid to", merchant, nil),
-      ("Paid with", paidText.isEmpty ? (mark?.rawValue ?? "") : paidText, mark),
-      ("Reference", reference, nil),
-    ].filter { !$0.value.isEmpty }
+    let paid = paidText.isEmpty ? (mark?.rawValue ?? "") : paidText
+    var rows: [(key: String, value: String, mark: Mark?)] = []
+    if subscription != nil {
+      let planText: String = plan.map { "\($0.planName) · \(planPriceText($0))" } ?? ""
+      rows.append(("Plan", planText, nil))
+      rows.append((trialing ? "First charge" : "Next charge", dateText(plan?.nextChargeAt), nil))
+      rows.append((trialing ? "Card" : "Paid with", paid, mark))
+    } else {
+      rows.append(("Paid to", merchant, nil))
+      rows.append(("Paid with", paid, mark))
+    }
+    rows.append(("Reference", reference, nil))
+    return rows.filter { !$0.value.isEmpty }
   }
 
   var body: some View {
@@ -625,7 +674,7 @@ struct ResultView: View {
         .padding(.top, 14)
         .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier("vezmo-result-title")
-      if case .succeeded = result, !amount.isEmpty {
+      if case .succeeded = result, !amount.isEmpty, !trialing {
         Text(amount).font(look.font(34, .bold).monospacedDigit()).tracking(-0.9).foregroundColor(look.c(p.ink))
       }
       if !copy.body.isEmpty {
@@ -633,7 +682,7 @@ struct ResultView: View {
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
       }
-      if !paymentId.isEmpty {
+      if !paymentId.isEmpty || subscription != nil {
         VStack(spacing: 0) {
           ForEach(Array(rows.enumerated()), id: \.offset) { i, row in
             HStack(spacing: 12) {

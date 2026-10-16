@@ -10,10 +10,23 @@ struct Look {
   let dark: Bool
   /// One device pixel.
   let hairline: CGFloat
+  /// The buyer's text size (Dynamic Type): 1 at the default size.
+  var textScale: CGFloat = 1
 
+  /// The sheet's text at `size` points for the default text size, grown or shrunk with the buyer's setting.
   func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-    if let fontFamily { return Font.custom(fontFamily, fixedSize: size).weight(weight) }
-    return Font.system(size: size, weight: weight)
+    let scaled = size * textScale
+    if let fontFamily { return Font.custom(fontFamily, fixedSize: scaled).weight(weight) }
+    return Font.system(size: scaled, weight: weight)
+  }
+
+  /// How much the buyer's text size enlarges the sheet's text, as body text grows: 1 at the default size, up to the
+  /// first accessibility size so the layout holds.
+  static func textScale(_ category: ContentSizeCategory) -> CGFloat {
+    var size = UIContentSizeCategory(category)
+    if size > .accessibilityMedium { size = .accessibilityMedium }
+    let traits = UITraitCollection(preferredContentSizeCategory: size)
+    return UIFontMetrics(forTextStyle: .body).scaledValue(for: 17, compatibleWith: traits) / 17
   }
 
   func c(_ color: UIColor) -> Color { Color(color) }
@@ -280,6 +293,43 @@ struct SecuredBy: View {
     .frame(maxWidth: .infinity)
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("Secured by Vezmo")
+  }
+}
+
+/// A subscription's plan under the total: "7-day free trial · Today", then "$9.99 / month · From Oct 23, 2026" (as
+/// Apple's own subscription sheet reads). One element to VoiceOver.
+struct PlanSummary: View {
+  let plan: SubscriptionPlan
+  let look: Look
+
+  var body: some View {
+    let next = dateText(plan.nextChargeAt)
+    let price = planPriceText(plan)
+    let trialText = plan.trialDays.flatMap { $0 > 0 ? "\($0)-day free trial" : nil } ?? "Free trial"
+    let when = next.isEmpty ? "" : plan.trial ? "From \(next)" : "Renews \(next)"
+    let spoken = [plan.trial ? "\(trialText), starting today" : "", price, when].filter { !$0.isEmpty }
+    VStack(spacing: 0) {
+      if plan.trial { row(trialText, "Today", line: false) }
+      row(price, when, line: plan.trial)
+    }
+    .padding(.horizontal, 14)
+    .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(look.p.surface2)))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(spoken.joined(separator: ". "))
+  }
+
+  private func row(_ title: String, _ sub: String, line: Bool) -> some View {
+    HStack(spacing: 12) {
+      Text(title).font(look.font(15, .semibold).monospacedDigit()).foregroundColor(look.c(look.p.ink))
+      Spacer(minLength: 0)
+      if !sub.isEmpty {
+        Text(sub).font(look.font(13).monospacedDigit()).foregroundColor(look.c(look.p.ink3))
+      }
+    }
+    .padding(.vertical, 11)
+    .overlay(alignment: .top) {
+      if line { Rectangle().fill(look.c(look.p.line)).frame(height: look.hairline) }
+    }
   }
 }
 

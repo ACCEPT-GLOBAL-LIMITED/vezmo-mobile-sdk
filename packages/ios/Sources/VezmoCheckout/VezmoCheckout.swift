@@ -8,6 +8,8 @@ import UIKit
 ///     let vezmo = VezmoCheckout(configuration: .init(returnURL: URL(string: "acme://vezmo")))
 ///     if let error = await vezmo.prepare(clientToken: token) { show(error.message); return }
 ///     switch await vezmo.present(from: viewController) { … }
+///
+/// A subscription is the same with `prepare(subscriptionToken:)`.
 public final class VezmoCheckout {
   /// This SDK's version (sent to Vezmo with each call, for support).
   public static let version = "0.1.0"
@@ -20,17 +22,32 @@ public final class VezmoCheckout {
     self.configuration = configuration
   }
 
-  /// Loads the session: call it as soon as you have the client token. Returns an error (for example an expired
+  /// Loads a one-time payment: call it as soon as you have the client token. Returns an error (for example an expired
   /// session) or nil when the sheet is ready to present.
   /// - Parameters:
   ///   - clientToken: From your server: the API checkout session's `clientToken`.
   ///   - merchantDisplayName: Shown at the top of the sheet. Defaults to the business name on the session.
   @MainActor
   public func prepare(clientToken: String, merchantDisplayName: String? = nil) async -> VezmoError? {
-    let token = clientToken.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !token.isEmpty else { return VezmoError(code: .config, message: "clientToken is required.") }
+    await load(clientToken, kind: .payment, merchantDisplayName: merchantDisplayName, missing: "clientToken is required.")
+  }
+
+  /// Loads a subscription to start in the app: the first payment, or a free trial with the card saved for the
+  /// renewals. Returns an error (for example a used subscription link) or nil when the sheet is ready to present.
+  /// - Parameters:
+  ///   - subscriptionToken: From your server: the subscription's `checkoutToken` (`POST /merchant/subscription`).
+  ///   - merchantDisplayName: Shown at the top of the sheet. Defaults to the business name.
+  @MainActor
+  public func prepare(subscriptionToken: String, merchantDisplayName: String? = nil) async -> VezmoError? {
+    await load(subscriptionToken, kind: .subscription, merchantDisplayName: merchantDisplayName, missing: "subscriptionToken is required.")
+  }
+
+  @MainActor
+  private func load(_ rawToken: String, kind: CheckoutKind, merchantDisplayName: String?, missing: String) async -> VezmoError? {
+    let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !token.isEmpty else { return VezmoError(code: .config, message: missing) }
     let api = VezmoAPI(base: configuration.apiBase)
-    let session = CheckoutSession(api: api, token: token, returnURL: configuration.returnURL?.absoluteString)
+    let session = CheckoutSession(api: api, token: token, returnURL: configuration.returnURL?.absoluteString, kind: kind)
     await session.load()
     if case .closed(.failed(let error)) = session.snapshot.phase {
       prepared = nil
