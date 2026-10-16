@@ -111,6 +111,9 @@
       "components": {
         "VezmoPaymentElementView": {
           "className": "VezmoPaymentElementView"
+        },
+        "VezmoCardFlowView": {
+          "className": "VezmoCardFlowView"
         }
       }
     }

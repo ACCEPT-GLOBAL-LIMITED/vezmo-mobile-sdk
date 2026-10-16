@@ -17,10 +17,13 @@ export interface ElementPort {
   confirm(): void;
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
   clearSelection(): void;
-  /** Open the native card form. */
+}
+
+/** What the card flow can be asked to do: the card form, paying with its card, answering its confirmation. */
+export interface CardFlowPort {
   presentCard(): void;
-  /** Pay with the card from the card form. */
   confirmCard(): void;
+  resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
 }
 
 /** The card from the native card form, for the sheet's own Card row. */
@@ -93,6 +96,9 @@ export class CheckoutSession {
   };
   private listeners = new Set<() => void>();
   private element: ElementPort | null = null;
+  private cardFlow: CardFlowPort | null = null;
+  /** Which native view started the payment in progress (its confirmation is answered there). */
+  private confirmVia: 'element' | 'card' = 'element';
   private lastPay: PayResponse | null = null;
   private lastError: VezmoError | null = null;
   private watching: ReturnType<typeof setInterval> | null = null;
@@ -119,6 +125,10 @@ export class CheckoutSession {
 
   attachElement(element: ElementPort | null) {
     this.element = element;
+  }
+
+  attachCardFlow(cardFlow: CardFlowPort | null) {
+    this.cardFlow = cardFlow;
   }
 
   // ── loading and currency ───────────────────────────────────────────────
@@ -160,7 +170,7 @@ export class CheckoutSession {
   changeCard() {
     if (this.snapshot.phase.name !== 'ready') return;
     this.awaitingCard = true;
-    this.element?.presentCard();
+    this.cardFlow?.presentCard();
   }
 
   /** The card form reported its card (or none). One the buyer just typed becomes the selection. */
@@ -273,13 +283,30 @@ export class CheckoutSession {
 
   // ── paying ─────────────────────────────────────────────────────────────
   pay() {
-    if (this.snapshot.phase.name !== 'ready' || !this.element || !CheckoutSession.canPay(this.snapshot)) return;
+    if (this.snapshot.phase.name !== 'ready' || !CheckoutSession.canPay(this.snapshot)) return;
+    const card = this.snapshot.method === 'card';
+    if (card ? !this.cardFlow : !this.element) return;
     this.lastPay = null;
     this.lastError = null;
-    const card = this.snapshot.method === 'card';
+    this.confirmVia = card ? 'card' : 'element';
     this.set({ phase: { name: 'paying' }, paidWith: card ? (this.snapshot.card?.label ?? null) : this.snapshot.option });
-    if (card) this.element.confirmCard();
-    else this.element.confirm();
+    if (card) this.cardFlow!.confirmCard();
+    else this.element!.confirm();
+  }
+
+  /** An express wallet button was tapped (Apple Pay, Google Pay): its payment has started in the card flow. */
+  walletStarted(wallet: string) {
+    if (this.snapshot.phase.name !== 'ready') return;
+    this.lastPay = null;
+    this.lastError = null;
+    this.confirmVia = 'card';
+    const name = wallet === 'apple_pay' ? 'Apple Pay' : wallet === 'google_pay' ? 'Google Pay' : wallet;
+    this.set({ phase: { name: 'paying' }, paidWith: name });
+  }
+
+  /** The native view that started the payment in progress. */
+  private confirmer(): { resolveConfirmation(clientSecret: string | null, errorMessage?: string): void } | null {
+    return this.confirmVia === 'card' ? this.cardFlow : this.element;
   }
 
   /** The element made a confirmation token: Vezmo prices and confirms the payment with it. */
@@ -293,7 +320,7 @@ export class CheckoutSession {
       });
       this.lastPay = res;
       if (res.method) this.set({ paidMethod: res.method });
-      this.element?.resolveConfirmation(res.clientSecret ?? null, res.clientSecret ? undefined : DECLINED.message);
+      this.confirmer()?.resolveConfirmation(res.clientSecret ?? null, res.clientSecret ? undefined : DECLINED.message);
     } catch (e) {
       const err = e instanceof VezmoApiError ? e : null;
       if (err?.reason === 'local_price_changed') {
@@ -306,7 +333,7 @@ export class CheckoutSession {
       } else {
         this.lastError = err?.toVezmoError() ?? { code: 'unknown', message: DECLINED.message };
       }
-      this.element?.resolveConfirmation(null, this.lastError.message);
+      this.confirmer()?.resolveConfirmation(null, this.lastError.message);
       if (err && (err.code === 'expired' || err.code === 'already_paid')) this.close(err);
     }
   }

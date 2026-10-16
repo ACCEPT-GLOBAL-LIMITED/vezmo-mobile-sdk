@@ -32,16 +32,12 @@ function setup() {
     startQr: jest.fn<any>().mockResolvedValue({ status: 'requires_action', qr: null, link: 'upi://pay?pa=x', code: null }),
     checkoutPageUrl: jest.fn((t: string) => `https://api.test/v1/secure-payments/${t}`),
   };
-  const element = {
-    confirm: jest.fn(),
-    resolveConfirmation: jest.fn(),
-    clearSelection: jest.fn(),
-    presentCard: jest.fn(),
-    confirmCard: jest.fn(),
-  };
+  const element = { confirm: jest.fn(), resolveConfirmation: jest.fn(), clearSelection: jest.fn() };
+  const cardFlow = { presentCard: jest.fn(), confirmCard: jest.fn(), resolveConfirmation: jest.fn() };
   const session = new CheckoutSession(api as any, 'tok', 'acme://vezmo/return');
   session.attachElement(element);
-  return { api, element, session };
+  session.attachCardFlow(cardFlow);
+  return { api, element, cardFlow, session };
 }
 
 describe('CheckoutSession', () => {
@@ -152,7 +148,7 @@ describe('CheckoutSession', () => {
 
   it('the Card row: opens the card form, the typed card becomes the selection, and pays through the card form', () => {
     t.session.chooseCard();
-    expect(t.element.presentCard).toHaveBeenCalled();
+    expect(t.cardFlow.presentCard).toHaveBeenCalled();
     expect(CheckoutSession.canPay(t.session.getSnapshot())).toBe(false);
     const card = { label: '•••• 4242', image: 'data:image/png;base64,AA==' };
     t.session.setCard(card);
@@ -167,9 +163,18 @@ describe('CheckoutSession', () => {
     t.session.chooseCard();
     expect(t.session.getSnapshot().method).toBe('card');
     t.session.pay();
-    expect(t.element.confirmCard).toHaveBeenCalled();
+    expect(t.cardFlow.confirmCard).toHaveBeenCalled();
     expect(t.element.confirm).not.toHaveBeenCalled();
     expect(t.session.getSnapshot().paidWith).toBe('•••• 4242');
+  });
+
+  it('the card flow answers its own confirmation (card form or wallet), the element its own', async () => {
+    t.api.pay.mockResolvedValue({ state: 'requires_action', paymentId: 'pay_1', clientSecret: 'pi_1_secret_w' });
+    t.session.walletStarted('apple_pay');
+    expect(t.session.getSnapshot()).toMatchObject({ phase: { name: 'paying' }, paidWith: 'Apple Pay' });
+    await t.session.onConfirmationToken('ctoken_w');
+    expect(t.cardFlow.resolveConfirmation).toHaveBeenCalledWith('pi_1_secret_w', undefined);
+    expect(t.element.resolveConfirmation).not.toHaveBeenCalled();
   });
 
   it('UPI: starts on the session intent, waits for the bank app, records it when paid', async () => {

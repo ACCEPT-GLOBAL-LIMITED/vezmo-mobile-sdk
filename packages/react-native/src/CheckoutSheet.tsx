@@ -14,6 +14,7 @@ import {
 import { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
 import { formatAmount } from './flow';
+import { CardFlow, type CardFlowHandle } from './CardFlow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
 import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
 import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
@@ -60,6 +61,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const { session } = props;
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const element = useRef<PaymentElementHandle>(null);
+  const cardFlow = useRef<CardFlowHandle>(null);
   const systemScheme = useColorScheme();
   const scheme: 'light' | 'dark' =
     props.style === 'light' || props.style === 'dark'
@@ -84,21 +86,25 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
       confirm: () => element.current?.confirm(),
       resolveConfirmation: (secret, message) => element.current?.resolveConfirmation(secret, message),
       clearSelection: () => element.current?.clearSelection(),
-      presentCard: () => element.current?.presentCard(),
-      confirmCard: () => element.current?.confirmCard(),
+    });
+    session.attachCardFlow({
+      presentCard: () => cardFlow.current?.presentCard(),
+      confirmCard: () => cardFlow.current?.confirmCard(),
+      resolveConfirmation: (secret, message) => cardFlow.current?.resolveConfirmation(secret, message),
     });
     return () => {
       session.attachElement(null);
+      session.attachCardFlow(null);
       session.dispose();
     };
   }, [session]);
 
   const { config, charge, methods, phase } = snap;
   const merchant = props.merchantDisplayName ?? config?.merchantName ?? '';
-  const configJson = useMemo(
+  const settings = useMemo(
     () =>
       config && charge && methods
-        ? elementConfigJson({
+        ? {
             config,
             methods,
             merchantDisplayName: merchant,
@@ -109,16 +115,21 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
             wallets: props.wallets,
             charge,
             attempt: snap.elementAttempt,
-          })
-        : '',
+          }
+        : null,
     // The element is rebuilt only for new keys, wallets or look, never for a new amount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [config?.publishableKey, config?.connectedAccountId, methods?.applePay, methods?.googlePay, charge?.currency, scheme, p, merchant, props.returnUrl, snap.elementAttempt],
   );
+  // The element draws the other methods' rows; the card flow the card form and the express wallet buttons.
+  const configJson = useMemo(() => (settings ? elementConfigJson(settings) : ''), [settings]);
+  const cardConfigJson = useMemo(() => (settings ? elementConfigJson({ ...settings, withWallets: true }) : ''), [settings]);
   const intentJson = useMemo(() => (charge && methods ? elementIntentJson(charge, methods) : ''), [charge, methods]);
-  // The native element takes a moment to load: placeholder rows hold its place until it reports in.
+  // The native views take a moment to load: placeholder rows hold their place until both report in.
   const [loadedConfig, setLoadedConfig] = useState('');
-  const elementLoading = loadedConfig !== configJson && !snap.elementError;
+  const [loadedCardConfig, setLoadedCardConfig] = useState('');
+  const elementLoading = (loadedConfig !== configJson || loadedCardConfig !== cardConfigJson) && !snap.elementError;
+  const [walletsHeight, setWalletsHeight] = useState(0);
 
   const close = (result: CheckoutResult) => props.onClose(result);
   const amount = charge ? formatAmount(charge.amountMinor, charge.currency) : '';
@@ -128,10 +139,9 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const qrForm = useRef<QrFormHandle>(null);
   // The Card row is the sheet's own; the element draws the other methods and this phone's wallet when offered.
   const cardOn = !!methods?.elementTypes.includes('card');
-  const walletRow = Platform.OS === 'ios' ? !!(methods?.applePay && props.wallets?.applePay) : !!methods?.googlePay;
-  const elementRows = !!methods && (methods.elementTypes.some((t) => t !== 'card') || walletRow);
-  // Placeholders for the rows about to load.
-  const expectedRows = methods ? Math.max(1, methods.elementTypes.length + (walletRow ? 1 : 0)) : 3;
+  const elementRows = !!methods && methods.elementTypes.some((t) => t !== 'card');
+  // Placeholders for the rows about to load (the Card row and the element's).
+  const expectedRows = methods ? Math.max(1, methods.elementTypes.length) : 3;
   // A hairline over the pinned bottom only while content scrolls under it.
   const [scroll, setScroll] = useState({ content: 0, frame: 0 });
   const scrolls = scroll.content > scroll.frame + 1;
@@ -249,6 +259,29 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                       </View>
                     )}
 
+                    {/* Express: the official Apple Pay / Google Pay button, when this phone and the business have one. */}
+                    <View style={walletsHeight > 1 ? s.section : { height: walletsHeight, overflow: 'hidden' }}>
+                      <CardFlow
+                        ref={cardFlow}
+                        configJson={cardConfigJson}
+                        intentJson={intentJson}
+                        onLoaded={() => setLoadedCardConfig(cardConfigJson)}
+                        onLoadFailed={(message) => session.setElementError(message || 'load failed')}
+                        onCardOptionChange={(card) => session.setCard(card)}
+                        onWalletsHeight={setWalletsHeight}
+                        onWalletTap={(wallet) => session.walletStarted(wallet)}
+                        onConfirmationToken={(id) => void session.onConfirmationToken(id)}
+                        onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
+                      />
+                      {walletsHeight > 1 && (
+                        <View style={s.orRow}>
+                          <View style={s.orLine} />
+                          <Text style={s.orText}>or pay another way</Text>
+                          <View style={s.orLine} />
+                        </View>
+                      )}
+                    </View>
+
                     <View style={s.section}>
                       <View style={s.labelRow}>
                         <Text style={s.label}>Payment method</Text>
@@ -279,7 +312,6 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                             configJson={configJson}
                             intentJson={intentJson}
                             onPaymentOptionChange={(option) => session.setOption(option)}
-                            onCardOptionChange={(card) => session.setCard(card)}
                             onLoaded={() => {
                               setLoadedConfig(configJson);
                               session.setElementError(null);

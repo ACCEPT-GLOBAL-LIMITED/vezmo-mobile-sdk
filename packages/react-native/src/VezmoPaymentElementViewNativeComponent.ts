@@ -8,8 +8,9 @@ import {
 } from 'react-native';
 
 /**
- * The native payment element: card fields, Apple Pay / Google Pay and the methods the business offers, drawn by the
- * platform's own UI. Inputs are JSON so the native side stays a thin host (see `elementConfig.ts`).
+ * The native payment element: the methods with rows of their own (pay-later, Cash App…), drawn by the platform's own
+ * UI. Cards and wallets are the card flow's (`VezmoCardFlowViewNativeComponent`). Inputs are JSON so the native side
+ * stays a thin host (see `elementConfig.ts`).
  */
 export interface NativeProps extends ViewProps {
   /** Keys, account, wallets, return link and appearance. A change rebuilds the element. */
@@ -26,11 +27,6 @@ export interface NativeProps extends ViewProps {
   onConfirmationToken?: CodegenTypes.DirectEventHandler<Readonly<{ id: string }>>;
   /** `completed`, `canceled` or `failed` (with `message`). */
   onConfirmResult?: CodegenTypes.DirectEventHandler<Readonly<{ status: string; message: string }>>;
-  /**
-   * The card typed in the card form (the sheet draws the Card row itself): its label ("•••• 4242") and the network's
-   * logo as a PNG data URI; both empty when there is no card yet.
-   */
-  onCardOptionChange?: CodegenTypes.DirectEventHandler<Readonly<{ label: string; image: string }>>;
 }
 
 interface NativeCommands {
@@ -44,14 +40,10 @@ interface NativeCommands {
   ) => void;
   /** Unselect the element's method (the buyer chose one of the sheet's own: the card, UPI or Pix). */
   clearSelection: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
-  /** Open the native card form (the Card row, or its Change). */
-  presentCard: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
-  /** Pay with the card from the card form. The outcome arrives in `onConfirmResult`. */
-  confirmCard: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ['confirm', 'resolveConfirmation', 'clearSelection', 'presentCard', 'confirmCard'],
+  supportedCommands: ['confirm', 'resolveConfirmation', 'clearSelection'],
 });
 
 export default codegenNativeComponent<NativeProps>(

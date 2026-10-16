@@ -10,8 +10,8 @@ export interface WalletOptions {
 }
 
 /**
- * The element's settings as JSON for the native view: keys and account from the session, wallets only when the
- * business offers them, our palette, the app's return link. A change rebuilds the native element.
+ * Settings as JSON for the native views: keys and account from the session, wallets (for the card flow) only when the
+ * business offers them, our palette, the app's return link. A change rebuilds the native view.
  */
 export function elementConfigJson(args: {
   config: CheckoutConfig;
@@ -25,6 +25,8 @@ export function elementConfigJson(args: {
   charge: Charge;
   /** Bumped to rebuild the element (Try again after a failed load). */
   attempt?: number;
+  /** Apple Pay and Google Pay: the card flow's (its express buttons), never the element's. */
+  withWallets?: boolean;
 }): string {
   const { config, methods, wallets } = args;
   return JSON.stringify({
@@ -34,13 +36,14 @@ export function elementConfigJson(args: {
     returnURL: args.returnUrl,
     style: args.scheme,
     applePay:
-      methods.applePay && wallets?.applePay?.merchantId
+      args.withWallets && methods.applePay && wallets?.applePay?.merchantId
         ? {
             merchantId: wallets.applePay.merchantId,
             merchantCountryCode: wallets.applePay.merchantCountryCode ?? 'US',
           }
         : null,
-    googlePay: methods.googlePay
+    googlePay:
+      args.withWallets && methods.googlePay
       ? {
           merchantCountryCode: wallets?.googlePay?.merchantCountryCode ?? 'US',
           currencyCode: args.charge.currency,

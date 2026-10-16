@@ -67,8 +67,6 @@ static std::string VZString(id value)
     emitter->onConfirmationToken({.id = VZString(body[@"id"])});
   } else if ([name isEqualToString:@"confirmResult"]) {
     emitter->onConfirmResult({.status = VZString(body[@"status"]), .message = VZString(body[@"message"])});
-  } else if ([name isEqualToString:@"cardOption"]) {
-    emitter->onCardOptionChange({.label = VZString(body[@"label"]), .image = VZString(body[@"image"])});
   }
 }
 
@@ -103,16 +101,6 @@ static std::string VZString(id value)
 - (void)clearSelection
 {
   [_host clearSelection];
-}
-
-- (void)presentCard
-{
-  [_host presentCard];
-}
-
-- (void)confirmCard
-{
-  [_host confirmCard];
 }
 
 @end

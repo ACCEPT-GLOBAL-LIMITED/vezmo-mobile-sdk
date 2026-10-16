@@ -3,9 +3,9 @@ import React
 @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import UIKit
 
-/// The Vezmo payment element on iOS: the processor's native embedded element (wallets, pay-later and other methods)
-/// and, for cards, its native card form behind a flow controller (the sheet draws the Card row itself, with the card's
-/// own logo), both configured from JSON that the JS layer builds and confirmed through Vezmo's server.
+/// The Vezmo payment element on iOS: the processor's native embedded element for the methods with rows of their own
+/// (pay-later, Cash App…), configured from JSON that the JS layer builds and confirmed through Vezmo's server. Cards
+/// and wallets are the card flow's (`VezmoCardFlowHost`); with no other method the element is left out.
 ///
 /// Payment flow: the buyer picks a method and taps Pay → `confirm()` → the element creates a confirmation token and
 /// calls our handler → we hand the token's id to JS (`confirmationToken`) → JS sends it to Vezmo's API, which prices
@@ -18,8 +18,6 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
 
   private var element: EmbeddedPaymentElement?
   private var elementView: UIView?
-  /// Cards: the native card form and confirmation, without a row of its own.
-  private var cardFlow: PaymentSheet.FlowController?
   private var configJson = ""
   private var intentJson = ""
   private var building = false
@@ -37,7 +35,7 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
   // MARK: Props
 
   @objc public func setConfigJson(_ config: String, intentJson intent: String) {
-    let rebuild = config != configJson || (element == nil && cardFlow == nil)
+    let rebuild = config != configJson || element == nil
     configJson = config
     intentJson = intent
     Task { @MainActor in
@@ -69,30 +67,6 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     element?.clearPaymentOption()
   }
 
-  @objc public func presentCard() {
-    guard let cardFlow, let presenter = RCTPresentedViewController() else { return }
-    cardFlow.presentPaymentOptions(from: presenter) { [weak self] _ in
-      self?.emitCardOption()
-    }
-  }
-
-  @objc public func confirmCard() {
-    guard let cardFlow, let presenter = RCTPresentedViewController() else {
-      emit("confirmResult", ["status": "failed", "message": "The payment form isn’t ready yet."])
-      return
-    }
-    cardFlow.confirm(from: presenter) { [weak self] result in
-      switch result {
-      case .completed:
-        self?.emit("confirmResult", ["status": "completed", "message": ""])
-      case .canceled:
-        self?.emit("confirmResult", ["status": "canceled", "message": ""])
-      case .failed(let error):
-        self?.emit("confirmResult", ["status": "failed", "message": error.localizedDescription])
-      }
-    }
-  }
-
   @objc public func resolveConfirmation(clientSecret: String, errorMessage: String) {
     guard let continuation = pendingSecret else { return }
     pendingSecret = nil
@@ -122,7 +96,8 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
       let embeddedConfiguration = configuration(from: config)
       let types = intent["paymentMethodTypes"] as? [String] ?? []
       // The element draws the other ways to pay; with none (cards only), it is left out.
-      if !types.isEmpty || embeddedConfiguration.applePay != nil {
+      // Never an empty list (the processor would show every method on the account).
+      if !types.isEmpty {
         let created = try await EmbeddedPaymentElement.create(
           intentConfiguration: intentConfiguration(from: intent, types: types),
           configuration: embeddedConfiguration
@@ -131,17 +106,6 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
       } else {
         detachElement()
       }
-      if intent["card"] as? Bool == true {
-        cardFlow = try await withCheckedThrowingContinuation { continuation in
-          PaymentSheet.FlowController.create(
-            intentConfiguration: intentConfiguration(from: intent, types: ["card"]),
-            configuration: sheetConfiguration(from: config)
-          ) { continuation.resume(with: $0) }
-        }
-      } else {
-        cardFlow = nil
-      }
-      emitCardOption()
       emit("loaded", [:])
     } catch {
       emit("loadFailed", ["message": error.localizedDescription])
@@ -158,12 +122,6 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
         emit("loadFailed", ["message": error.localizedDescription])
       }
     }
-    if let cardFlow {
-      cardFlow.update(intentConfiguration: intentConfiguration(from: intent, types: ["card"])) { [weak self] error in
-        if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
-        self?.emitCardOption()
-      }
-    }
   }
 
   @MainActor
@@ -174,38 +132,13 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     emit("height", ["height": 0])
   }
 
-  /// The card from the card form, for the sheet's own Card row: its label and the network's logo.
-  private func emitCardOption() {
-    let option = cardFlow?.paymentOption
-    var body: [String: Any] = ["label": option?.label ?? "", "image": ""]
-    if let option, let png = option.image.pngData() {
-      body["image"] = "data:image/png;base64," + png.base64EncodedString()
-    }
-    emit("cardOption", body)
-  }
-
-  @MainActor
-  private func attach(_ created: EmbeddedPaymentElement) {
-    elementView?.removeFromSuperview()
-    element = created
-    created.delegate = self
-    created.presentingViewController = RCTPresentedViewController()
-
-    let view = created.view
-    view.translatesAutoresizingMaskIntoConstraints = false
-    addSubview(view)
-    NSLayoutConstraint.activate([
-      view.topAnchor.constraint(equalTo: topAnchor),
-      view.leadingAnchor.constraint(equalTo: leadingAnchor),
-      view.trailingAnchor.constraint(equalTo: trailingAnchor),
-    ])
-    elementView = view
-
-    embeddedPaymentElementDidUpdateHeight(embeddedPaymentElement: created)
-    embeddedPaymentElementDidUpdatePaymentOption(embeddedPaymentElement: created)
-  }
-
-  private func intentConfiguration(from intent: [String: Any], types: [String]) -> PaymentSheet.IntentConfiguration {
+  /// What is charged, for the element or the card flow: a confirmation token goes to `secret`, which answers with the
+  /// intent's client secret from Vezmo's server.
+  static func intentConfiguration(
+    from intent: [String: Any],
+    types: [String],
+    secret: @escaping (String) async throws -> String
+  ) -> PaymentSheet.IntentConfiguration {
     let amount = (intent["amount"] as? NSNumber)?.intValue ?? 0
     let currency = (intent["currency"] as? String ?? "usd").lowercased()
     return PaymentSheet.IntentConfiguration(
@@ -219,11 +152,17 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
       ),
       paymentMethodTypes: types,
       onBehalfOf: nil,
-      confirmationTokenConfirmHandler: { [weak self] confirmationToken in
-        guard let self else { throw VezmoElementError(message: "") }
-        return try await self.clientSecret(forToken: confirmationToken.stripeId)
+      confirmationTokenConfirmHandler: { confirmationToken in
+        try await secret(confirmationToken.stripeId)
       }
     )
+  }
+
+  private func intentConfiguration(from intent: [String: Any], types: [String]) -> PaymentSheet.IntentConfiguration {
+    Self.intentConfiguration(from: intent, types: types) { [weak self] tokenId in
+      guard let self else { throw VezmoElementError(message: "") }
+      return try await self.clientSecret(forToken: tokenId)
+    }
   }
 
   private func configuration(from config: [String: Any]) -> EmbeddedPaymentElement.Configuration {
@@ -259,31 +198,7 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     return configuration
   }
 
-  /// The card form's settings: the same business, look and billing details as the element; cards only, no wallets.
-  private func sheetConfiguration(from config: [String: Any]) -> PaymentSheet.Configuration {
-    var configuration = PaymentSheet.Configuration()
-    configuration.merchantDisplayName = config["merchantDisplayName"] as? String ?? ""
-    if let returnURL = config["returnURL"] as? String, !returnURL.isEmpty {
-      configuration.returnURL = returnURL
-    }
-    configuration.link = PaymentSheet.LinkConfiguration(display: .never)
-    configuration.paymentMethodLayout = .vertical
-    switch config["style"] as? String {
-    case "dark": configuration.style = .alwaysDark
-    case "light": configuration.style = .alwaysLight
-    default: configuration.style = .automatic
-    }
-    if let billing = config["billing"] as? [String: Any] {
-      configuration.defaultBillingDetails.name = billing["name"] as? String
-      configuration.defaultBillingDetails.email = billing["email"] as? String
-    }
-    if let appearance = config["appearance"] as? [String: Any] {
-      configuration.appearance = Self.appearance(from: appearance)
-    }
-    return configuration
-  }
-
-  private static func appearance(from params: [String: Any]) -> PaymentSheet.Appearance {
+  static func appearance(from params: [String: Any]) -> PaymentSheet.Appearance {
     var appearance = PaymentSheet.Appearance()
     let colors = params["colors"] as? [String: String] ?? [:]
     func color(_ key: String) -> UIColor? { colors[key].flatMap(UIColor.vezmoHex) }
@@ -361,7 +276,7 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     }
   }
 
-  private static func parse(_ json: String) -> [String: Any]? {
+  static func parse(_ json: String) -> [String: Any]? {
     guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
     return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
   }

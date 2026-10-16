@@ -117,6 +117,8 @@ jobs:
         run: |
           xcrun simctl install "$UDID" example/ios/build/Build/Products/Release-iphonesimulator/VezmoExample.app
           mkdir -p e2e/out-ios
+          # The test driver can take a while to start on a cold CI simulator.
+          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
           maestro --device "$UDID" test e2e/maestro/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; exit 1)
       - name: Keep screenshots
         if: always()

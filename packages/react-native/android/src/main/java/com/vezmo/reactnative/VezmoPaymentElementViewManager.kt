@@ -54,14 +54,6 @@ class VezmoPaymentElementViewManager :
     view.clearSelection()
   }
 
-  override fun presentCard(view: VezmoPaymentElementView) {
-    view.presentCard()
-  }
-
-  override fun confirmCard(view: VezmoPaymentElementView) {
-    view.confirmCard()
-  }
-
   override fun resolveConfirmation(
     view: VezmoPaymentElementView,
     clientSecret: String,
@@ -73,7 +65,6 @@ class VezmoPaymentElementViewManager :
   override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
     mutableMapOf(
       "topLoaded" to mapOf("registrationName" to "onLoaded"),
-      "topCardOptionChange" to mapOf("registrationName" to "onCardOptionChange"),
       "topLoadFailed" to mapOf("registrationName" to "onLoadFailed"),
       "topHeightChange" to mapOf("registrationName" to "onHeightChange"),
       "topPaymentOptionChange" to mapOf("registrationName" to "onPaymentOptionChange"),
