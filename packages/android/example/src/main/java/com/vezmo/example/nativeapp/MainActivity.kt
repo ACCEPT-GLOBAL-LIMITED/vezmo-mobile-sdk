@@ -115,10 +115,11 @@ private fun Shop() {
     }
     val vezmo = rememberVezmoCheckout(configuration) { result = it }
 
-    val newSession: () -> Unit = {
+    // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
+    val newSession: (String?) -> Unit = { track ->
         scope.launch {
             status = "Creating a sandbox session…"
-            val created = withContext(Dispatchers.IO) { runCatching { createDemoSession() }.getOrNull() }
+            val created = withContext(Dispatchers.IO) { runCatching { createDemoSession(track) }.getOrNull() }
             if (created == null) {
                 status = "Could not reach the demo endpoint."
             } else {
@@ -237,9 +238,20 @@ private fun Shop() {
                     .background(Color.White)
                     .border(1.dp, LINE, CircleShape)
                     .testTag("new-session")
-                    .clickable(onClick = newSession),
+                    .clickable { newSession(null) },
                 contentAlignment = Alignment.Center,
             ) { BasicText("New sandbox session", style = style(14f, weight = FontWeight.SemiBold)) }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, LINE, CircleShape)
+                    .testTag("new-session-mor")
+                    .clickable { newSession("mor") },
+                contentAlignment = Alignment.Center,
+            ) { BasicText("New session · merchant of record", style = style(14f, weight = FontWeight.SemiBold)) }
         }
     }
 }
@@ -288,8 +300,8 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp) =
     }
 
 /** The sandbox demo endpoint makes a TEST-mode session and returns its client token. */
-private fun createDemoSession(): String? {
-    val conn = URL(BuildConfig.VEZMO_DEMO_URL).openConnection() as HttpURLConnection
+private fun createDemoSession(track: String?): String? {
+    val conn = URL(BuildConfig.VEZMO_DEMO_URL + (track?.let { "?track=$it" } ?: "")).openConnection() as HttpURLConnection
     return try {
         conn.requestMethod = "POST"
         conn.connectTimeout = 15_000

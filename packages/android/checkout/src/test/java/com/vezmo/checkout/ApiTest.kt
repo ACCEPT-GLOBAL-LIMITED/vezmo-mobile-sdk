@@ -72,6 +72,31 @@ class ApiTest {
     }
 
     @Test
+    fun `a merchant-of-record session - JSON nulls stay null, never the text null`() = runTest {
+        val config = api(
+            200,
+            """{"success":true,"data":{"publishableKey":"pk_test_x","connectedAccountId":null,"livemode":false,
+            "amountMinor":4900,"currency":"USD","title":"Order","merchantName":null,"enabledMethods":{"card":true},
+            "customerName":null,"customerEmail":"","theme":null,"paymentId":"pay_1",
+            "localOffer":{"currency":"INR","amountMinor":420000,"rate":85.7,"country":null,"methods":["upi"],"token":"o"},
+            "appReturnUrl":null}}""",
+        ).checkout("tok")
+        assertEquals(null, config.connectedAccountId)
+        assertEquals(null, config.merchantName)
+        assertEquals(null, config.customerName)
+        assertEquals(null, config.customerEmail)
+        assertEquals(null, config.theme)
+        assertEquals(null, config.localOffer!!.country)
+        val intent = api(200, """{"success":true,"data":{"id":"pi_1","clientSecret":"pi_1_secret_x","connectedAccountId":null,"livemode":false}}""")
+            .intent("tok", null)
+        assertEquals(null, intent.connectedAccountId)
+        val paid = api(200, """{"success":true,"data":{"state":"succeeded","paymentId":"p","transactionId":null,"clientSecret":null,"method":{"type":"card","brand":null,"last4":null,"wallet":null}}}""")
+            .pay("tok", "c", null, null)
+        assertEquals(null, paid.transactionId)
+        assertEquals(PaidMethod("card", null, null, null), paid.method)
+    }
+
+    @Test
     fun `reads the checkout session and sends no body to load it`() = runTest {
         val calls = mutableListOf<Recorded>()
         val json = """{"success":true,"data":{"publishableKey":"pk_test_x","connectedAccountId":null,"livemode":false,

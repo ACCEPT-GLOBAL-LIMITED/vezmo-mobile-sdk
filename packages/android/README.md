@@ -23,18 +23,23 @@ dependencies {
 
 The library is on Maven Central; `mavenCentral()` must be in your repositories.
 
-Add your return link to the activity that opens the sheet, so the buyer comes back to it:
+Add your return link to the library's return screen in your app's `AndroidManifest.xml`, so the buyer comes back to
+the open sheet after a bank app, a pay-later provider or a browser step:
 
 ```xml
-<activity android:name=".CheckoutActivity" android:launchMode="singleTask" android:exported="true">
-  <intent-filter>
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="acme" android:host="vezmo" />
-  </intent-filter>
-</activity>
+<application>
+  <activity android:name="com.vezmo.checkout.VezmoReturnActivity" android:exported="true">
+    <intent-filter>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.DEFAULT" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="acme" android:host="vezmo" />
+    </intent-filter>
+  </activity>
+</application>
 ```
+
+Don't put the same link on a `singleTask` activity of your own: opening it would close the sheet.
 
 ## Take a payment
 
@@ -184,7 +189,9 @@ pays against Vezmo's sandbox with no setup.
   time.
 - **No Google Pay**: the business doesn't offer it yet, or the phone has no Google Wallet card.
 - **The buyer doesn't come back to the app after a bank app**: the session's `app.returnUrl` must be a link
-  registered under Developers → Mobile apps, and your app must open that link (the intent filter above).
+  registered under Developers → Mobile apps, and `VezmoReturnActivity` must have that link (the intent filter above).
+- **The result is `Canceled` after a bank app or pay-later provider**: the return link opened a `singleTask` activity
+  of your own, which closed the sheet. Give the link to `VezmoReturnActivity` only.
 
 ## Development
 

@@ -38,6 +38,7 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
     @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        open++
         intent.setExtrasClassLoader(CheckoutRequest::class.java.classLoader)
         val request = IntentCompat.getParcelableExtra(intent, CheckoutContract.EXTRA_REQUEST, CheckoutRequest::class.java)
         if (request == null) {
@@ -80,6 +81,16 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
+    }
+
+    override fun onDestroy() {
+        open--
+        super.onDestroy()
+    }
+
+    companion object {
+        /** Sheets alive in this process: where [VezmoReturnActivity] sends the buyer back. */
+        var open = 0
     }
 
     private fun close(result: CheckoutResult) {

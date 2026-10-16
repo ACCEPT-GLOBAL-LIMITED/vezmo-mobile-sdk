@@ -9,13 +9,14 @@
     <activity
       android:name=".MainActivity"
       android:exported="true"
-      android:launchMode="singleTask"
       android:windowSoftInputMode="adjustResize">
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
-      <!-- The return link registered for the demo sessions: vezmoexample://vezmo -->
+    </activity>
+    <!-- The return link registered for the demo sessions, vezmoexample://vezmo, back to the Vezmo sheet. -->
+    <activity android:name="com.vezmo.checkout.VezmoReturnActivity" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />

@@ -2,6 +2,7 @@ package com.vezmo.checkout
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -29,6 +30,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 internal const val DEFAULT_ERROR = "Your payment couldn’t be completed. Please try again."
+
+private const val TAG = "VezmoCheckout"
 
 /** Who and how: a change rebuilds the engine (new keys, wallets or look), never a new amount. */
 internal data class EngineSettings(
@@ -185,6 +188,7 @@ internal class Engine(private val session: CheckoutSession) {
             val cards = intentConfiguration(intent, listOf("card"))
             val error = configureOne(flow, cards, cardConfiguration!!)
             if (error != null) {
+                Log.w(TAG, "The card form couldn't load", error)
                 session.setElementError(error.localizedMessage ?: DEFAULT_ERROR)
                 return
             }
@@ -199,6 +203,7 @@ internal class Engine(private val session: CheckoutSession) {
             when (val result = embedded.configure(intentConfiguration(intent, intent.elementTypes), elementConfiguration!!)) {
                 is EmbeddedPaymentElement.ConfigureResult.Succeeded -> if (rebuild) session.setElementError(null)
                 is EmbeddedPaymentElement.ConfigureResult.Failed -> {
+                    Log.w(TAG, "The payment options couldn't load", result.error)
                     session.setElementError(result.error.localizedMessage ?: DEFAULT_ERROR)
                     return
                 }

@@ -168,8 +168,11 @@ internal object HttpTransport : VezmoApi.Transport {
 
 // ── What the API returns ─────────────────────────────────────────────────
 
-/** A string, or null when missing or JSON null (Android's optString would say "null"). */
-internal fun JSONObject.str(key: String): String? = if (isNull(key)) null else optString(key)
+/**
+ * A string, or null when missing, JSON null or empty. Never `optString` alone: on Android it reads a JSON null as the
+ * text "null" (a merchant-of-record session's null connected account became the account "null" and failed to load).
+ */
+internal fun JSONObject.str(key: String): String? = if (isNull(key)) null else optString(key).ifEmpty { null }
 
 private fun JSONArray?.strings(): List<String> = this?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).ifEmpty { null } } } ?: emptyList()
 

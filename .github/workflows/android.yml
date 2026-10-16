@@ -105,6 +105,8 @@ jobs:
           working-directory: packages/android
           script: |
             adb shell settings put global hide_error_dialogs 1
+            # Keep the whole run's log: a failure early in the run is otherwise rotated out by the time it is saved.
+            adb logcat -G 16M
             adb install example/build/outputs/apk/release/example-release.apk
             mkdir -p e2e/out
             maestro test e2e/maestro/flows --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
