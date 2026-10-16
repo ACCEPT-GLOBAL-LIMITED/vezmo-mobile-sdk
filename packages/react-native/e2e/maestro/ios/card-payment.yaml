@@ -23,20 +23,24 @@ appId: com.vezmo.example
 - extendedWaitUntil:
     visible: "(?i)(add card|card information|card number)"
     timeout: 20000
-# The form focuses the card number by itself; tap it when it doesn't.
+# Each field by its id (iOS reads the card field's label with the supported brands appended).
 - tapOn:
-    text: "(?i)card number"
-    optional: true
-# The form moves on by itself: card number, then expiry, then CVC.
+    id: "Card number"
 - inputText: "4242424242424242"
-- inputText: "1234"
-- inputText: "123"
-- takeScreenshot: 01b-card-form
 - tapOn:
-    text: "ZIP.*"
-    optional: true
+    id: "MM / YY"
+- inputText: "1234"
+- tapOn:
+    id: "CVC"
+- inputText: "123"
+- tapOn:
+    id: "ZIP"
 - inputText: "10001"
-- hideKeyboard
+- takeScreenshot: 01b-card-form
+# The number pad has no return key: its Done bar closes it.
+- tapOn:
+    text: "Done"
+    optional: true
 - takeScreenshot: 02-card-filled
 - tapOn: "Continue"
 - waitForAnimationToEnd:

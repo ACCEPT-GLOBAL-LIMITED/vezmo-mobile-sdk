@@ -22,6 +22,11 @@ import type { SheetPalette } from './theme';
 export type Styles = ReturnType<typeof makeStyles>;
 
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
+/**
+ * The native element's rows have their own leading margin inside our group; the sheet's own rows (UPI, Pix) copy it
+ * so icons and titles line up. Measured on device: iOS icon at 28pt and title at 70pt from the group's edge.
+ */
+const ROW_LEAD = Platform.OS === 'ios' ? 13 : 0;
 const HAIRLINE = StyleSheet.hairlineWidth;
 
 export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string) {
@@ -115,10 +120,11 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
       paddingHorizontal: 14,
       overflow: 'hidden',
     },
-    row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 58, paddingVertical: 10 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 10 },
+    ownRow: { paddingLeft: ROW_LEAD },
     rowLine: { borderTopWidth: HAIRLINE, borderTopColor: p.line },
     rowIcon: {
-      width: 32,
+      width: 30,
       height: 22,
       borderRadius: 5,
       borderWidth: HAIRLINE,
@@ -302,7 +308,7 @@ export function MethodRow(props: {
       accessibilityState={{ checked: props.selected, disabled: props.disabled }}
       disabled={props.disabled}
       onPress={props.onPress}
-      style={[s.row, !props.first && s.rowLine]}
+      style={[s.row, s.ownRow, !props.first && s.rowLine]}
     >
       {props.icon}
       <View style={{ flex: 1 }}>
