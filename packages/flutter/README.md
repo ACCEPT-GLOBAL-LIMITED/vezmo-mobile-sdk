@@ -158,7 +158,7 @@ alone. The result tells your app what to show.
 | `alreadyPaid` | The session was already paid. Treat the order as paid. |
 | `notAvailable` | This way to pay can't be used for this session. |
 | `network` | No connection. Let the buyer try again. |
-| `config` | A setup mistake in the app (for example `present()` before `prepare()`). |
+| `config` | A setup mistake in the app (for example `present()` before `prepare()`, or while the sheet is already open). |
 | `unknown` | Anything else. Let the buyer try again. |
 
 `prepare()` returns the same `VezmoError` when the session can't be paid (expired, already paid, a bad token).
@@ -309,8 +309,8 @@ ios --simulator`.
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
 Maestro (`e2e/maestro`). On an Android emulator: a card with 3D Secure, a decline, cancel, a bad token, Cash App on
 the merchant-of-record track, a subscription's free trial and its first payment, and the sheet in dark mode. On an
-iPhone simulator: a card with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, and a
-subscription's free trial and its first payment.
+iPhone simulator: a card with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, a
+subscription's free trial and its first payment, and the sheet in dark mode.
 
 To release, push a tag `flutter-v<version>` after the Android and iOS SDKs it pins are out; the release order and
 every place the version lives are in

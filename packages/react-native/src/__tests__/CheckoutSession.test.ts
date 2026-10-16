@@ -102,6 +102,27 @@ describe('CheckoutSession', () => {
     expect(t.api.checkout).toHaveBeenCalledTimes(2);
   });
 
+  it('a decline after 3D Secure on the device reads in Vezmo’s words (the same on both platforms) and is recorded', async () => {
+    t.api.pay.mockResolvedValue({ state: 'requires_action', paymentId: 'pay_1', clientSecret: 'pi_5_secret_d' });
+    t.api.confirm.mockRejectedValue(new VezmoApiError('declined', 'Your card was declined.', 400));
+    t.session.setOption({ label: 'Visa •••• 0002' });
+    t.session.pay();
+    await t.session.onConfirmationToken('ctoken_1');
+    // The platform's own text ("Your payment method was declined.") is not what the buyer reads.
+    await t.session.onConfirmResult('failed', 'Your payment method was declined.');
+    expect(t.api.confirm).toHaveBeenCalledWith('tok', 'pi_5');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'ready',
+      error: { code: 'declined', message: 'Your card was declined.' },
+    });
+    // Without an answer from Vezmo, the platform's text stands.
+    t.api.confirm.mockRejectedValue(new VezmoApiError('network', 'Check your connection and try again.', null));
+    t.session.pay();
+    await t.session.onConfirmationToken('ctoken_2');
+    await t.session.onConfirmResult('failed', 'Your payment method was declined.');
+    expect(t.session.getSnapshot().phase).toMatchObject({ error: { message: 'Your payment method was declined.' } });
+  });
+
   it('canceling the element returns to the sheet; an expired session closes it', async () => {
     t.session.pay();
     await t.session.onConfirmResult('canceled', '');
@@ -208,6 +229,47 @@ describe('CheckoutSession', () => {
     expect(u.session.getSnapshot().phase.name).toBe('waiting');
     await u.session.checkNow(); // paid
     expect(u.api.confirm).toHaveBeenCalledWith('tok', 'pi_7');
+    expect(u.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'succeeded' } });
+    u.session.dispose();
+  });
+
+  it('UPI: an offer that ran out is fetched again (not retried as is), and status checks never overlap', async () => {
+    const offer = {
+      currency: 'INR', amount: 4200, amountMinor: 420000, price: 49, rate: 85.7, markupPercent: 2,
+      usdPerUnit: 0.0117, expiresAt: '2026-10-16T00:00:00Z', country: 'IN', methods: ['upi'], token: 'offer',
+    };
+    const u = setup();
+    u.api.checkout.mockResolvedValue({ ...config, enabledMethods: { card: true, upi: true }, localOffer: offer });
+    await u.session.load();
+    u.session.chooseMethod('upi');
+    const billing = { name: 'Asha Rao', line1: '12 MG Road', country: 'IN' };
+
+    u.api.intent.mockRejectedValueOnce(new VezmoApiError('unknown', 'Price changed', 409, 'local_price_changed'));
+    u.api.checkout.mockResolvedValue({
+      ...config,
+      enabledMethods: { card: true, upi: true },
+      localOffer: { ...offer, amountMinor: 421000, token: 'offer2' },
+    });
+    await u.session.payWithQr('upi', billing);
+    expect(u.session.getSnapshot().phase).toEqual({
+      name: 'ready',
+      error: { code: 'unknown', message: expect.stringMatching(/price in your currency/) },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(u.session.getSnapshot().charge).toEqual({ amountMinor: 421000, currency: 'INR', localOffer: 'offer2' });
+    await u.session.payWithQr('upi', billing);
+    expect(u.api.intent).toHaveBeenLastCalledWith('tok', 'offer2');
+    expect(u.session.getSnapshot().phase.name).toBe('waiting');
+
+    // The poll and the buyer's Check status at once: one request, one confirm.
+    let answer: (s: unknown) => void = () => undefined;
+    u.api.status.mockReturnValueOnce(new Promise((r) => (answer = r)));
+    const first = u.session.checkNow();
+    const second = u.session.checkNow();
+    answer({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', livemode: false });
+    await Promise.all([first, second]);
+    expect(u.api.status).toHaveBeenCalledTimes(1);
+    expect(u.api.confirm).toHaveBeenCalledTimes(1);
     expect(u.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'succeeded' } });
     u.session.dispose();
   });

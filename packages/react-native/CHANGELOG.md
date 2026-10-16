@@ -19,5 +19,9 @@ The first release of the Vezmo payment sheet for React Native and Expo.
 - **Subscriptions**: `prepareCheckout({ subscriptionToken })` starts a subscription in the app (the first payment,
   or a free trial with the card saved); the result carries `subscription: { ref, status }`. Apple Pay shows it as a
   recurring payment on iPhone.
+- **Robust by default**: a call to Vezmo that gets no answer within 30 seconds ends as a `network` error; one sheet
+  at a time (`presentCheckout()` while it is open is a `config` error); Android's back button closes the sheet; a
+  decline after 3D Secure reads in Vezmo's words on both platforms. The sheet's text follows the buyer's text size up
+  to the first accessibility size.
 - **Jest mock** (`@vezmopay/react-native/jest/mock`) so your own tests run without native views or network.
 - iOS 15.1+ and Android 7.0+, React Native 0.79+ with the New Architecture.

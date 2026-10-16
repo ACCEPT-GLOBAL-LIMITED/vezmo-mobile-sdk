@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   Animated,
+  BackHandler,
   Easing,
   KeyboardAvoidingView,
   Linking,
@@ -8,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useColorScheme,
 } from 'react-native';
@@ -34,6 +34,7 @@ import {
   SecuredBy,
   Segmented,
   Skeleton,
+  Text,
   type MarkKind,
   type Styles,
 } from './ui';
@@ -140,6 +141,19 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const [walletsHeight, setWalletsHeight] = useState(0);
 
   const close = (result: CheckoutResult) => props.onClose(result);
+
+  // Android's back button closes the sheet, as on the native sheet (it would otherwise go back in the app beneath):
+  // the result once there is one; a payment on its way finishes first.
+  const { onClose } = props;
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (phase.name === 'done' || phase.name === 'closed') onClose(phase.result);
+      else if (phase.name !== 'paying') onClose({ status: 'canceled' });
+      return true;
+    });
+    return () => sub.remove();
+  }, [phase, onClose]);
+
   const amount = charge ? formatAmount(charge.amountMinor, charge.currency) : '';
   // A subscription checkout: what is due today, the plan after it, and a button that says what it starts.
   const plan = config?.subscription ?? null;

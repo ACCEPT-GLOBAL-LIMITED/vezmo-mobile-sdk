@@ -1,9 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import { AppState, Image, Linking, Pressable, Share, Text, TextInput, View } from 'react-native';
+import { AppState, Image, Linking, Pressable, Share, TextInput, View } from 'react-native';
 import type { CheckoutSession } from './CheckoutSession';
 import type { SheetPalette } from './theme';
 import type { QrBilling, QrPayment } from './types';
-import { Banner, PrimaryButton, Pulse, type Styles } from './ui';
+import { Banner, MAX_TEXT_SCALE, PrimaryButton, Pulse, Text, type Styles } from './ui';
 
 export interface QrFormHandle {
   /** Check the details and start the payment (the sheet's pinned button calls this). */
@@ -63,6 +63,7 @@ export const QrForm = forwardRef<
         value={value}
         onChangeText={set}
         style={s.input}
+        maxFontSizeMultiplier={MAX_TEXT_SCALE}
         placeholderTextColor={p.onDisabled}
         accessibilityLabel={label}
         editable={!props.busy}

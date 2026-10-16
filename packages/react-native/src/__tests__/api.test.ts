@@ -1,5 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
-import { VezmoApi, VezmoApiError } from '../api';
+import { REQUEST_TIMEOUT_MS, VezmoApi, VezmoApiError } from '../api';
 
 const ok = (data: unknown) =>
   ({ ok: true, status: 200, json: async () => ({ success: true, data }) }) as unknown as Response;
@@ -77,5 +77,32 @@ describe('VezmoApi', () => {
       jest.fn<typeof fetch>().mockRejectedValue(new TypeError('x')),
     );
     await expect(offline.status('t')).rejects.toMatchObject({ code: 'network' });
+    // A 200 with no readable answer is an error, never a null result.
+    const empty = { ok: true, status: 200, json: async () => { throw new SyntaxError('x'); } } as unknown as Response;
+    await expect(api(empty).status('t')).rejects.toMatchObject({ code: 'unknown' });
+  });
+
+  it('gives up on a call that never answers: a network error, and the request is aborted', async () => {
+    jest.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      const fetchImpl = jest.fn<typeof fetch>((_url, init) => {
+        signal = init?.signal ?? undefined;
+        // Hangs until aborted, as a real fetch does.
+        return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+      });
+      const call = new VezmoApi('https://api.test/v1', 'ios', fetchImpl).checkout('tok');
+      const outcome = call.catch((e: unknown) => e);
+      jest.advanceTimersByTime(REQUEST_TIMEOUT_MS - 1);
+      expect(signal?.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
+      expect(signal?.aborted).toBe(true);
+      expect(await outcome).toMatchObject({ code: 'network', message: 'Check your connection and try again.' });
+      // An answer in time leaves no timer behind.
+      await new VezmoApi('https://api.test/v1', 'ios', jest.fn<typeof fetch>().mockResolvedValue(ok({ state: 'open' }))).status('t');
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

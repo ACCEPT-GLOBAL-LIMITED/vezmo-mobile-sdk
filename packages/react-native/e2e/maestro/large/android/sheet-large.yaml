@@ -1,0 +1,36 @@
+# The sheet at the largest text size the phone offers (set before this runs; the sheet's text grows only to the first
+# accessibility size): screenshots only, no payment.
+appId: com.vezmo.example
+---
+# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # A just-booted emulator can show a system "isn't responding" dialog over the app.
+      - tapOn:
+          text: "Wait"
+          optional: true
+      - scrollUntilVisible:
+          element:
+            id: "new-session"
+          timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "pay"
+    direction: UP
+    timeout: 10000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: large-01-sheet

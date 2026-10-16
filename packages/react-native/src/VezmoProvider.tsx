@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -88,13 +89,12 @@ export function VezmoProvider(props: VezmoProviderProps) {
   );
 
   const presentCheckout = useCallback(() => {
+    // One sheet at a time: a second call would leave the first one's promise waiting forever.
+    if (resolver.current) return Promise.resolve(failed('The checkout is already open.'));
     const next = prepared.current;
-    if (!next) {
-      return Promise.resolve<CheckoutResult>({
-        status: 'failed',
-        error: { code: 'config', message: 'Call prepareCheckout() before presentCheckout().' },
-      });
-    }
+    if (!next) return Promise.resolve(failed('Call prepareCheckout() before presentCheckout().'));
+    // A session is presented once; the next checkout is prepared again.
+    prepared.current = null;
     return new Promise<CheckoutResult>((resolve) => {
       resolver.current = resolve;
       setPresented(next);
@@ -103,10 +103,18 @@ export function VezmoProvider(props: VezmoProviderProps) {
 
   const onClose = useCallback((result: CheckoutResult) => {
     setPresented(null);
-    prepared.current = null;
     resolver.current?.(result);
     resolver.current = null;
   }, []);
+
+  // The provider went away with the sheet open (the screen was left): the app's await ends as a cancel.
+  useEffect(
+    () => () => {
+      resolver.current?.({ status: 'canceled' });
+      resolver.current = null;
+    },
+    [],
+  );
 
   const value = useMemo(() => ({ prepareCheckout, presentCheckout }), [prepareCheckout, presentCheckout]);
 
@@ -138,6 +146,10 @@ export function useVezmoCheckout(): VezmoContextValue {
   const ctx = useContext(VezmoContext);
   if (!ctx) throw new Error('useVezmoCheckout must be used inside <VezmoProvider>.');
   return ctx;
+}
+
+function failed(message: string): CheckoutResult {
+  return { status: 'failed', error: { code: 'config', message } };
 }
 
 const styles = StyleSheet.create({ root: { flex: 1 } });

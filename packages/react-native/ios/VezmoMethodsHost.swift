@@ -79,15 +79,28 @@ public final class VezmoMethodsHost: UIView, EmbeddedPaymentElementDelegate {
 
   // MARK: Element
 
+  /// Builds from the latest settings. Settings that change while a build is on its way (the buyer switched currency,
+  /// the phone's theme changed) are built when it ends: they would otherwise be dropped, leaving the old amount or
+  /// currency in place.
   @MainActor
   private func build() async {
-    guard !building, let config = Self.parse(configJson), let intent = Self.parse(intentJson) else { return }
+    guard !building else { return }
+    building = true
+    defer { building = false }
+    var built: (String, String)
+    repeat {
+      built = (configJson, intentJson)
+      await buildOnce()
+    } while built != (configJson, intentJson)
+  }
+
+  @MainActor
+  private func buildOnce() async {
+    guard let config = Self.parse(configJson), let intent = Self.parse(intentJson) else { return }
     guard let publishableKey = config["publishableKey"] as? String, !publishableKey.isEmpty else {
       emit("loadFailed", ["message": "Missing checkout keys."])
       return
     }
-    building = true
-    defer { building = false }
 
     STPAPIClient.shared.publishableKey = publishableKey
     STPAPIClient.shared.stripeAccount = config["stripeAccount"] as? String

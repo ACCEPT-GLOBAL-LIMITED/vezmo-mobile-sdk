@@ -50,7 +50,7 @@ func application(_ app: UIApplication, open url: URL, options: [UIApplication.Op
 ## Set up
 
 Wrap your app (or the screens that take payments) once. The sheet is drawn inside the provider, so put it high in
-the tree.
+the tree. If the provider unmounts while the sheet is open, `presentCheckout()` resolves with `canceled`.
 
 ```tsx
 import { VezmoProvider } from '@vezmopay/react-native';
@@ -139,7 +139,7 @@ show.
 | --- | --- |
 | `succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
 | `processing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
-| `canceled` | The buyer closed the sheet. Not an error. |
+| `canceled` | The buyer closed the sheet (or pressed Back on Android). Not an error. |
 | `failed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
 | `error.code` | What to do |
@@ -148,8 +148,8 @@ show.
 | `expired` | The session ran out. Create a new one. |
 | `already_paid` | The session was already paid. Treat the order as paid. |
 | `not_available` | This way to pay can't be used for this session. |
-| `network` | No connection. Let the buyer try again. |
-| `config` | A setup mistake in the app (for example `presentCheckout()` before `prepareCheckout()`). |
+| `network` | No connection, or Vezmo didn't answer within 30 seconds. Let the buyer try again. |
+| `config` | A setup mistake in the app (for example `presentCheckout()` before `prepareCheckout()`, or while the sheet is already open). |
 | `unknown` | Anything else. Let the buyer try again. |
 
 ## Subscriptions
@@ -197,6 +197,7 @@ classes, rentals, services.
 - The other ways to pay as one list: **Card** (with the card's own logo once typed), pay-later methods, Cash App, and
   UPI or Pix for buyers in India or Brazil.
 - One Pay button, 3D Secure when the bank asks for it, and a receipt: who was paid, with what, and a reference.
+- Light or dark, and their own text size (the sheet's text grows up to the first accessibility size).
 
 ## Appearance
 

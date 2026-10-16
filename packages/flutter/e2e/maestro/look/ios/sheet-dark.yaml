@@ -1,0 +1,27 @@
+# The sheet in dark mode (the phone is switched to dark before this runs): screenshots only, no payment.
+appId: com.vezmo.example.flutter
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "new-session"
+    timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: dark-01-sheet
+- tapOn: "Card"
+- extendedWaitUntil:
+    visible: "(?i)(add card|card information|card number)"
+    timeout: 20000
+- takeScreenshot: dark-02-card-form
