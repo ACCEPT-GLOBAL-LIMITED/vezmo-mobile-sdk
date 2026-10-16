@@ -1,16 +1,16 @@
 name: Flutter plugin
 
-# The Flutter plugin (packages/flutter): analysis and Dart tests; then its example app, built on the native Android
-# SDK, pays end to end on a real Android emulator. Sessions come from dev's demo endpoint (TEST mode only), so this
-# repo holds no key.
+# The Flutter plugin (packages/flutter): analysis and Dart tests; then its example app, built on the native Android and
+# iOS SDKs from this checkout, pays end to end on an Android emulator and an iPhone simulator. Sessions come from dev's
+# demo endpoint (TEST mode only), so this repo holds no key.
 on:
   workflow_dispatch:
   push:
     branches: [main, flutter]
-    paths: ['packages/flutter/**', 'packages/android/**', '.github/workflows/flutter.yml']
+    paths: ['packages/flutter/**', 'packages/android/**', 'packages/ios/**', 'Package.swift', '.github/workflows/flutter.yml']
   pull_request:
     branches: [main]
-    paths: ['packages/flutter/**', 'packages/android/**', '.github/workflows/flutter.yml']
+    paths: ['packages/flutter/**', 'packages/android/**', 'packages/ios/**', 'Package.swift', '.github/workflows/flutter.yml']
 
 concurrency:
   group: flutter-plugin-${{ github.ref }}
@@ -38,9 +38,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
       - run: flutter pub get && (cd example && flutter pub get)
-      - run: flutter analyze
+      # Each check runs even when one before it failed, so one run shows every problem.
       - run: flutter test
+      - if: ${{ !cancelled() }}
+        run: flutter analyze
       - name: Format check
+        if: ${{ !cancelled() }}
         run: dart format . && git diff > $RUNNER_TEMP/format.patch && git diff --exit-code --stat
       - if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -48,6 +51,7 @@ jobs:
           name: format-patch
           path: ${{ runner.temp }}/format.patch
       - name: Package check (what pub.dev would see)
+        if: ${{ !cancelled() }}
         run: flutter pub publish --dry-run
 
   android:
@@ -113,3 +117,51 @@ jobs:
           path: |
             packages/flutter/e2e/out
             packages/flutter/*.png
+
+  ios:
+    name: Example app on an iPhone simulator
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # Build against this checkout's iOS SDK (the Swift package at the repository root), not a published release.
+      VEZMO_IOS_SDK_PATH: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+        with:
+          xcode-version: latest-stable
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Build the example app for the simulator
+        working-directory: packages/flutter/example
+        run: flutter build ios --simulator --debug --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE
+      - name: Boot an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          phones = [d for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")]
+          pick = next((d for d in phones if d["name"] == "iPhone 16"), phones[-1])
+          print(pick["udid"]); print(pick["name"], file=sys.stderr)')
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Run the flows
+        run: |
+          xcrun simctl install "$UDID" example/build/ios/iphonesimulator/Runner.app
+          mkdir -p e2e/out-ios
+          # The test driver can take a while to start on a cold CI simulator.
+          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
+          maestro --device "$UDID" test e2e/maestro/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; exit 1)
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flutter-ios-e2e
+          path: packages/flutter/e2e/out-ios/**/*.png

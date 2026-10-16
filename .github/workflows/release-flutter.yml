@@ -1,0 +1,52 @@
+name: Release Flutter plugin
+
+# Publishes vezmo_checkout to pub.dev when a tag like `flutter-v1.2.3` is pushed. The tag's version must match
+# packages/flutter/pubspec.yaml. No stored secret: pub.dev trusts this repository's GitHub Actions (OIDC).
+#
+# One-time setup on pub.dev (by a Vezmo admin):
+#   1. Verify the publisher `vezmo.com` (pub.dev → Create publisher, a DNS TXT record on vezmo.com).
+#   2. Publish 0.1.0 by hand from packages/flutter with `dart pub publish` (pub.dev only allows automated publishing
+#      for a package that already exists), then move the package to the vezmo.com publisher (package Admin tab).
+#   3. Package Admin tab → Automated publishing → Enable publishing from GitHub Actions: repository
+#      `ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk`, tag pattern `flutter-v{{version}}`, and "Require GitHub Actions
+#      environment" `pub.dev`.
+#   4. In this repository: Settings → Environments → New environment `pub.dev` (optionally with required reviewers).
+on:
+  push:
+    tags: ['flutter-v*']
+
+permissions:
+  contents: read
+  id-token: write # pub.dev's OIDC login
+
+concurrency:
+  group: release-flutter
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: packages/flutter
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: pub.dev
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Tag matches the plugin version
+        run: |
+          VERSION="${GITHUB_REF_NAME#flutter-v}"
+          PUBSPEC=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          [ "$VERSION" = "$PUBSPEC" ] || { echo "::error::Tag $VERSION does not match version $PUBSPEC in packages/flutter/pubspec.yaml"; exit 1; }
+      # Sets up the pub.dev token from GitHub's OIDC identity; Flutter's pub picks it up.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+      - run: flutter pub get && (cd example && flutter pub get)
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter pub publish --dry-run
+      - run: flutter pub publish --force

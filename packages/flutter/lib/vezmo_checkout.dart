@@ -13,8 +13,6 @@
 /// ```
 library;
 
-import 'dart:ui' show Color;
-
 import 'package:flutter/services.dart';
 
 const MethodChannel _channel = MethodChannel('vezmo_checkout');

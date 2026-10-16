@@ -111,7 +111,7 @@ class _ShopState extends State<Shop> {
       backgroundColor: const Color(0xFFF4F5F8),
       body: SafeArea(
         child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
             children: [
               const Text(
                 'Northwind Audio',

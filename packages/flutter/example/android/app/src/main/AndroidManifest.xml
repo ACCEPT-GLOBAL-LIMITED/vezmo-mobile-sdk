@@ -4,11 +4,12 @@
         android:label="Vezmo Flutter"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- No android:taskAffinity="" (Flutter's template adds it): the buyer must come back from a bank app or a
+             pay-later provider into this app's task, where the Vezmo sheet is waiting. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
