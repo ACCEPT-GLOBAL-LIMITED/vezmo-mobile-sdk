@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
@@ -49,8 +52,8 @@ import org.json.JSONObject
  * confirmed through Vezmo's server like the element. It draws only the express wallet buttons; the sheet draws the
  * Card row itself (with the card network's logo) and opens the card form with [presentCard].
  *
- * While the wallet buttons are on screen the flow controller leaves wallets out of its own sheet, so the Card row opens
- * straight onto the card form.
+ * Two flow controllers: one for cards only (its sheet is just the card form, which the Card row opens) and one with
+ * Google Pay that only draws the express button. Both confirm through the same Vezmo step.
  */
 @SuppressLint("ViewConstructor")
 @OptIn(WalletButtonsPreview::class)
@@ -60,7 +63,9 @@ class VezmoCardFlowView(
   private sealed interface Command {
     data class Configure(
       val intent: PaymentSheet.IntentConfiguration,
-      val configuration: PaymentSheet.Configuration,
+      val card: PaymentSheet.Configuration,
+      /** Google Pay's settings, when the session offers it. */
+      val wallets: PaymentSheet.Configuration?,
       val loaded: Boolean,
     ) : Command
 
@@ -78,6 +83,7 @@ class VezmoCardFlowView(
   private var configDirty = false
   private var intentDirty = false
   private var sheetConfiguration: PaymentSheet.Configuration? = null
+  private var walletConfiguration: PaymentSheet.Configuration? = null
   private var pendingSecret: CompletableDeferred<CreateIntentResult>? = null
   private var composeView: ComposeView? = null
   private var lastHeightDp = -1f
@@ -119,9 +125,12 @@ class VezmoCardFlowView(
         publishableKey,
         config.optString("stripeAccount").ifEmpty { null },
       )
-      sheetConfiguration = sheetConfiguration(config)
+      sheetConfiguration = sheetConfiguration(config, wallets = false)
+      walletConfiguration = if (config.optJSONObject("googlePay") != null) sheetConfiguration(config, wallets = true) else null
     }
-    commands.trySend(Command.Configure(intentConfiguration(intent, listOf("card")), sheetConfiguration!!, loaded = rebuild))
+    commands.trySend(
+      Command.Configure(intentConfiguration(intent, listOf("card")), sheetConfiguration!!, walletConfiguration, loaded = rebuild),
+    )
   }
 
   fun presentCard() {
@@ -209,6 +218,16 @@ class VezmoCardFlowView(
             CreateIntentWithConfirmationTokenCallback { confirmationToken -> awaitClientSecret(confirmationToken.id) },
           )
       }
+    val walletBuilder =
+      remember {
+        PaymentSheet.FlowController
+          .Builder(
+            resultCallback = { result -> emitResult(result) },
+            paymentOptionResultCallback = { },
+          ).createIntentCallback(
+            CreateIntentWithConfirmationTokenCallback { confirmationToken -> awaitClientSecret(confirmationToken.id) },
+          )
+      }
     val clickHandler =
       remember {
         WalletButtonsViewClickHandler { wallet ->
@@ -222,12 +241,14 @@ class VezmoCardFlowView(
       LocalLifecycleOwner provides activity,
     ) {
       val flow = builder.build()
+      val walletFlow = walletBuilder.build()
+      var walletsOn by remember { mutableStateOf(false) }
       val density = LocalDensity.current
 
-      LaunchedEffect(flow) {
+      LaunchedEffect(flow, walletFlow) {
         commands.consumeAsFlow().collect { command ->
           when (command) {
-            is Command.Configure -> configure(flow, command)
+            is Command.Configure -> walletsOn = configure(flow, walletFlow, command)
             is Command.Off -> emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
             is Command.PresentCard -> flow.presentPaymentOptions()
             is Command.ConfirmCard -> flow.confirm()
@@ -246,38 +267,54 @@ class VezmoCardFlowView(
             }
           },
       ) {
-        flow.WalletButtons(clickHandler)
+        if (walletsOn) walletFlow.WalletButtons(clickHandler)
       }
     }
   }
 
+  /** Sets up the card flow (and the wallet flow when offered); answers whether the wallet buttons should show. */
   private suspend fun configure(
     flow: PaymentSheet.FlowController,
+    walletFlow: PaymentSheet.FlowController,
     command: Command.Configure,
-  ) {
-    val done = CompletableDeferred<Throwable?>()
-    flow.configureWithIntentConfiguration(command.intent, command.configuration) { success, error ->
-      done.complete(if (success) null else error ?: Exception(DEFAULT_ERROR))
-    }
-    val error = done.await()
+  ): Boolean {
+    val error = configureOne(flow, command.intent, command.card)
     if (error != null) {
       emit("topLoadFailed", Arguments.createMap().apply { putString("message", error.localizedMessage ?: DEFAULT_ERROR) })
-      return
+      return false
     }
+    // A wallet that can't load is left out; the card still works.
+    val wallets = command.wallets?.let { configureOne(walletFlow, command.intent, it) == null } ?: false
     emitCardOption(flow.getPaymentOption())
     if (command.loaded) emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
+    return wallets
   }
 
-  /** Cards only, and Google Pay when the session offers it; the same business, look and billing details as the element. */
+  private suspend fun configureOne(
+    flow: PaymentSheet.FlowController,
+    intent: PaymentSheet.IntentConfiguration,
+    configuration: PaymentSheet.Configuration,
+  ): Throwable? {
+    val done = CompletableDeferred<Throwable?>()
+    flow.configureWithIntentConfiguration(intent, configuration) { success, error ->
+      done.complete(if (success) null else error ?: Exception(DEFAULT_ERROR))
+    }
+    return done.await()
+  }
+
+  /** The same business, look and billing details as the element; Google Pay only for the wallet flow. */
   @SuppressLint("RestrictedApi")
-  private fun sheetConfiguration(config: JSONObject): PaymentSheet.Configuration {
+  private fun sheetConfiguration(
+    config: JSONObject,
+    wallets: Boolean,
+  ): PaymentSheet.Configuration {
     val builder =
       PaymentSheet.Configuration
         .Builder(config.optString("merchantDisplayName"))
         // Vezmo is white label: no processor wallet of its own.
         .link(PaymentSheet.LinkConfiguration(display = PaymentSheet.LinkConfiguration.Display.Never))
         .paymentMethodLayout(PaymentSheet.PaymentMethodLayout.Vertical)
-    config.optJSONObject("googlePay")?.let { gp ->
+    config.optJSONObject("googlePay")?.takeIf { wallets }?.let { gp ->
       builder.googlePay(
         PaymentSheet.GooglePayConfiguration(
           environment =

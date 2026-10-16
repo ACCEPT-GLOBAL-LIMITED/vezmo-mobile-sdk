@@ -8,14 +8,15 @@ import UIKit
 /// Vezmo's server like the element. It draws only the express wallet buttons; the sheet draws the Card row itself
 /// (with the card network's logo) and opens the card form with `presentCard()`.
 ///
-/// While the wallet buttons are on screen the flow controller leaves wallets out of its own sheet, so the Card row
-/// opens straight onto the card form.
+/// Two flow controllers: one for cards only (its sheet is just the card form, which the Card row opens) and one with
+/// Apple Pay that only draws the express button. Both confirm through the same Vezmo step.
 @objc(VezmoCardFlowHost)
 public final class VezmoCardFlowHost: UIView {
   /// (event name, body) to the component view, which turns it into a React event.
   @objc public var onEvent: ((String, [String: Any]) -> Void)?
 
   private var flow: PaymentSheet.FlowController?
+  private var walletFlow: PaymentSheet.FlowController?
   private var wallets: UIViewController?
   /// The wallet buttons' height for a width (SwiftUI's own measure).
   private var measureWallets: ((CGFloat) -> CGFloat)?
@@ -84,6 +85,7 @@ public final class VezmoCardFlowHost: UIView {
     guard intent["card"] as? Bool == true else {
       removeWallets()
       flow = nil
+      walletFlow = nil
       emitCardOption()
       emit("loaded", [:])
       return
@@ -99,18 +101,30 @@ public final class VezmoCardFlowHost: UIView {
     STPAPIClient.shared.stripeAccount = config["stripeAccount"] as? String
 
     do {
-      let created: PaymentSheet.FlowController = try await withCheckedThrowingContinuation { continuation in
-        PaymentSheet.FlowController.create(
-          intentConfiguration: intentConfiguration(from: intent),
-          configuration: sheetConfiguration(from: config)
-        ) { continuation.resume(with: $0) }
+      flow = try await makeFlow(intent: intent, configuration: sheetConfiguration(from: config, wallets: false))
+      let withWallets = sheetConfiguration(from: config, wallets: true)
+      if withWallets.applePay != nil {
+        let wallets = try await makeFlow(intent: intent, configuration: withWallets)
+        walletFlow = wallets
+        showWallets(wallets)
+      } else {
+        walletFlow = nil
+        removeWallets()
       }
-      flow = created
-      showWallets(created)
       emitCardOption()
       emit("loaded", [:])
     } catch {
       emit("loadFailed", ["message": error.localizedDescription])
+    }
+  }
+
+  @MainActor
+  private func makeFlow(intent: [String: Any], configuration: PaymentSheet.Configuration) async throws -> PaymentSheet.FlowController {
+    try await withCheckedThrowingContinuation { continuation in
+      PaymentSheet.FlowController.create(
+        intentConfiguration: intentConfiguration(from: intent),
+        configuration: configuration
+      ) { continuation.resume(with: $0) }
     }
   }
 
@@ -121,6 +135,7 @@ public final class VezmoCardFlowHost: UIView {
       if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
       self?.emitCardOption()
     }
+    walletFlow?.update(intentConfiguration: intentConfiguration(from: intent)) { _ in }
   }
 
   private func intentConfiguration(from intent: [String: Any]) -> PaymentSheet.IntentConfiguration {
@@ -130,8 +145,8 @@ public final class VezmoCardFlowHost: UIView {
     }
   }
 
-  /// Cards only, and Apple Pay when the app set it up; the same business, look and billing details as the element.
-  private func sheetConfiguration(from config: [String: Any]) -> PaymentSheet.Configuration {
+  /// The same business, look and billing details as the element; Apple Pay only for the wallet flow.
+  private func sheetConfiguration(from config: [String: Any], wallets: Bool) -> PaymentSheet.Configuration {
     var configuration = PaymentSheet.Configuration()
     configuration.merchantDisplayName = config["merchantDisplayName"] as? String ?? ""
     if let returnURL = config["returnURL"] as? String, !returnURL.isEmpty {
@@ -145,7 +160,7 @@ public final class VezmoCardFlowHost: UIView {
     case "light": configuration.style = .alwaysLight
     default: configuration.style = .automatic
     }
-    if let applePay = config["applePay"] as? [String: Any],
+    if wallets, let applePay = config["applePay"] as? [String: Any],
        let merchantId = applePay["merchantId"] as? String, !merchantId.isEmpty {
       configuration.applePay = PaymentSheet.ApplePayConfiguration(
         merchantId: merchantId,
