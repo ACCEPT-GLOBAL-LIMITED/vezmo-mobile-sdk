@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  ActivityIndicator,
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +16,16 @@ import { elementConfigJson, elementIntentJson, type WalletOptions } from './elem
 import { formatAmount } from './flow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
 import { QrForm, QrWaiting } from './QrPanels';
-import { paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
+import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutResult } from './types';
+import { Banner, Cross, Lock, makeStyles, PrimaryButton, ResultMark, Segmented, Skeleton, type Styles } from './ui';
 
 /** Shown instead of a technical message when the payment methods can't load (a network hiccup, usually). */
 const LOAD_FAILED = 'We couldn’t load the ways to pay. Check your connection and try again.';
+
+/** Room for the home indicator or the navigation bar under the sheet. */
+// ponytail: fixed inset; read the real one if a merchant app needs it to the point.
+const BOTTOM_INSET = Platform.OS === 'ios' ? 30 : 20;
 
 export interface CheckoutSheetProps {
   session: CheckoutSession;
@@ -31,7 +39,7 @@ export interface CheckoutSheetProps {
 }
 
 /**
- * The Vezmo payment sheet: the merchant and amount, the buyer's currency, the native payment element, our Pay
+ * The Vezmo payment sheet: the business and the total, the buyer's currency, the native payment element, our Pay
  * button and our result screens. Drawn as an overlay in the app's own window (the element's native UI needs it).
  */
 export function CheckoutSheet(props: CheckoutSheetProps) {
@@ -47,8 +55,15 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
         : systemScheme === 'dark'
           ? 'dark'
           : 'light';
+  const radius = props.appearance?.cornerRadius ?? DEFAULT_RADIUS;
   const p = useMemo(() => paletteFor(scheme, props.appearance), [scheme, props.appearance]);
-  const s = useMemo(() => styles(p, props.appearance?.cornerRadius ?? 12, props.appearance?.fontFamily), [p, props.appearance]);
+  const s = useMemo(() => makeStyles(p, radius, props.appearance?.fontFamily), [p, radius, props.appearance]);
+
+  // The sheet rises over a fading scrim.
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [enter]);
 
   useEffect(() => {
     session.attachElement({
@@ -84,269 +99,262 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
     [config?.publishableKey, config?.connectedAccountId, methods?.applePay, methods?.googlePay, charge?.currency, scheme, p, merchant, props.returnUrl, snap.elementAttempt],
   );
   const intentJson = useMemo(() => (charge && methods ? elementIntentJson(charge, methods) : ''), [charge, methods]);
+  // The native element takes a moment to load: placeholders hold its rows until it reports in.
+  const [loadedConfig, setLoadedConfig] = useState('');
+  const elementLoading = loadedConfig !== configJson && !snap.elementError;
 
   const close = (result: CheckoutResult) => props.onClose(result);
   const amount = charge ? formatAmount(charge.amountMinor, charge.currency) : '';
   const paying = phase.name === 'paying';
+  const finished = phase.name === 'done' || phase.name === 'closed';
 
   return (
-    <View style={s.scrim} accessibilityViewIsModal>
-      <View style={s.sheet}>
-        <View style={s.header}>
-          <View style={s.headerText}>
-            <Text style={s.merchant} numberOfLines={1}>
-              {merchant}
-            </Text>
-            {!!amount && phase.name !== 'done' && <Text style={s.amount}>{amount}</Text>}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            disabled={paying}
-            onPress={() => close(phase.name === 'done' || phase.name === 'closed' ? phase.result : { status: 'canceled' })}
-            style={s.close}
-            hitSlop={12}
-          >
-            <Text style={s.closeText}>✕</Text>
-          </Pressable>
-        </View>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+      <Animated.View style={[s.scrim, { opacity: enter }]} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.stage} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            s.sheet,
+            { paddingBottom: BOTTOM_INSET, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [80, 0] }) }] },
+          ]}
+        >
+          {!finished && <View style={s.glow} pointerEvents="none" />}
+          <View style={s.grabber} />
+          {/* The result has its own Done. */}
+          {!finished && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              disabled={paying}
+              onPress={() => close({ status: 'canceled' })}
+              style={[s.close, { position: 'absolute', top: 32, right: 16, zIndex: 2, opacity: paying ? 0.4 : 1 }]}
+              hitSlop={12}
+            >
+              <Cross color={p.ink2} size={12} />
+            </Pressable>
+          )}
 
-        {phase.name === 'loading' && (
-          <View style={s.center}>
-            <ActivityIndicator color={p.accent} />
-          </View>
-        )}
+          {phase.name === 'loading' && <Skeleton s={s} />}
 
-        {(phase.name === 'done' || phase.name === 'closed') && (
-          <ResultView result={phase.result} amount={amount} s={s} onDone={() => close(phase.result)} />
-        )}
+          {finished && (
+            <ResultView
+              result={phase.result}
+              amount={amount}
+              merchant={merchant}
+              paidWith={snap.option}
+              s={s}
+              p={p}
+              onDone={() => close(phase.result)}
+            />
+          )}
 
-        {phase.name === 'waiting' && (
-          <View style={s.body}>
-            <QrWaiting session={session} method={phase.method} qr={phase.qr} p={p} s={s} />
-          </View>
-        )}
-
-        {(phase.name === 'ready' || phase.name === 'paying') && config && charge && methods && (
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
-            {config.localOffer && (
-              <View style={s.currencyRow} accessibilityRole="radiogroup" accessibilityLabel="Pay in">
-                <Text style={s.label}>Pay in</Text>
-                <View style={s.pills}>
-                  {[true, false].map((local) => {
-                    const c = local
-                      ? { minor: config.localOffer!.amountMinor, cur: config.localOffer!.currency }
-                      : { minor: config.amountMinor, cur: config.currency };
-                    const on = snap.payLocal === local;
-                    return (
-                      <Pressable
-                        key={String(local)}
-                        accessibilityRole="radio"
-                        accessibilityState={{ checked: on, disabled: paying }}
-                        disabled={paying}
-                        onPress={() => session.choosePayLocal(local)}
-                        style={[s.pill, on && s.pillOn]}
-                      >
-                        <Text style={[s.pillText, on && s.pillTextOn]}>{formatAmount(c.minor, c.cur)}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                {snap.payLocal && (
-                  <Text style={s.hint}>
-                    1 {config.currency} = {config.localOffer.rate.toFixed(4)} {config.localOffer.currency}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {(methods.upi || methods.pix) && (
-              <View style={s.pills} accessibilityRole="tablist">
-                {(['element', methods.upi ? 'upi' : 'pix'] as const).map((m) => {
-                  const on = snap.method === m;
-                  return (
-                    <Pressable
-                      key={m}
-                      accessibilityRole="tab"
-                      accessibilityState={{ selected: on, disabled: paying }}
-                      disabled={paying}
-                      onPress={() => session.chooseMethod(m)}
-                      style={[s.pill, on && s.pillOn]}
-                    >
-                      <Text style={[s.pillText, on && s.pillTextOn]}>
-                        {m === 'element' ? 'Card' : m === 'upi' ? 'UPI' : 'Pix'}
+          {!finished && phase.name !== 'loading' && config && charge && methods && (
+            <ScrollView keyboardShouldPersistTaps="handled" bounces={false}>
+              <View style={s.header}>
+                <View style={[s.who, { paddingRight: 44 }]}>
+                  <View style={s.logo}>
+                    <Text style={s.logoText}>{(merchant.trim()[0] ?? '•').toUpperCase()}</Text>
+                  </View>
+                  <View style={s.whoText}>
+                    <View style={s.merchantRow}>
+                      <Text style={s.merchant} numberOfLines={1}>
+                        {merchant}
                       </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-
-            {snap.method === 'element' ? (
-              <>
-              <PaymentElement
-                ref={element}
-                configJson={configJson}
-                intentJson={intentJson}
-                onPaymentOptionChange={(option) => session.setCanPay(!!option)}
-                onLoaded={() => session.setElementError(null)}
-                onLoadFailed={(message) => session.setElementError(message || LOAD_FAILED)}
-                onConfirmationToken={(id) => void session.onConfirmationToken(id)}
-                onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
-              />
-
-              {!!snap.elementError && (
-                <View style={{ gap: 8, alignItems: 'flex-start' }}>
-                  <Text testID="vezmo-element-error" style={s.error}>
-                    {LOAD_FAILED}
-                  </Text>
-                  <Pressable testID="vezmo-retry" accessibilityRole="button" onPress={() => session.retryElement()}>
-                    <Text style={s.link}>Try again</Text>
-                  </Pressable>
+                      {!config.livemode && (
+                        <View style={s.badge}>
+                          <Text style={s.badgeText}>TEST MODE</Text>
+                        </View>
+                      )}
+                    </View>
+                    {!!config.title && (
+                      <Text style={s.title} numberOfLines={1}>
+                        {config.title}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-              )}
+                <View>
+                  <Text style={s.totalLabel}>Total</Text>
+                  <Text style={s.amount}>{amount}</Text>
+                </View>
+              </View>
 
-              {phase.name === 'ready' && phase.error && (
-                <Text style={s.error} accessibilityLiveRegion="polite">
-                  {phase.error.message}
-                </Text>
-              )}
+              <View style={s.body}>
+                {phase.name === 'waiting' ? (
+                  <QrWaiting session={session} method={phase.method} qr={phase.qr} p={p} s={s} />
+                ) : (
+                  <>
+                    {config.localOffer && (
+                      <View style={s.section}>
+                        <Text style={s.label}>Pay in</Text>
+                        <Segmented
+                          role="radio"
+                          label="Pay in"
+                          s={s}
+                          disabled={paying}
+                          value={snap.payLocal ? 'local' : 'price'}
+                          onChange={(k) => session.choosePayLocal(k === 'local')}
+                          items={[
+                            {
+                              key: 'local',
+                              label: formatAmount(config.localOffer.amountMinor, config.localOffer.currency),
+                              sub: config.localOffer.currency.toUpperCase(),
+                            },
+                            { key: 'price', label: formatAmount(config.amountMinor, config.currency), sub: config.currency.toUpperCase() },
+                          ]}
+                        />
+                        {snap.payLocal && (
+                          <Text style={s.hint}>
+                            1 {config.currency.toUpperCase()} = {config.localOffer.rate.toFixed(4)} {config.localOffer.currency.toUpperCase()}
+                          </Text>
+                        )}
+                      </View>
+                    )}
 
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !snap.canPay || paying, busy: paying }}
-                disabled={!snap.canPay || paying}
-                testID="vezmo-pay"
-                onPress={() => session.pay()}
-                style={[s.pay, (!snap.canPay || paying) && s.payDisabled]}
-              >
-                {paying ? <ActivityIndicator color={p.onAccent} /> : <Text style={s.payText}>Pay {amount}</Text>}
-              </Pressable>
-              </>
-            ) : (
-              <>
-                {phase.name === 'ready' && phase.error && <Text style={s.error}>{phase.error.message}</Text>}
-                <QrForm
-                  method={snap.method}
-                  defaultName={config.customerName ?? ''}
-                  country={config.localOffer?.country ?? null}
-                  busy={paying}
-                  amount={amount}
-                  p={p}
-                  s={s}
-                  onPay={(billing) => void session.payWithQr(snap.method as 'upi' | 'pix', billing)}
-                />
-              </>
-            )}
-            <Text style={s.secured}>Payments secured by Vezmo{config.livemode ? '' : ' · Test mode'}</Text>
-          </ScrollView>
-        )}
+                    <View style={s.section}>
+                      <Text style={s.label}>Payment method</Text>
+                      {(methods.upi || methods.pix) && (
+                        <Segmented
+                          role="tab"
+                          label="Payment method"
+                          s={s}
+                          disabled={paying}
+                          value={snap.method}
+                          onChange={(m) => session.chooseMethod(m)}
+                          items={[
+                            { key: 'element', label: 'Card and more' },
+                            methods.upi ? { key: 'upi', label: 'UPI' } : { key: 'pix', label: 'Pix' },
+                          ]}
+                        />
+                      )}
+                      {snap.method === 'element' ? (
+                        <>
+                          <PaymentElement
+                            ref={element}
+                            configJson={configJson}
+                            intentJson={intentJson}
+                            onPaymentOptionChange={(option) => session.setOption(option)}
+                            onLoaded={() => {
+                              setLoadedConfig(configJson);
+                              session.setElementError(null);
+                            }}
+                            onLoadFailed={(message) => session.setElementError(message || LOAD_FAILED)}
+                            onConfirmationToken={(id) => void session.onConfirmationToken(id)}
+                            onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
+                          />
+                          {elementLoading && (
+                            <View accessibilityLabel="Loading payment methods" style={{ gap: 10 }}>
+                              {[0, 1, 2].map((i) => (
+                                <View key={i} style={[s.skel, { height: 54, borderRadius: radius }]} />
+                              ))}
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <QrForm
+                          method={snap.method}
+                          defaultName={config.customerName ?? ''}
+                          country={config.localOffer?.country ?? null}
+                          busy={paying}
+                          amount={amount}
+                          error={phase.name === 'ready' ? (phase.error?.message ?? null) : null}
+                          p={p}
+                          s={s}
+                          onPay={(billing) => void session.payWithQr(snap.method as 'upi' | 'pix', billing)}
+                        />
+                      )}
+                    </View>
+
+                    {snap.method === 'element' && (
+                      <>
+                        {!!snap.elementError && (
+                          <Banner
+                            testID="vezmo-element-error"
+                            text={LOAD_FAILED}
+                            s={s}
+                            p={p}
+                            action={{ label: 'Try again', testID: 'vezmo-retry', onPress: () => session.retryElement() }}
+                          />
+                        )}
+                        {phase.name === 'ready' && phase.error && <Banner text={phase.error.message} s={s} p={p} />}
+                        <PrimaryButton
+                          testID="vezmo-pay"
+                          label={`Pay ${amount}`}
+                          lock
+                          disabled={!snap.canPay}
+                          busy={paying}
+                          onPress={() => session.pay()}
+                          s={s}
+                          p={p}
+                        />
+                      </>
+                    )}
+                  </>
+                )}
+                <View style={s.footer}>
+                  <Lock color={p.ink3} size={11} />
+                  <Text style={s.footerText}>Secured by Vezmo</Text>
+                </View>
+              </View>
+            </ScrollView>
+          )}
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+function ResultView(props: {
+  result: CheckoutResult;
+  amount: string;
+  merchant: string;
+  paidWith: string | null;
+  s: Styles;
+  p: SheetPalette;
+  onDone(): void;
+}) {
+  const { result, s, p } = props;
+  const copy =
+    result.status === 'succeeded'
+      ? { title: 'Payment successful', body: '', kind: 'good' as const }
+      : result.status === 'processing'
+        ? { title: 'Payment received', body: 'Your payment is on its way. You’ll get a confirmation when it clears.', kind: 'wait' as const }
+        : result.status === 'failed'
+          ? {
+              title: result.error.code === 'already_paid' ? 'Already paid' : 'Payment not completed',
+              body: result.error.message,
+              kind: result.error.code === 'already_paid' ? ('good' as const) : ('bad' as const),
+            }
+          : { title: 'Payment canceled', body: '', kind: 'bad' as const };
+  const paymentId = result.status === 'succeeded' || result.status === 'processing' ? result.paymentId : '';
+  const rows = [
+    ['Paid to', props.merchant],
+    ['Paid with', props.paidWith ?? ''],
+    ['Reference', paymentId],
+  ].filter(([, v]) => !!v);
+  return (
+    <View style={s.result}>
+      <ResultMark kind={copy.kind} p={p} />
+      <Text testID="vezmo-result-title" style={s.resultTitle} accessibilityRole="header">
+        {copy.title}
+      </Text>
+      {result.status === 'succeeded' && !!props.amount && <Text style={s.amount}>{props.amount}</Text>}
+      {!!copy.body && <Text style={s.resultBody}>{copy.body}</Text>}
+      {!!paymentId && (
+        <View style={s.receipt}>
+          {rows.map(([k, v], i) => (
+            <View key={k} style={[s.receiptRow, i > 0 && s.receiptLine]}>
+              <Text style={s.receiptKey}>{k}</Text>
+              <Text style={s.receiptValue} numberOfLines={1} selectable>
+                {v}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+      <View style={{ alignSelf: 'stretch', marginTop: 24 }}>
+        <PrimaryButton testID="vezmo-done" label="Done" ink onPress={props.onDone} s={s} p={p} />
       </View>
     </View>
   );
-}
-
-function ResultView(props: { result: CheckoutResult; amount: string; s: ReturnType<typeof styles>; onDone(): void }) {
-  const { result, s } = props;
-  const copy =
-    result.status === 'succeeded'
-      ? { title: 'Payment successful', body: props.amount, tone: s.good }
-      : result.status === 'processing'
-        ? { title: 'Payment received', body: 'Your payment is on its way. You’ll get a confirmation when it clears.', tone: s.good }
-        : result.status === 'failed'
-          ? { title: result.error.code === 'already_paid' ? 'Already paid' : 'Payment not completed', body: result.error.message, tone: s.bad }
-          : { title: 'Payment canceled', body: '', tone: s.bad };
-  return (
-    <View style={s.center}>
-      <Text testID="vezmo-result-title" style={[s.resultTitle, copy.tone]} accessibilityRole="header">
-        {copy.title}
-      </Text>
-      {!!copy.body && <Text style={s.resultBody}>{copy.body}</Text>}
-      <Pressable testID="vezmo-done" accessibilityRole="button" onPress={props.onDone} style={s.pay}>
-        <Text style={s.payText}>Done</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function styles(p: SheetPalette, radius: number, fontFamily?: string) {
-  const font = fontFamily ? { fontFamily } : {};
-  return StyleSheet.create({
-    scrim: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: p.scrim,
-      justifyContent: 'flex-end',
-    },
-    sheet: {
-      backgroundColor: p.surface,
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      maxHeight: '92%',
-      paddingBottom: 24,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      paddingHorizontal: 20,
-      paddingTop: 20,
-      paddingBottom: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: p.line,
-    },
-    headerText: { flex: 1, gap: 2 },
-    merchant: { ...font, color: p.ink2, fontSize: 14, fontWeight: '500' },
-    amount: { ...font, color: p.ink, fontSize: 30, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: -0.6 },
-    close: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: p.field },
-    closeText: { color: p.ink2, fontSize: 14 },
-    body: { padding: 20, gap: 16 },
-    center: { padding: 32, alignItems: 'center', gap: 12 },
-    currencyRow: { gap: 8 },
-    label: { ...font, color: p.ink2, fontSize: 13, fontWeight: '500' },
-    pills: { flexDirection: 'row', gap: 8 },
-    pill: {
-      flex: 1,
-      borderRadius: radius,
-      borderWidth: 1,
-      borderColor: p.fieldLine,
-      backgroundColor: p.field,
-      paddingVertical: 12,
-      alignItems: 'center',
-    },
-    pillOn: { borderColor: p.accent, borderWidth: 2 },
-    pillText: { ...font, color: p.ink, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
-    pillTextOn: { color: p.accent },
-    hint: { ...font, color: p.ink3, fontSize: 12.5 },
-    error: { ...font, color: p.bad, fontSize: 14 },
-    pay: {
-      alignSelf: 'stretch',
-      height: 54,
-      borderRadius: 999,
-      backgroundColor: p.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    payDisabled: { opacity: 0.45 },
-    payText: { ...font, color: p.onAccent, fontSize: 16, fontWeight: '600' },
-    secured: { ...font, color: p.ink3, fontSize: 12, textAlign: 'center' },
-    input: {
-      ...font,
-      borderWidth: 1,
-      borderColor: p.fieldLine,
-      backgroundColor: p.field,
-      borderRadius: radius,
-      paddingHorizontal: 14,
-      height: 48,
-      color: p.ink,
-      fontSize: 15,
-    },
-    link: { ...font, color: p.accent, fontSize: 15, fontWeight: '600' },
-    resultTitle: { ...font, fontSize: 21, fontWeight: '700', textAlign: 'center' },
-    resultBody: { ...font, color: p.ink2, fontSize: 15, textAlign: 'center' },
-    good: { color: p.good },
-    bad: { color: p.bad },
-  });
 }

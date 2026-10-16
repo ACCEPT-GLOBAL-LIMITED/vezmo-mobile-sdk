@@ -201,6 +201,13 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     if let c = color("danger") { appearance.colors.danger = c }
     if let radius = params["cornerRadius"] as? NSNumber { appearance.cornerRadius = CGFloat(radius.doubleValue) }
     if let width = params["borderWidth"] as? NSNumber { appearance.borderWidth = CGFloat(width.doubleValue) }
+    if let width = params["selectedBorderWidth"] as? NSNumber { appearance.selectedBorderWidth = CGFloat(width.doubleValue) }
+    // Methods as separate tiles, the chosen one outlined in the accent (as the sheet's own choices are).
+    if let row = params["row"] as? [String: Any] {
+      if row["style"] as? String == "floating" { appearance.embeddedPaymentElement.row.style = .floatingButton }
+      if let spacing = row["spacing"] as? NSNumber { appearance.embeddedPaymentElement.row.floating.spacing = CGFloat(spacing.doubleValue) }
+      if let insets = row["insets"] as? NSNumber { appearance.embeddedPaymentElement.row.additionalInsets = CGFloat(insets.doubleValue) }
+    }
     if let family = params["fontFamily"] as? String, let font = UIFont(name: family, size: UIFont.systemFontSize) {
       appearance.font.base = font
     }

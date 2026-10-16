@@ -37,6 +37,8 @@ export interface SessionSnapshot {
   methods: SheetMethods | null;
   /** The element has a method selected and can be paid. */
   canPay: boolean;
+  /** The selected method as the element names it ("•••• 4242", "Klarna"), for the receipt. */
+  option: string | null;
   /** The element couldn't load (shown in the sheet with Try again). */
   elementError: string | null;
   /** Bumped by Try again: rebuilds the native element. */
@@ -59,6 +61,7 @@ export class CheckoutSession {
     charge: null,
     methods: null,
     canPay: false,
+    option: null,
     elementError: null,
     elementAttempt: 0,
     method: 'element',
@@ -109,8 +112,9 @@ export class CheckoutSession {
     this.apply(this.snapshot.config, payLocal);
   }
 
-  setCanPay(canPay: boolean) {
-    if (canPay !== this.snapshot.canPay) this.set({ canPay });
+  /** The element's selected method changed (null: nothing selected). */
+  setOption(option: { label: string } | null) {
+    this.set({ canPay: !!option, option: option?.label || null });
   }
 
   setElementError(message: string | null) {

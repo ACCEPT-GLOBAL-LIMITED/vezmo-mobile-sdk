@@ -388,12 +388,26 @@ class VezmoPaymentElementView(
     if (params.has("cornerRadius")) shapes.cornerRadiusDp(params.optDouble("cornerRadius").toFloat())
     if (params.has("borderWidth")) shapes.borderStrokeWidthDp(params.optDouble("borderWidth").toFloat())
 
-    return PaymentSheet.Appearance
-      .Builder()
-      .colorsLight(palette(PaymentSheet.Colors.Builder.light()))
-      .colorsDark(palette(PaymentSheet.Colors.Builder.dark()))
-      .shapes(shapes.build())
-      .build()
+    val builder =
+      PaymentSheet.Appearance
+        .Builder()
+        .colorsLight(palette(PaymentSheet.Colors.Builder.light()))
+        .colorsDark(palette(PaymentSheet.Colors.Builder.dark()))
+        .shapes(shapes.build())
+    // Methods as separate tiles, the chosen one outlined in the accent (as the sheet's own choices are).
+    val row = params.optJSONObject("row")
+    if (row?.optString("style") == "floating") {
+      builder.embeddedAppearance(
+        PaymentSheet.Appearance.Embedded(
+          PaymentSheet.Appearance.Embedded.RowStyle.FloatingButton
+            .Builder()
+            .spacingDp(row.optDouble("spacing", 12.0).toFloat())
+            .additionalInsetsDp(row.optDouble("insets", 6.0).toFloat())
+            .build(),
+        ),
+      )
+    }
+    return builder.build()
   }
 
   private fun parse(json: String): JSONObject? =
