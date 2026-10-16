@@ -1,0 +1,73 @@
+name: Example app to TestFlight
+
+# Builds the example app (paying on the dev sandbox) and sends it to TestFlight, so a real iPhone can try the sheet and
+# the real Apple Pay button. Run by hand. Needs the App Store Connect API key secrets: ASC_KEY_ID, ASC_ISSUER_ID and
+# VEZMOAPPLE (the .p8 file's text). Signing is automatic through that key (team 6SU5Q643PG in example/app.json).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/react-native
+
+env:
+  EXPO_PUBLIC_VEZMO_DEMO_URL: https://api.dev.vezmo.com/api/v1/demo/mobile-session
+  EXPO_PUBLIC_VEZMO_API_BASE: https://api.dev.vezmo.com/api/v1
+
+jobs:
+  testflight:
+    name: Build and upload (iOS)
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      RCT_USE_RN_DEP: 1
+      RCT_USE_PREBUILT_RNCORE: 1
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup
+      - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+        with:
+          xcode-version: latest-stable
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.VEZMOAPPLE }}
+        run: |
+          test -n "$ASC_KEY_ID" && test -n "$ASC_ISSUER_ID" && test -n "$ASC_KEY_P8" || { echo "Add ASC_KEY_ID, ASC_ISSUER_ID and VEZMOAPPLE (the .p8) to the repo's Actions secrets."; exit 1; }
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+      - name: Prebuild the example app (installs pods)
+        run: yarn example expo prebuild --platform ios
+      - name: Archive (signed automatically through the key)
+        working-directory: packages/react-native/example/ios
+        run: >
+          xcodebuild -workspace VezmoExample.xcworkspace -scheme VezmoExample -configuration Release
+          -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/VezmoExample.xcarchive"
+          -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH"
+          -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION=${{ github.run_number }} -quiet archive
+      - name: Upload to TestFlight
+        working-directory: packages/react-native/example/ios
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>6SU5Q643PG</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/VezmoExample.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
