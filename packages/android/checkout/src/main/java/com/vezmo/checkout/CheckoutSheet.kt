@@ -75,6 +75,8 @@ internal fun CheckoutSheet(
     request: CheckoutRequest,
     dark: Boolean,
     onClose: (CheckoutResult) -> Unit,
+    /** False in the sheet's screenshot tests: the engine is left alone (no keys) and the Card row shows at once. */
+    useEngine: Boolean = true,
 ) {
     val snap by session.state.collectAsState()
     val configuration = request.configuration
@@ -110,10 +112,10 @@ internal fun CheckoutSheet(
     }
     val intent = remember(charge, methods) { if (charge != null && methods != null) engineIntent(charge, methods) else null }
     LaunchedEffect(settings, intent) {
-        if (settings != null && intent != null) engine.configure(context, settings, intent)
+        if (useEngine && settings != null && intent != null) engine.configure(context, settings, intent)
     }
     // The engine takes a moment to load: placeholder rows hold its place until it reports in.
-    val elementLoading = (engine.cardLoaded != settings || engine.elementLoaded != settings) && snap.elementError == null
+    val elementLoading = useEngine && (engine.cardLoaded != settings || engine.elementLoaded != settings) && snap.elementError == null
 
     val amount = charge?.let { formatAmount(it.amountMinor, it.currency) } ?: ""
     val paying = phase == SessionPhase.Paying

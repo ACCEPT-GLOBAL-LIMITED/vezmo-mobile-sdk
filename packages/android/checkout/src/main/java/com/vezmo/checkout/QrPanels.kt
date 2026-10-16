@@ -4,7 +4,6 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,7 +41,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import kotlinx.coroutines.delay
@@ -292,7 +291,7 @@ internal fun QrWaiting(
 
 private fun openLink(context: Context, link: String) {
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+        context.startActivity(Intent(Intent.ACTION_VIEW, link.toUri()))
     } catch (_: Exception) {
         // No app for the link: the buyer can scan the code instead.
     }

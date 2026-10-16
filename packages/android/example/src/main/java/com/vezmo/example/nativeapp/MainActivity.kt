@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -248,8 +247,9 @@ private fun Shop() {
 /** A pair of headphones, drawn: the band and two cups. */
 @Composable
 private fun Headphones() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Canvas(Modifier.size(112.dp, 70.dp)) {
+    // The cups overlap the band by 16: 70 + 48 - 16 tall.
+    Box(Modifier.size(130.dp, 102.dp)) {
+        Canvas(Modifier.size(112.dp, 70.dp).align(Alignment.TopCenter)) {
             val w = 9.dp.toPx()
             val r = 56.dp.toPx() - w / 2
             val c = Offset(size.width / 2, 56.dp.toPx())
@@ -261,7 +261,7 @@ private fun Headphones() {
             }
             drawPath(path, DARK, style = Stroke(w))
         }
-        Row(Modifier.offset(y = (-16).dp), horizontalArrangement = Arrangement.spacedBy(74.dp)) {
+        Row(Modifier.align(Alignment.BottomCenter), horizontalArrangement = Arrangement.spacedBy(74.dp)) {
             repeat(2) {
                 Spacer(
                     Modifier

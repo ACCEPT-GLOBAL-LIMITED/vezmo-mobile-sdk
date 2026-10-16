@@ -763,9 +763,9 @@ private fun skeletonAlpha(): Float {
 }
 
 @Composable
-private fun Block(width: Dp?, height: Dp, radius: Dp = 8.dp, modifier: Modifier = Modifier) {
+private fun Block(width: Dp?, height: Dp, radius: Dp = 8.dp) {
     Box(
-        modifier
+        Modifier
             .then(if (width != null) Modifier.width(width) else Modifier.fillMaxWidth())
             .height(height)
             .clip(RoundedCornerShape(radius))

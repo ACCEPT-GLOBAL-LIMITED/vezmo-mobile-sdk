@@ -17,6 +17,7 @@ android {
 
     defaultConfig {
         minSdk = 24
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Sent as `Vezmo-SDK: android/<version>` so a payment records which SDK took it.
         buildConfigField("String", "SDK_VERSION", "\"$sdkVersion\"")
     }
@@ -63,6 +64,13 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     // A real org.json for JVM tests (Android's is a stub there).
     testImplementation("org.json:json:20250517")
+
+    // The sheet's screenshot tests, on the emulator in CI.
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.06.01"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 mavenPublishing {

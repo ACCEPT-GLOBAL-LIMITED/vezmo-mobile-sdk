@@ -87,8 +87,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Build the example app
-        run: gradle :example:assembleRelease
+      - name: Build the example app and the sheet's screenshot tests
+        run: gradle :example:assembleRelease :checkout:assembleDebugAndroidTest
       - name: Install Maestro
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
@@ -110,7 +110,13 @@ jobs:
             maestro test e2e/maestro/flows --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
             adb shell "cmd uimode night yes"
             maestro test e2e/maestro/look --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-dark.png; adb logcat -d > e2e/out/logcat-dark.txt; exit 1)
+            adb shell "cmd uimode night no"
+            adb install -r checkout/build/outputs/apk/androidTest/debug/checkout-debug-androidTest.apk
+            adb shell am instrument -w -e class com.vezmo.checkout.SheetStatesTest com.vezmo.checkout.test/androidx.test.runner.AndroidJUnitRunner > e2e/out/states.txt
+            cat e2e/out/states.txt
+            adb pull /sdcard/Android/data/com.vezmo.checkout.test/files/states e2e/out/states
             adb logcat -d > e2e/out/logcat.txt
+            grep -q "^OK (" e2e/out/states.txt
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
