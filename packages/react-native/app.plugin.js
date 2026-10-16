@@ -7,7 +7,15 @@
  *   scanning a card. Without a merchant identifier, Apple Pay is simply not offered.
  * - Android needs nothing: Google Pay's flag ships in the package's own manifest.
  */
-const { withEntitlementsPlist, withInfoPlist } = require('expo/config-plugins');
+function loadConfigPlugins() {
+  try {
+    return require('expo/config-plugins');
+  } catch {
+    // The package outside the app's node_modules (a monorepo, a local link): use the app's Expo.
+    return require(require.resolve('expo/config-plugins', { paths: [process.cwd()] }));
+  }
+}
+const { withEntitlementsPlist, withInfoPlist } = loadConfigPlugins();
 
 const DEFAULT_CAMERA_TEXT = 'Scan your card to fill in its details.';
 
