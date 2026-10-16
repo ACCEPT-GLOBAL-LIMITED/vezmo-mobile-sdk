@@ -140,6 +140,22 @@ class VezmoPaymentElementView(
     )
   }
 
+  // React Native lays out its own views only: a child added here (the Compose host) is never measured unless asked.
+  // Measure and lay it out whenever it requests a layout, as native views inside React Native must.
+  private val measureAndLayout =
+    Runnable {
+      measure(
+        MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+        MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
+      )
+      layout(left, top, right, bottom)
+    }
+
+  override fun requestLayout() {
+    super.requestLayout()
+    post(measureAndLayout)
+  }
+
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     if (composeView != null) return

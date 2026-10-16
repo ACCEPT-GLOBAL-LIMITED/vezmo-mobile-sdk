@@ -185,10 +185,17 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                 configJson={configJson}
                 intentJson={intentJson}
                 onPaymentOptionChange={(option) => session.setCanPay(!!option)}
-                onLoadFailed={() => session.setCanPay(false)}
+                onLoaded={() => session.setElementError(null)}
+                onLoadFailed={(message) => session.setElementError(message || 'The payment form couldn’t load.')}
                 onConfirmationToken={(id) => void session.onConfirmationToken(id)}
                 onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
               />
+
+              {!!snap.elementError && (
+                <Text testID="vezmo-element-error" style={s.error}>
+                  {snap.elementError}
+                </Text>
+              )}
 
               {phase.name === 'ready' && phase.error && (
                 <Text style={s.error} accessibilityLiveRegion="polite">

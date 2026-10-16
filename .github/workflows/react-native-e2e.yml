@@ -67,7 +67,7 @@ jobs:
           script: |
             adb install example/android/app/build/outputs/apk/release/app-release.apk
             mkdir -p e2e/out
-            maestro test e2e/maestro --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; exit 1)
+            maestro test e2e/maestro --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
