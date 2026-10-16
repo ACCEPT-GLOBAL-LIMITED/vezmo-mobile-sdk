@@ -1,0 +1,30 @@
+name: Flutter plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [flutter]
+    paths: ['packages/flutter/**', '.github/workflows/flutter.yml']
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+      - run: flutter --version && flutter config --list
+      - name: Generate templates
+        run: |
+          mkdir -p $RUNNER_TEMP/s && cd $RUNNER_TEMP/s
+          flutter create --template=plugin --platforms=android,ios --org com.vezmo.flutter --project-name vezmo_checkout plugin
+          flutter create --platforms=android,ios --org com.vezmo.example --project-name vezmo_checkout_example app
+          rm -rf plugin/.dart_tool plugin/example/.dart_tool app/.dart_tool plugin/build app/build
+          find . -type f | grep -v '/Assets.xcassets/\|mipmap' | sort
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: scaffold
+          path: ${{ runner.temp }}/s
+          include-hidden-files: true
