@@ -1,30 +1,115 @@
 name: Flutter plugin
 
+# The Flutter plugin (packages/flutter): analysis and Dart tests; then its example app, built on the native Android
+# SDK, pays end to end on a real Android emulator. Sessions come from dev's demo endpoint (TEST mode only), so this
+# repo holds no key.
 on:
   workflow_dispatch:
   push:
-    branches: [flutter]
-    paths: ['packages/flutter/**', '.github/workflows/flutter.yml']
+    branches: [main, flutter]
+    paths: ['packages/flutter/**', 'packages/android/**', '.github/workflows/flutter.yml']
+  pull_request:
+    branches: [main]
+    paths: ['packages/flutter/**', 'packages/android/**', '.github/workflows/flutter.yml']
+
+concurrency:
+  group: flutter-plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/flutter
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  VEZMO_API_BASE: https://api.dev.vezmo.com/api/v1
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
-  scaffold:
+  dart:
+    name: Analyze and test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          flutter-version: 3.47.7
-      - run: flutter --version && flutter config --list
-      - name: Generate templates
-        run: |
-          mkdir -p $RUNNER_TEMP/s && cd $RUNNER_TEMP/s
-          flutter create --template=plugin --platforms=android,ios --org com.vezmo.flutter --project-name vezmo_checkout plugin
-          flutter create --platforms=android,ios --org com.vezmo.example --project-name vezmo_checkout_example app
-          rm -rf plugin/.dart_tool plugin/example/.dart_tool app/.dart_tool plugin/build app/build
-          find . -type f | grep -v '/Assets.xcassets/\|mipmap' | sort
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - run: flutter pub get && (cd example && flutter pub get)
+      - run: flutter analyze
+      - run: flutter test
+      - name: Format check
+        run: dart format . && git diff > $RUNNER_TEMP/format.patch && git diff --exit-code --stat
+      - if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: scaffold
-          path: ${{ runner.temp }}/s
-          include-hidden-files: true
+          name: format-patch
+          path: ${{ runner.temp }}/format.patch
+      - name: Package check (what pub.dev would see)
+        run: flutter pub publish --dry-run
+
+  android:
+    name: Example app on an Android emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: '8.14.3'
+          cache-provider: basic
+          cache-read-only: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Accept Android SDK licences
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+      - name: Build the native Android SDK into Maven local
+        # Until com.vezmo:vezmo-checkout is on Maven Central, the plugin resolves it from here.
+        run: gradle -p ../android :checkout:publishToMavenLocal
+      - name: Build the example app (release)
+        working-directory: packages/flutter/example
+        run: flutter build apk --release --target-platform android-x64 --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Run the flows on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          # A real phone's size and density (1080x2400, 420 dpi), so screenshots show what buyers see.
+          profile: pixel_7
+          ram-size: 4096M
+          working-directory: packages/flutter
+          script: |
+            adb shell settings put global hide_error_dialogs 1
+            # Keep the whole run's log: a failure early in the run is otherwise rotated out by the time it is saved.
+            adb logcat -G 16M
+            adb install example/build/app/outputs/flutter-apk/app-release.apk
+            mkdir -p e2e/out
+            maestro test e2e/maestro/android --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            adb logcat -d > e2e/out/logcat.txt
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: flutter-android-e2e
+          path: |
+            packages/flutter/e2e/out
+            packages/flutter/*.png
