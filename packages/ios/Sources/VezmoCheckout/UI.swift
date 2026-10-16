@@ -357,11 +357,14 @@ struct Cross: View {
   let size: CGFloat
 
   var body: some View {
+    // Two bars `size` long, turned 45° about the centre.
+    let r: CGFloat = size / 2 * 0.7071
+    let c: CGFloat = size / 2
     Path { path in
-      path.move(to: .zero)
-      path.addLine(to: CGPoint(x: size, y: size))
-      path.move(to: CGPoint(x: size, y: 0))
-      path.addLine(to: CGPoint(x: 0, y: size))
+      path.move(to: CGPoint(x: c - r, y: c - r))
+      path.addLine(to: CGPoint(x: c + r, y: c + r))
+      path.move(to: CGPoint(x: c + r, y: c - r))
+      path.addLine(to: CGPoint(x: c - r, y: c + r))
     }
     .stroke(color, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
     .frame(width: size, height: size)

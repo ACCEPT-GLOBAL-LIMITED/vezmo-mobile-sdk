@@ -1,4 +1,5 @@
 import Foundation
+import os
 @_spi(STP) @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import SwiftUI
 import UIKit
@@ -64,6 +65,9 @@ struct EngineError: LocalizedError {
 }
 
 private let notReady = "The payment form isn’t ready yet."
+
+/// Why the engine couldn't load or update, for the app's console (the buyer sees our own words).
+let engineLog = Logger(subsystem: "com.vezmo.checkout", category: "engine")
 
 private func confirmStatus(_ result: PaymentSheetResult) -> (ConfirmStatus, String) {
   switch result {
@@ -180,6 +184,7 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
       reportCard()
       loaded = true
     } catch {
+      engineLog.error("Card flow failed to load: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription.isEmpty ? "load failed" : error.localizedDescription)
     }
   }
@@ -196,7 +201,10 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
   private func update() {
     guard let flow, let intent else { return }
     flow.update(intentConfiguration: intentConfiguration(intent)) { [weak self] error in
-      if let error { self?.session?.setElementError(error.localizedDescription) }
+      if let error {
+        engineLog.error("Card flow failed to update: \(String(describing: error), privacy: .public)")
+        self?.session?.setElementError(error.localizedDescription)
+      }
       self?.reportCard()
     }
     walletFlow?.update(intentConfiguration: intentConfiguration(intent)) { _ in }
@@ -393,6 +401,7 @@ final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentEl
       loaded = true
       session?.setElementError(nil)
     } catch {
+      engineLog.error("Element failed to load: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription.isEmpty ? "load failed" : error.localizedDescription)
     }
   }
@@ -401,6 +410,7 @@ final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentEl
     guard let element, let intent else { return }
     let result = await element.update(intentConfiguration: intentConfiguration(intent))
     if case .failed(let error) = result {
+      engineLog.error("Element failed to update: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription)
     }
   }
