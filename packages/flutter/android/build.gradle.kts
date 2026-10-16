@@ -52,7 +52,7 @@ android {
     }
 
     // The plugin's lifecycle runs against real activities (Robolectric) and the real native SDK, talking to a local
-    // server: `./gradlew :vezmo_checkout:testReleaseUnitTest` from example/android, after a `flutter build`.
+    // server: `./gradlew :vezmo_checkout:testDebugUnitTest` from example/android, after a `flutter build`.
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
