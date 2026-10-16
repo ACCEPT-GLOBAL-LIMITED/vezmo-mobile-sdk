@@ -1,0 +1,32 @@
+# The example app's Xcode project, generated with XcodeGen (`xcodegen generate` in this folder). It uses the Swift
+# package from this repository's root.
+name: VezmoExample
+options:
+  deploymentTarget:
+    iOS: "15.1"
+packages:
+  VezmoCheckout:
+    path: ../../..
+targets:
+  VezmoExample:
+    type: application
+    platform: iOS
+    sources: [VezmoExample]
+    scheme: {}
+    dependencies:
+      - package: VezmoCheckout
+        product: VezmoCheckout
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vezmo.example.native
+        PRODUCT_NAME: VezmoExample
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: VezmoExample/Info.plist
+        CODE_SIGN_ENTITLEMENTS: VezmoExample/VezmoExample.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.0"
+        # Where sandbox sessions come from and which API the sheet talks to; empty means "paste a client token" and
+        # the production API. CI sets both to Vezmo's dev sandbox.
+        VEZMO_DEMO_URL: ""
+        VEZMO_API_BASE: ""
