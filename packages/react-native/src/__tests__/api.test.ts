@@ -58,6 +58,19 @@ describe('VezmoApi', () => {
       .pay('t', { confirmationToken: 'c' })
       .catch((e: unknown) => e)) as VezmoApiError;
     expect(priceChanged.reason).toBe('local_price_changed');
+    await expect(
+      api(
+        fail(400, {
+          message: 'Bad Request',
+          errors: [{ code: 'return_url_not_registered', message: 'Register acme://vezmo for this business.' }],
+        }),
+      ).pay('t', { confirmationToken: 'c', returnUrl: 'acme://vezmo' }),
+    ).rejects.toMatchObject({ code: 'config', reason: 'return_url_not_registered' });
+    await expect(
+      api(
+        fail(400, { errors: [{ code: 'method_unavailable', message: 'This way to pay is not available.' }] }),
+      ).subscriptionPay('t', { confirmationToken: 'c' }),
+    ).rejects.toMatchObject({ code: 'not_available', message: 'This way to pay is not available.' });
     const offline = new VezmoApi(
       'https://api.test/v1',
       'ios',

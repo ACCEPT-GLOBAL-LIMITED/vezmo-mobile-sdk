@@ -189,10 +189,12 @@ export class VezmoApi {
 }
 
 function codeFor(status: number, json: any): VezmoError['code'] {
+  const reason = json?.errors?.[0]?.code;
+  // The app's return link isn't registered for this business (iPhone), or this way to pay is off for it.
+  if (reason === 'return_url_not_registered') return 'config';
+  if (reason === 'method_unavailable') return 'not_available';
   if (status === 410) return 'expired';
-  if (status === 409) {
-    return json?.errors?.[0]?.code === 'local_price_changed' ? 'unknown' : 'already_paid';
-  }
+  if (status === 409) return reason === 'local_price_changed' ? 'unknown' : 'already_paid';
   if (status === 400 || status === 402) return 'declined';
   if (status === 401 || status === 403 || status === 404) return 'config';
   return 'unknown';

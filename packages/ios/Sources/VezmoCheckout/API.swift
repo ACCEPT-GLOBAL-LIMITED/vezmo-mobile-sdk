@@ -169,6 +169,9 @@ struct VezmoAPI: CheckoutAPI {
   static let fallbackMessage = "Something went wrong. Please try again."
 
   static func code(status: Int, reason: String?) -> VezmoError.Code {
+    // The app's return link isn't registered for this business, or this way to pay is off for it.
+    if reason == "return_url_not_registered" { return .config }
+    if reason == "method_unavailable" { return .notAvailable }
     switch status {
     case 410: return .expired
     case 409: return reason == "local_price_changed" ? .unknown : .alreadyPaid
