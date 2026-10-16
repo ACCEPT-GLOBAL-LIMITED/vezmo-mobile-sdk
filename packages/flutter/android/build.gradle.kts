@@ -20,9 +20,11 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        // ponytail: until com.vezmo:vezmo-checkout is on Maven Central, CI builds it into Maven local (Vezmo's group
-        // only). Drop this once it is published.
-        mavenLocal { content { includeGroup("com.vezmo") } }
+        // Only for this repository's CI, which builds com.vezmo:vezmo-checkout into Maven local first
+        // (ORG_GRADLE_PROJECT_vezmoMavenLocal=true). Apps get it from Maven Central.
+        if (providers.gradleProperty("vezmoMavenLocal").isPresent) {
+            mavenLocal { content { includeGroup("com.vezmo") } }
+        }
     }
 }
 

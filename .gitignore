@@ -6,3 +6,15 @@ lib/
 # Swift Package Manager (Package.swift at the root)
 .build/
 .swiftpm/
+
+# Kotlin compiler caches
+.kotlin/
+
+# CI scratch: iOS (ios.yml) and the React Native end-to-end runs
+/out/
+/e2e-out/
+/.spm/
+packages/react-native/e2e/out*
+
+# The packages/flutter → vezmo_checkout link for running the Flutter example on iPhone (packages/flutter/README.md)
+packages/vezmo_checkout

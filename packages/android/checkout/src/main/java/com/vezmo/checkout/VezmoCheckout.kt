@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
  *
  * ```
  * // In your activity's onCreate (it registers for the sheet's result, so it must be created early):
- * val vezmo = VezmoCheckout(this, VezmoConfiguration(returnUrl = "acme://vezmo")) { result -> … }
+ * val vezmo = VezmoCheckout(this, VezmoConfiguration()) { result -> … }
  *
  * // When the buyer taps Pay, with the client token your server got from Vezmo:
  * lifecycleScope.launch {

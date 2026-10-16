@@ -62,7 +62,10 @@ export function VezmoProvider(props: VezmoProviderProps) {
   );
 
   const prepareCheckout = useCallback(
-    async ({ clientToken, subscriptionToken, merchantDisplayName }: PrepareOptions) => {
+    async ({ clientToken: rawClient, subscriptionToken: rawSubscription, merchantDisplayName }: PrepareOptions) => {
+      // A token pasted with a stray space or newline still works; a blank one counts as missing.
+      const clientToken = rawClient?.trim();
+      const subscriptionToken = rawSubscription?.trim();
       if (!clientToken === !subscriptionToken) {
         return { error: { code: 'config' as const, message: 'Pass a clientToken or a subscriptionToken.' } };
       }

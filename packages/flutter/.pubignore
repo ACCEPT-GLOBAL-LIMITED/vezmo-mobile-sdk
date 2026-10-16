@@ -1,0 +1,15 @@
+# pub reads this file instead of .gitignore in this folder, so it repeats what matters from it.
+# The repository's root .gitignore ignores lib/ (React Native build output); the Dart sources live in lib/.
+!lib/
+.dart_tool/
+.flutter-plugins-dependencies
+/build/
+/coverage/
+/pubspec.lock
+**/doc/api/
+.idea/
+*.iml
+*.log
+.DS_Store
+# Not for pub.dev: the end-to-end flows this repository's CI runs.
+e2e/

@@ -17,6 +17,9 @@ import 'package:flutter/services.dart';
 
 const MethodChannel _channel = MethodChannel('vezmo_checkout');
 
+/// The message when the native side gives none (the native SDKs' own words).
+const String _fallbackMessage = 'Something went wrong. Please try again.';
+
 /// Takes a payment, or starts a subscription, in the Vezmo payment sheet.
 ///
 /// [prepare] loads the session (call it as soon as your server sends the token), then [present] opens the sheet and
@@ -61,7 +64,7 @@ class VezmoCheckout {
     } on MissingPluginException {
       return _unsupported;
     } on PlatformException catch (e) {
-      return VezmoError(VezmoErrorCode.unknown, e.message ?? 'Something went wrong. Try again.');
+      return VezmoError(VezmoErrorCode.unknown, e.message ?? _fallbackMessage);
     }
   }
 
@@ -77,7 +80,7 @@ class VezmoCheckout {
     } on MissingPluginException {
       return const CheckoutFailed(_unsupported);
     } on PlatformException catch (e) {
-      return CheckoutFailed(VezmoError(VezmoErrorCode.unknown, e.message ?? 'Something went wrong. Try again.'));
+      return CheckoutFailed(VezmoError(VezmoErrorCode.unknown, e.message ?? _fallbackMessage));
     }
   }
 
@@ -257,7 +260,7 @@ sealed class CheckoutResult {
       _ => CheckoutFailed(
         error is Map
             ? VezmoError.fromJson(error.cast<String, Object?>())
-            : const VezmoError(VezmoErrorCode.unknown, 'Something went wrong. Try again.'),
+            : const VezmoError(VezmoErrorCode.unknown, _fallbackMessage),
       ),
     };
   }
@@ -351,7 +354,7 @@ class VezmoError {
 
   factory VezmoError.fromJson(Map<String, Object?> json) => VezmoError(
     VezmoErrorCode.values.firstWhere((c) => c.wireName == json['code'], orElse: () => VezmoErrorCode.unknown),
-    json['message'] as String? ?? 'Something went wrong. Try again.',
+    json['message'] as String? ?? _fallbackMessage,
   );
 
   final VezmoErrorCode code;
