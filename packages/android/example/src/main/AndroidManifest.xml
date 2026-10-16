@@ -15,14 +15,5 @@
         <category android:name="android.intent.category.LAUNCHER" />
       </intent-filter>
     </activity>
-    <!-- The return link registered for the demo sessions, vezmoexample://vezmo, back to the Vezmo sheet. -->
-    <activity android:name="com.vezmo.checkout.VezmoReturnActivity" android:exported="true">
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="vezmoexample" android:host="vezmo" />
-      </intent-filter>
-    </activity>
   </application>
 </manifest>
