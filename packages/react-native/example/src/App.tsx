@@ -29,11 +29,12 @@ function Shop() {
   const [status, setStatus] = useState('');
   const [result, setResult] = useState<CheckoutResult | null>(null);
 
-  const newSession = async () => {
+  // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
+  const newSession = async (track?: 'mor') => {
     if (!DEMO_URL) return setStatus('Paste a client token, or set EXPO_PUBLIC_VEZMO_DEMO_URL.');
     setStatus('Creating a sandbox session…');
     try {
-      const res = await fetch(DEMO_URL, { method: 'POST' });
+      const res = await fetch(track ? `${DEMO_URL}?track=${track}` : DEMO_URL, { method: 'POST' });
       const json = await res.json();
       setToken(json?.data?.clientToken ?? '');
       setStatus('Session ready.');
@@ -96,8 +97,11 @@ function Shop() {
             autoCorrect={false}
             style={styles.input}
           />
-          <Pressable testID="new-session" onPress={newSession} style={styles.secondary}>
+          <Pressable testID="new-session" onPress={() => newSession()} style={styles.secondary}>
             <Text style={styles.secondaryText}>New sandbox session</Text>
+          </Pressable>
+          <Pressable testID="new-session-mor" onPress={() => newSession('mor')} style={styles.secondary}>
+            <Text style={styles.secondaryText}>New session · merchant of record</Text>
           </Pressable>
         </View>
       </ScrollView>

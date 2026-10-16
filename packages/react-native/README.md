@@ -171,6 +171,13 @@ button.
    Payment Processing Certificate** with it and send us the certificate.
 3. Pass the Merchant ID to `VezmoProvider` (`applePay.merchantId`) and, in Expo, to the plugin.
 
+## Google Pay
+
+Google Pay shows on Android phones where the buyer has it; sandbox sessions use Google's test environment, with
+nothing to set up. Before your app takes live Google Pay payments, ask Google for production access in the **Google
+Pay & Wallet Console**: add your app, choose the **gateway** integration when asked how you take payments, and send the
+screenshots of your checkout that Google asks for.
+
 ## Testing
 
 Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
