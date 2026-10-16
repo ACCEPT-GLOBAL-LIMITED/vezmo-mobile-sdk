@@ -72,6 +72,8 @@ jobs:
             adb install example/android/app/build/outputs/apk/release/app-release.apk
             mkdir -p e2e/out
             maestro test e2e/maestro/android --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            adb shell "cmd uimode night yes"
+            maestro test e2e/maestro/look/android --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-dark.png; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -120,6 +122,8 @@ jobs:
           # The test driver can take a while to start on a cold CI simulator.
           export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
           maestro --device "$UDID" test e2e/maestro/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; exit 1)
+          xcrun simctl ui "$UDID" appearance dark
+          maestro --device "$UDID" test e2e/maestro/look/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
