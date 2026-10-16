@@ -158,18 +158,23 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     defer { building = false }
     // What changes while a build runs is built next.
     while let settings, let intent {
-      await build(settings, intent)
-      if settings == self.settings && intent == self.intent { return }
+      let built = await build(settings, intent)
+      // Shown as loaded only when what was built is still what the sheet wants (a tap meanwhile would reach an
+      // engine about to be replaced).
+      if settings == self.settings && intent == self.intent {
+        loaded = built
+        return
+      }
     }
   }
 
-  private func build(_ settings: EngineSettings, _ intent: EngineIntent) async {
+  /// Builds the engine for these settings; false when it couldn't load (the session shows why).
+  private func build(_ settings: EngineSettings, _ intent: EngineIntent) async -> Bool {
     guard intent.card else {
       flow = nil
       walletFlow = nil
       reportCard()
-      loaded = true
-      return
+      return true
     }
     STPAPIClient.shared.publishableKey = settings.publishableKey
     STPAPIClient.shared.stripeAccount = settings.account
@@ -182,10 +187,11 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
         walletFlow = nil
       }
       reportCard()
-      loaded = true
+      return true
     } catch {
       engineLog.error("Card flow failed to load: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription.isEmpty ? "load failed" : error.localizedDescription)
+      return false
     }
   }
 
@@ -374,12 +380,18 @@ final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentEl
     building = true
     defer { building = false }
     while let settings, let intent {
-      await build(settings, intent)
-      if settings == self.settings && intent == self.intent { return }
+      let built = await build(settings, intent)
+      // Shown as loaded only when what was built is still what the sheet wants (a tap meanwhile would reach an
+      // engine about to be replaced).
+      if settings == self.settings && intent == self.intent {
+        loaded = built
+        return
+      }
     }
   }
 
-  private func build(_ settings: EngineSettings, _ intent: EngineIntent) async {
+  /// Builds the engine for these settings; false when it couldn't load (the session shows why).
+  private func build(_ settings: EngineSettings, _ intent: EngineIntent) async -> Bool {
     STPAPIClient.shared.publishableKey = settings.publishableKey
     STPAPIClient.shared.stripeAccount = settings.account
     do {
@@ -398,11 +410,11 @@ final class PaymentElementHost: ObservableObject, ElementPort, EmbeddedPaymentEl
         element = nil
         height = 0
       }
-      loaded = true
-      session?.setElementError(nil)
+      return true
     } catch {
       engineLog.error("Element failed to load: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription.isEmpty ? "load failed" : error.localizedDescription)
+      return false
     }
   }
 
