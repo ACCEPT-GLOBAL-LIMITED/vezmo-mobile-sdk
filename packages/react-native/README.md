@@ -9,7 +9,8 @@ Full guide: [Vezmo docs → Mobile → React Native SDK](https://user.vezmo.com/
 
 ## Requirements
 
-- React Native 0.79 or later with the **New Architecture**. Expo SDK 52 or later with a development build (not Expo Go).
+- React Native 0.79 or later with the **New Architecture**. Expo SDK 53 or later (React Native 0.79) with a
+  development build (not Expo Go).
 - iOS 15.1 or later. Android 7.0 (API 24) or later.
 - Your app added in the Vezmo dashboard under **Developers → Mobile apps**, with its return link (for example
   `acme://vezmo`). The buyer comes back through it after 3D Secure, a bank app or a pay-later provider.
@@ -35,7 +36,16 @@ a card:
 ```
 
 In a bare app, add the Apple Pay capability with your Merchant ID in Xcode and `NSCameraUsageDescription` to
-`Info.plist`.
+`Info.plist`. Add your return link's scheme (for example `acme`) under the target's **Info → URL Types**, and hand
+the links that open your app to React Native in `AppDelegate`:
+
+```swift
+import React
+
+func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+  RCTLinkingManager.application(app, open: url, options: options)
+}
+```
 
 ## Set up
 
@@ -59,7 +69,7 @@ export default function App() {
 
 | Prop | What it does |
 | --- | --- |
-| `returnUrl` | Your registered return link. Needed for 3D Secure in some banks, bank apps and pay-later methods. |
+| `returnUrl` | Your registered return link (iPhone; Android brings the buyer back by itself). Needed for 3D Secure in some banks, bank apps and pay-later methods. |
 | `applePay` | `{ merchantId, merchantCountryCode? }`. Without it the sheet shows no Apple Pay. |
 | `googlePay` | `{ merchantCountryCode? }`. Google Pay shows on phones that have it; sandbox sessions use Google's test environment. |
 | `style` | `'automatic'` (follow the phone, default), `'light'` or `'dark'`. |
@@ -67,19 +77,25 @@ export default function App() {
 
 ## Take a payment
 
-Your server creates the session with your API key (the same API checkout session as on the web) and sends its
-`clientToken` to the app:
+Your server creates the session (the same API checkout session as on the web) and sends
+`data.securePayment.clientToken` to the app:
 
 ```http
-POST /v1/merchant/secure-payments
+POST https://api.vezmo.com/api/v1/merchant/secure-payments
+Authorization: Bearer <access token>
+Content-Type: application/json
+
 {
   "title": "Order #1042",
   "amount": 49.00,
   "currency": "USD",
-  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" },
-  "app": { "returnUrl": "acme://vezmo" }
+  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" }
 }
 ```
+
+Get an access token with your API key and secret (`POST /api/v1/merchant/api-auth/login`, headers `x-api-key` and
+`x-api-secret`); see the [Secure Payments docs](https://user.vezmo.com/docs/v1/secure-payments). Add `app.returnUrl`
+only if you also open Checkout for apps.
 
 In the app:
 
@@ -142,9 +158,13 @@ Start a subscription in the app: the first payment, or a free trial with the car
 creates the subscription with your API key and sends its `checkoutToken` to the app:
 
 ```http
-POST /v1/merchant/subscription
-{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
-→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+POST https://api.vezmo.com/api/v1/merchant/subscription
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "planId": "<plan_id>", "customerEmail": "ana@example.com", "trialDays": 7 }
+
+→ { "success": true, "data": { "subscriptionRef": "VS7K2P9Q4FXM", "status": "TRIALING", "checkoutToken": "…" } }
 ```
 
 In the app, pass it as `subscriptionToken`; everything else is the same:
@@ -154,15 +174,17 @@ const prep = await prepareCheckout({ subscriptionToken: checkoutToken });
 if (prep.error) return showError(prep.error.message);
 const result = await presentCheckout();
 if (result.status === 'succeeded') {
-  // result.subscription: { ref: 'SUB-7Q2K9WX', status: 'trialing' | 'active' }
+  // result.subscription: { ref: 'VS7K2P9Q4FXM', status: 'trialing' | 'active' }
   // result.paymentId is the first payment, or null for a free trial (nothing charged today)
 }
 ```
 
-The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from 23 Oct 2026"), the
+The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
 authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards, Apple Pay and Google Pay; on iPhone,
 Apple Pay shows the plan as a recurring payment and lists it in the buyer's Wallet with their page to manage it.
-Renewals are charged by Vezmo; your server hears about each one from the subscription webhooks.
+Renewals are charged by Vezmo; your server hears about each one from the subscription webhooks. When the buyer
+starts a free trial, Vezmo sends `subscription.trial_started`; the first charge sends `subscription.activated` (or
+`subscription.payment_failed`).
 
 Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
 to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
@@ -213,8 +235,9 @@ screenshots of your checkout that Google asks for.
 ## Testing
 
 Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
-CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 0002` is declined. In the
-sandbox, Apple Pay and Google Pay use the cards in the phone's wallet without charging them.
+CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 3220` always asks for 3D
+Secure. `4000 0000 0000 0002` is declined. In the sandbox, Apple Pay and Google Pay use the cards in the phone's wallet
+without charging them.
 
 The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/react-native/example)
 pays against Vezmo's sandbox with no setup.
@@ -245,8 +268,9 @@ it('shows the canceled state', async () => {
   on the New Architecture and use a development build.
 - **No Apple Pay**: no `applePay.merchantId` on the provider, no card in the phone's Wallet, or the Apple Pay
   certificate isn't set up yet.
-- **The buyer doesn't come back to the app after 3D Secure or a bank app**: the session's `app.returnUrl` must be a
-  link registered under Developers → Mobile apps, and your app must open that scheme.
+- **The buyer doesn't come back to the app after 3D Secure or a bank app (iPhone)**: the `returnUrl` on
+  `VezmoProvider` must be a link registered under Developers → Mobile apps, and your app must open that scheme (in a
+  bare app: URL Types and `RCTLinkingManager`, above).
 
 ## License
 

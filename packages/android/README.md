@@ -9,8 +9,7 @@ Your server keeps your Vezmo API key. The app only ever receives a session's cli
 
 - Android 7.0 (API 24) or later. Compile with SDK 36, Kotlin 2.1 or later, Java 17.
 - Your activity is a `ComponentActivity` (`AppCompatActivity` and `FragmentActivity` are).
-- Your app added in the Vezmo dashboard under **Developers → Mobile apps**, with its return link (for example
-  `acme://vezmo`). The buyer comes back through it after a bank app or a pay-later provider.
+- Your app added in the Vezmo dashboard under **Developers → Mobile apps**.
 
 ## Install
 
@@ -21,26 +20,32 @@ dependencies {
 }
 ```
 
-The library is on Maven Central; `mavenCentral()` must be in your repositories.
+The library is published to Maven Central with the release; `mavenCentral()` must be in your repositories.
 
 Nothing else to set up: after a bank app, a pay-later provider or 3D Secure in the browser, the buyer comes back to
 the open sheet by itself.
 
 ## Take a payment
 
-Your server creates the session with your API key (the same API checkout session as on the web) and sends its
-`clientToken` to the app:
+Your server creates the session (the same API checkout session as on the web) and sends
+`data.securePayment.clientToken` to the app:
 
 ```http
-POST /v1/merchant/secure-payments
+POST https://api.vezmo.com/api/v1/merchant/secure-payments
+Authorization: Bearer <access token>
+Content-Type: application/json
+
 {
   "title": "Order #1042",
   "amount": 49.00,
   "currency": "USD",
-  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" },
-  "app": { "returnUrl": "acme://vezmo" }
+  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" }
 }
 ```
+
+Get an access token with your API key and secret (`POST /api/v1/merchant/api-auth/login`, headers `x-api-key` and
+`x-api-secret`); see the [Secure Payments docs](https://user.vezmo.com/docs/v1/secure-payments). Add `app.returnUrl`
+only if you also open Checkout for apps.
 
 In an activity, create `VezmoCheckout` in `onCreate` (it registers for the sheet's result, so it must exist before
 the activity starts):
@@ -51,7 +56,7 @@ class CheckoutActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        vezmo = VezmoCheckout(this, VezmoConfiguration(returnUrl = "acme://vezmo")) { result ->
+        vezmo = VezmoCheckout(this, VezmoConfiguration()) { result ->
             when (result) {
                 is CheckoutResult.Succeeded -> showPaid(result.paymentId)
                 is CheckoutResult.Processing -> showPaymentReceived() // a bank debit, UPI or Pix still settling
@@ -77,7 +82,7 @@ In Compose:
 @Composable
 fun PayButton(orderId: String) {
     val scope = rememberCoroutineScope()
-    val vezmo = rememberVezmoCheckout(VezmoConfiguration(returnUrl = "acme://vezmo")) { result ->
+    val vezmo = rememberVezmoCheckout(VezmoConfiguration()) { result ->
         // the same results as above
     }
     Button(onClick = {
@@ -119,9 +124,13 @@ Start a subscription in the app: the first payment, or a free trial with the car
 creates the subscription with your API key and sends its `checkoutToken` to the app:
 
 ```http
-POST /v1/merchant/subscription
-{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
-→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+POST https://api.vezmo.com/api/v1/merchant/subscription
+Authorization: Bearer <access token>
+Content-Type: application/json
+
+{ "planId": "<plan_id>", "customerEmail": "ana@example.com", "trialDays": 7 }
+
+→ { "success": true, "data": { "subscriptionRef": "VS7K2P9Q4FXM", "status": "TRIALING", "checkoutToken": "…" } }
 ```
 
 In the app, pass it as `subscriptionToken`; everything else is the same:
@@ -132,14 +141,15 @@ vezmo.present()
 
 // In your result callback:
 if (result is CheckoutResult.Succeeded && result.subscription != null) {
-    // result.subscription: SubscriptionResult(ref = "SUB-7Q2K9WX", status = Trialing or Active)
+    // result.subscription: SubscriptionResult(ref = "VS7K2P9Q4FXM", status = Trialing or Active)
     // result.paymentId is the first payment, or null for a free trial (nothing charged today)
 }
 ```
 
 The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
 authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards and Google Pay. Renewals are charged
-by Vezmo; your server hears about each one from the subscription webhooks.
+by Vezmo; your server hears about each one from the subscription webhooks. When the buyer starts a free trial, Vezmo
+sends `subscription.trial_started`; the first charge sends `subscription.activated` (or `subscription.payment_failed`).
 
 Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
 to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
@@ -149,7 +159,7 @@ classes, rentals, services.
 
 | `VezmoConfiguration` | What it does |
 | --- | --- |
-| `returnUrl` | Optional on Android: your registered return link. The buyer comes back from bank apps and pay-later providers by themselves. |
+| `returnUrl` | Not used on Android: the buyer returns to the open sheet by themselves. |
 | `googlePay` | `GooglePayOptions(merchantCountryCode = "US")`. Google Pay shows when your business offers it and the phone has it; sandbox sessions use Google's test environment. |
 | `style` | `VezmoStyle.Automatic` (follow the phone, default), `Light` or `Dark`. |
 | `appearance` | Colors, corner radius and font, below. |
@@ -168,7 +178,6 @@ The sheet follows Vezmo's checkout design in light and dark. You can bring it cl
 
 ```kotlin
 VezmoConfiguration(
-    returnUrl = "acme://vezmo",
     appearance = VezmoAppearance(
         colors = VezmoColors(
             accent = VezmoColor(0xFF0A84FF.toInt()),
@@ -190,10 +199,15 @@ Google Pay needs no code: the library turns on the Google Pay API in your app's 
 your business offers Google Pay and the phone has it. In the sandbox it uses Google's test environment and the cards
 in the phone's Google Wallet, without charging them.
 
+Before your app takes live Google Pay payments, ask Google for production access in the **Google Pay & Wallet
+Console**: add your app, choose the **gateway** integration when asked how you take payments, and send the screenshots
+of your checkout that Google asks for.
+
 ## Testing
 
 Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
-CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 0002` is declined.
+CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 3220` always asks for 3D
+Secure. `4000 0000 0000 0002` is declined.
 
 The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/android/example)
 pays against Vezmo's sandbox with no setup.
@@ -219,7 +233,8 @@ Android emulator with Maestro (`e2e/maestro`): a card with 3D Secure, a decline,
 merchant-of-record track, a subscription's free trial and its first payment, dark-mode screenshots, and screenshots
 of the UPI, Pix, subscription and result states (`checkout/src/androidTest`).
 
-To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>`.
+To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>` (first of the four SDKs;
+see the [root README](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk#releases)).
 `release-android.yml` signs and uploads to Maven Central (needs the `MAVEN_CENTRAL_USERNAME`,
 `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` and `SIGNING_KEY_PASSWORD` secrets); release the validated upload in the
 Central Portal.
