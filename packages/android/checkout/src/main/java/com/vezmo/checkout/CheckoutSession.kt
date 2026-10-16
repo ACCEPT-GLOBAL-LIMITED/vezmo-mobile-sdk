@@ -232,6 +232,11 @@ internal class CheckoutSession(
             watch()
         } catch (e: VezmoApiError) {
             if (e.code == VezmoError.Code.Expired || e.code == VezmoError.Code.AlreadyPaid) return close(e)
+            // UPI and Pix are always in the buyer's currency: an offer that ran out is fetched again, not resent.
+            if (e.reason == "local_price_changed") {
+                refreshOffer()
+                return set { copy(phase = SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED))) }
+            }
             set { copy(phase = SessionPhase.Ready(e.toVezmoError())) }
         }
     }
@@ -334,10 +339,7 @@ internal class CheckoutSession(
             resolve(res.clientSecret, if (res.clientSecret != null) null else DECLINED.message)
         } catch (e: VezmoApiError) {
             val error = if (e.reason == "local_price_changed") {
-                // Fetch the new offer; the buyer sees the new amount before paying again.
-                post {
-                    runCatching { fetchConfig() }.getOrNull()?.let { apply(it, snapshot.payLocal) }
-                }
+                refreshOffer()
                 VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED)
             } else {
                 e.toVezmoError()
@@ -417,6 +419,9 @@ internal class CheckoutSession(
             if (e.code == VezmoError.Code.Declined) CheckoutResult.Failed(e.toVezmoError()) else null
         }
     }
+
+    /** The buyer's currency offer no longer holds: fetch the new one; the buyer sees the new amount before paying again. */
+    private fun refreshOffer() = post { runCatching { fetchConfig() }.getOrNull()?.let { apply(it, snapshot.payLocal) } }
 
     private suspend fun fetchConfig(): CheckoutConfig = if (subscription) api.subscription(token) else api.checkout(token)
 

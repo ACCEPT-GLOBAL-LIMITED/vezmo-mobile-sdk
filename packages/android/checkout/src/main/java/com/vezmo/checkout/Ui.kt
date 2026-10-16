@@ -71,7 +71,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -570,6 +572,8 @@ internal fun Banner(text: String, tag: String? = null) {
     Row(
         Modifier
             .fillMaxWidth()
+            // TalkBack reads what went wrong as it appears.
+            .semantics { liveRegion = LiveRegionMode.Polite }
             .clip(RoundedCornerShape(look.radius))
             .background(look.p.badSoft)
             .padding(horizontal = 12.dp, vertical = 11.dp),

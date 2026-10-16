@@ -112,6 +112,11 @@ final class CheckoutSession: ObservableObject {
     self.kind = kind
   }
 
+  /// The buyer's currency offer no longer holds: fetch the new one; the buyer sees the new amount before paying again.
+  private func refreshOffer() async {
+    if let config = try? await fetchConfig() { apply(config, payLocal: snapshot.payLocal) }
+  }
+
   private func fetchConfig() async throws -> CheckoutConfig {
     if kind == .subscription {
       let view = try await api.subscription(token: token)
@@ -257,6 +262,11 @@ final class CheckoutSession: ObservableObject {
     } catch {
       let apiError = error as? VezmoAPIError
       if apiError?.code == .expired || apiError?.code == .alreadyPaid { return close(error) }
+      // UPI and Pix are always in the buyer's currency: an offer that ran out is fetched again, not resent.
+      if apiError?.reason == "local_price_changed" {
+        set { $0.phase = .ready(error: VezmoError(code: .unknown, message: priceChanged)) }
+        return await refreshOffer()
+      }
       set { $0.phase = .ready(error: apiError?.vezmoError ?? VezmoError(code: .unknown, message: declinedError.message)) }
     }
   }
@@ -368,8 +378,7 @@ final class CheckoutSession: ObservableObject {
         let message = VezmoError(code: .unknown, message: priceChanged)
         lastError = message
         resolve(nil, message.message)
-        // Fetch the new offer; the buyer sees the new amount before paying again.
-        if let config = try? await fetchConfig() { apply(config, payLocal: snapshot.payLocal) }
+        await refreshOffer()
         return
       }
       let message = apiError?.vezmoError ?? VezmoError(code: .unknown, message: declinedError.message)

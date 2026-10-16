@@ -349,6 +349,14 @@ struct Banner: View {
     .padding(.horizontal, 12)
     .background(RoundedRectangle(cornerRadius: look.radius).fill(look.c(look.p.badSoft)))
     .accessibilityElement(children: .combine)
+    // VoiceOver reads what went wrong as it appears, after what it is saying (the buyer's focus stays put).
+    .onAppear { announce() }
+    .onChange(of: text) { _ in announce() }
+  }
+
+  private func announce() {
+    let spoken = NSAttributedString(string: text, attributes: [.accessibilitySpeechQueueAnnouncement: true])
+    UIAccessibility.post(notification: .announcement, argument: spoken)
   }
 }
 

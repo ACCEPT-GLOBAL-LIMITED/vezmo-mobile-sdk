@@ -25,6 +25,7 @@ private class FakeApi : CheckoutApi {
     var payArgs: List<String?>? = null
     var qrArgs: Pair<QrMethod, QrStart>? = null
     var confirmError: VezmoApiError? = null
+    var intentError: VezmoApiError? = null
 
     override suspend fun checkout(token: String, currency: String?): CheckoutConfig {
         calls += "checkout"
@@ -39,6 +40,7 @@ private class FakeApi : CheckoutApi {
 
     override suspend fun intent(token: String, localOffer: String?): SessionIntent {
         calls += "intent:$token:$localOffer"
+        intentError?.let { throw it }
         return SessionIntent("pi_7", "pi_7_secret_q", "acct_1", false)
     }
 
@@ -369,6 +371,28 @@ class CheckoutSessionTest {
         u.session.checkNow() // paid
         assertTrue("confirm:tok:pi_7" in u.api.calls)
         assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), u.snap.phase)
+        u.session.dispose()
+    }
+
+    @Test
+    fun `UPI with an offer that ran out - the new offer is fetched, then paid with, never the stale one again`() = test { t ->
+        val u = Setup(this)
+        u.api.checkout = { BASE.copy(enabledMethods = setOf("card", "upi"), localOffer = INR_OFFER) }
+        u.session.load()
+        u.session.chooseMethod(Method.Upi)
+        u.api.intentError = VezmoApiError(VezmoError.Code.Unknown, "Price changed", 409, "local_price_changed")
+        u.api.checkout = { BASE.copy(enabledMethods = setOf("card", "upi"), localOffer = INR_OFFER.copy(amountMinor = 421000, token = "offer_new")) }
+        val billing = QrBilling(name = "Asha Rao", line1 = "12 MG Road", country = "IN")
+        u.session.payWithQr(QrMethod.Upi, billing)
+        val ready = u.snap.phase as SessionPhase.Ready
+        assertTrue(ready.error!!.message.contains("price in your currency"))
+        assertEquals(Charge(421000, "INR", "offer_new"), u.snap.charge)
+        assertEquals(Method.Upi, u.snap.method)
+
+        u.api.intentError = null
+        u.session.payWithQr(QrMethod.Upi, billing)
+        assertEquals(listOf("intent:tok:offer_sealed", "intent:tok:offer_new"), u.api.calls.filter { it.startsWith("intent") })
+        assertTrue(u.snap.phase is SessionPhase.Waiting)
         u.session.dispose()
     }
 

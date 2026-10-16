@@ -18,6 +18,7 @@ final class FakeAPI: CheckoutAPI {
   var statusAnswer = SessionStatus(state: "succeeded", paymentId: "pay_1", transactionId: "VT1")
   var checkoutError: VezmoAPIError?
   var confirmError: VezmoAPIError?
+  var intentError: VezmoAPIError?
 
   var checkoutCalls = 0
   var payCalls: [PayCall] = []
@@ -44,6 +45,7 @@ final class FakeAPI: CheckoutAPI {
 
   func intent(token: String, localOffer: String?) async throws -> SessionIntent {
     intentCalls.append([token, localOffer])
+    if let intentError { throw intentError }
     return SessionIntent(id: "pi_7", clientSecret: "pi_7_secret_q", connectedAccountId: "acct_1", livemode: false)
   }
 
@@ -346,6 +348,28 @@ final class CheckoutSessionTests: XCTestCase {
     await session.checkNow() // paid
     XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
     XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+    session.dispose()
+  }
+
+  func testUPIWithAnOfferThatRanOutFetchesTheNewOfferThenPaysWithItNeverTheStaleOne() async {
+    await start(makeConfig(enabled: ["card": true, "upi": true], localOffer: rupees))
+    session.chooseMethod(.upi)
+    api.intentError = VezmoAPIError(.unknown, "Price changed", httpStatus: 409, reason: "local_price_changed")
+    var fresh = rupees
+    fresh.amountMinor = 421000
+    fresh.token = "offer_new"
+    api.config = makeConfig(enabled: ["card": true, "upi": true], localOffer: fresh)
+    let billing = QrBilling(name: "Asha Rao", line1: "12 MG Road", country: "IN")
+    await session.payWithQr(.upi, billing: billing)
+    guard case .ready(let error?) = snap.phase else { return XCTFail("ready, with the reason") }
+    XCTAssertTrue(error.message.contains("price in your currency"))
+    XCTAssertEqual(snap.charge, Charge(amountMinor: 421000, currency: "INR", localOffer: "offer_new"))
+    XCTAssertEqual(snap.method, .upi)
+
+    api.intentError = nil
+    await session.payWithQr(.upi, billing: billing)
+    XCTAssertEqual(api.intentCalls, [["tok", "offer"], ["tok", "offer_new"]])
+    XCTAssertTrue(snap.phase.isWaiting)
     session.dispose()
   }
 
