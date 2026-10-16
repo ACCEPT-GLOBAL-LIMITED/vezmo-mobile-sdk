@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -146,7 +146,7 @@ private fun Field(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(50.dp)
+                        .heightIn(min = 50.dp)
                         .clip(RoundedCornerShape(look.radius))
                         .background(p.field)
                         .border(1.dp, p.fieldLine, RoundedCornerShape(look.radius))
@@ -203,7 +203,7 @@ internal fun QrWaiting(
         // The last minute turns amber.
         Row(
             Modifier
-                .height(30.dp)
+                .heightIn(min = 30.dp)
                 .clip(CircleShape)
                 .background(if (hurry) p.warnSoft else p.accentSoft)
                 .padding(horizontal = 12.dp),

@@ -4,11 +4,15 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.Base64
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
@@ -89,14 +93,18 @@ class SheetStatesTest {
         api: CheckoutApi,
         dark: Boolean = false,
         subscription: Boolean = false,
+        /** The phone's font size (Settings → Display → Font size), 1 by default. */
+        fontScale: Float = 1f,
         drive: suspend CheckoutSession.() -> Unit = { load() },
     ): CheckoutSession {
         val s = CheckoutSession(api, "tok", "vezmoexample://vezmo", subscription = subscription)
         session = s
         runBlocking { s.drive() }
         rule.setContent {
-            val engine = rememberEngine(s)
-            CheckoutSheet(s, engine, CheckoutRequest("tok", null, VezmoConfiguration()), dark, onClose = {}, useEngine = false)
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale)) {
+                val engine = rememberEngine(s)
+                CheckoutSheet(s, engine, CheckoutRequest("tok", null, VezmoConfiguration()), dark, onClose = {}, useEngine = false)
+            }
         }
         return s
     }
@@ -159,8 +167,30 @@ class SheetStatesTest {
             chooseMethod(Method.Upi)
             payWithQr(QrMethod.Upi, QrBilling("Asha Rao", "12 MG Road", country = "IN"))
         }
-        rule.onNodeWithText("didn’t go through", substring = true).assertExists()
+        // Below the form on a phone: the sheet scrolls it into view.
+        rule.onNodeWithText("didn’t go through", substring = true).assertIsDisplayed()
         shoot("upi-declined")
+    }
+
+    /** The largest font size: the badge, the currency choice and the buttons grow with their text. */
+    @Test
+    fun upiFormLargeText() {
+        open(FakeApi({ config(inr, setOf("card", "upi")) }), fontScale = 2f) {
+            load()
+            chooseMethod(Method.Upi)
+        }
+        shoot("upi-form-large-text")
+    }
+
+    @Test
+    fun upiWaitingLargeText() {
+        val qr = QrPayment("requires_action", qrPng(), System.currentTimeMillis() / 1000 + 540, "upi://pay?pa=vezmo@bank", null)
+        open(FakeApi({ config(inr, setOf("card", "upi")) }, qr = qr), fontScale = 2f) {
+            load()
+            chooseMethod(Method.Upi)
+            payWithQr(QrMethod.Upi, QrBilling("Asha Rao", "12 MG Road", country = "IN"))
+        }
+        shoot("upi-waiting-large-text")
     }
 
     @Test

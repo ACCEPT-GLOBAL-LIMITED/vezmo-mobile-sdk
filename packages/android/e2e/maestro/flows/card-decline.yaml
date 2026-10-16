@@ -46,5 +46,7 @@ appId: com.vezmo.example.nativeapp
     visible: "(?i).*(declined|didn.t go through).*"
     timeout: 60000
 - takeScreenshot: decline-01-message
+# The reason is Vezmo's own sentence, the same on iPhone and Android (not the payment engine's, which differs).
+- assertVisible: "(?i).*declined by your bank.*"
 - assertVisible:
     id: "vezmo-pay"

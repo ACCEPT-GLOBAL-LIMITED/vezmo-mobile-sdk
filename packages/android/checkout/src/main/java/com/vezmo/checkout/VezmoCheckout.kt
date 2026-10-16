@@ -79,6 +79,8 @@ class VezmoCheckout internal constructor(
         subscriptionToken: String?,
         merchantDisplayName: String?,
     ): VezmoError? {
+        // A session prepared before and never presented is let go.
+        prepared?.let { PreparedSessions.take(it.token)?.dispose() }
         prepared = null
         if (clientToken.isNullOrBlank() == subscriptionToken.isNullOrBlank()) {
             return VezmoError(VezmoError.Code.Config, "Pass a clientToken or a subscriptionToken.")

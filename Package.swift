@@ -18,7 +18,7 @@ let package = Package(
       name: "VezmoCheckout",
       dependencies: [.product(name: "StripePaymentSheet", package: "stripe-ios-spm")],
       path: "packages/ios/Sources/VezmoCheckout",
-      // Apple's privacy manifest: no tracking, no data collected by this SDK itself.
+      // Apple's privacy manifest: no tracking; what the sheet sends Vezmo to take the payment (see the README).
       resources: [.copy("PrivacyInfo.xcprivacy")]
     ),
     .testTarget(

@@ -273,7 +273,11 @@ final class CheckoutSession: ObservableObject {
     guard let status = try? await api.status(token: token),
           let result = resultFromStatus(status),
           snapshot.phase.isWaiting else { return }
-    unwatch()
+    // The watcher stops, but only once this check is over: it may be the watcher's own, and cancelling it now would
+    // cancel the confirm call below with it.
+    let watcher = watching
+    watching = nil
+    defer { watcher?.cancel() }
     if case .failed = result {
       set { $0.phase = .ready(error: VezmoError(code: .declined, message: "The payment didn’t go through. Try again.")) }
       return
@@ -383,8 +387,21 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .ready(error: nil) }
       return
     case .failed:
-      let error = lastError ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
-      set { $0.phase = .ready(error: error) }
+      // A step the engine finished on the device (3D Secure, a redirect) failed or was lost: Vezmo's server knows
+      // whether the money moved, and why not.
+      var error = lastError
+      if error == nil, kind == .payment, lastPay?.state == "requires_action" {
+        let session = try? await api.status(token: token)
+        if let result = session.flatMap(resultFromStatus) {
+          if case .failed = result {} else {
+            set { $0.phase = .done(result) }
+            return
+          }
+        }
+        if session?.state == "failed" { error = await declineReason() }
+      }
+      let shown = error ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
+      set { $0.phase = .ready(error: shown) }
       return
     case .completed:
       break
@@ -407,6 +424,21 @@ final class CheckoutSession: ObservableObject {
     }
     let result = await settledResult()
     set { $0.phase = .done(result) }
+  }
+
+  /// Why a payment was declined after a step on the device (3D Secure passed, then the bank said no), in Vezmo's
+  /// words: the same on every phone, where the engine's own text differs between iPhone and Android. Vezmo's confirm
+  /// step records the decline and says why.
+  private func declineReason() async -> VezmoError? {
+    guard let intentId = intentIdOf(lastPay?.clientSecret) else { return nil }
+    do {
+      try await api.confirm(token: token, paymentIntentId: intentId)
+      return nil
+    } catch let error as VezmoAPIError where error.code == .declined {
+      return error.vezmoError
+    } catch {
+      return nil
+    }
   }
 
   /// A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands.

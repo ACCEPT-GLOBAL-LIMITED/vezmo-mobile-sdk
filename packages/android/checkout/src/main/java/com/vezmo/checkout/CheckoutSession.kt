@@ -137,11 +137,12 @@ internal class CheckoutSession(
             val config = fetchConfig()
             // The buyer's own currency is offered first when there is an offer (as on the web checkout).
             apply(config, config.localOffer != null)
-            set { copy(phase = SessionPhase.Ready(null)) }
+            // Only out of Loading: after the process was killed mid-payment, the engine's result can arrive first.
+            set { if (phase == SessionPhase.Loading) copy(phase = SessionPhase.Ready(null)) else this }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            close(e)
+            if (snapshot.phase == SessionPhase.Loading) close(e)
         }
     }
 
@@ -353,17 +354,20 @@ internal class CheckoutSession(
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
             ConfirmStatus.Failed -> {
-                // The engine lost a step it was finishing on the device (a browser or 3D Secure): Vezmo's server
-                // knows whether the money moved.
-                if (!subscription && lastError == null && lastPay?.state == "requires_action") {
-                    val result = runCatching { resultFromStatus(api.status(token)) }.getOrNull()
+                // A step the engine finished on the device (3D Secure, a browser, a bank app) failed or was lost:
+                // Vezmo's server knows whether the money moved, and why not.
+                var error = lastError
+                if (!subscription && error == null && lastPay?.state == "requires_action") {
+                    val status = runCatching { api.status(token) }.getOrNull()
+                    val result = status?.let(::resultFromStatus)
                     if (result != null && result !is CheckoutResult.Failed) {
                         set { copy(phase = SessionPhase.Done(result)) }
                         return
                     }
+                    if (status?.state == "failed") error = declineReason()
                 }
                 set {
-                    copy(phase = SessionPhase.Ready(lastError ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
+                    copy(phase = SessionPhase.Ready(error ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
                 }
             }
             ConfirmStatus.Completed -> {
@@ -386,6 +390,21 @@ internal class CheckoutSession(
                 val result = settledResult()
                 set { copy(phase = SessionPhase.Done(result)) }
             }
+        }
+    }
+
+    /**
+     * Why a payment was declined after a step on the device (3D Secure passed, then the bank said no), in Vezmo's
+     * words: the same on every phone, where the engine's own text differs between iPhone and Android. Vezmo's confirm
+     * step records the decline and says why.
+     */
+    private suspend fun declineReason(): VezmoError? {
+        val id = intentIdOf(lastPay?.clientSecret) ?: return null
+        return try {
+            api.confirm(token, id)
+            null
+        } catch (e: VezmoApiError) {
+            e.toVezmoError().takeIf { e.code == VezmoError.Code.Declined }
         }
     }
 

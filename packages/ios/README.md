@@ -271,6 +271,13 @@ against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open
 - **"Couldn't load payment options" in the sheet**: the reason is in the app's console (Xcode or Console.app,
   subsystem `com.vezmo.checkout`). The buyer can tap **Try again**.
 
+## App Store privacy
+
+The package's privacy manifest declares what the sheet sends to Vezmo to take the payment, for app functionality only
+and never for tracking: the payment method the buyer chooses, their name and address (asked for UPI and Pix), and for
+Pix their CPF or CNPJ (as other data). The payment engine inside the package declares its own. Xcode adds both to your
+app's privacy report.
+
 ## Releases
 
 Each release is a plain semver tag at the repository root (for example `0.1.0`), equal to `VezmoCheckout.version`.

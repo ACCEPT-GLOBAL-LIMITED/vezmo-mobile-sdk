@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -58,6 +61,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 /** Room for the gesture bar under the sheet (more when the phone has a taller navigation bar or the keyboard is up). */
 private val BOTTOM_INSET = 28.dp
@@ -203,16 +207,23 @@ internal fun CheckoutSheet(
                 }
                 // The result has its own way out.
                 if (!finished) {
+                    // A 30dp button in a 54dp touch target (as on iPhone).
                     Box(
                         Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = (-16).dp, y = 33.dp)
-                            .size(30.dp)
+                            .offset(x = (-4).dp, y = 21.dp)
+                            .size(54.dp)
+                            .clickable(
+                                enabled = !paying,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.Button,
+                            ) { onClose(CheckoutResult.Canceled) }
+                            .semantics { contentDescription = "Close" }
+                            .padding(12.dp)
                             .alpha(if (paying) 0.4f else 1f)
                             .clip(CircleShape)
-                            .background(p.fill)
-                            .clickable(enabled = !paying, role = Role.Button) { onClose(CheckoutResult.Canceled) }
-                            .semantics { contentDescription = "Close" },
+                            .background(p.fill),
                         contentAlignment = Alignment.Center,
                     ) { Cross(p.ink2, 11.dp) }
                 }
@@ -255,6 +266,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
         Method.Pix -> QrMethod.Pix
         else -> null
     }
+    // What went wrong shows under the form or the list, maybe below the fold: bring it into view.
+    val scope = rememberCoroutineScope()
+    val failed = (phase as? SessionPhase.Ready)?.error
+    LaunchedEffect(failed) { if (failed != null) scroll.revealEnd() }
 
     Column(
         Modifier
@@ -410,7 +425,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                 lock = true,
                 busy = paying,
                 onClick = {
-                    qrForm.submit(qrMethod, config.localOffer?.country)?.let { billing -> session.post { session.payWithQr(qrMethod, billing) } }
+                    val billing = qrForm.submit(qrMethod, config.localOffer?.country)
+                    if (billing == null) scope.launch { scroll.revealEnd() } else session.post { session.payWithQr(qrMethod, billing) }
                 },
             )
             snap.elementError != null -> PrimaryButton("Try again", onClick = { session.retryElement() }, tag = "vezmo-retry")
@@ -434,6 +450,13 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
         }
         SecuredBy()
     }
+}
+
+/** Scrolls to the end, once the content that just changed has been laid out. */
+private suspend fun ScrollState.revealEnd() {
+    // ponytail: two frames for the new content's layout; await placement instead if it ever lands later.
+    repeat(2) { withFrameNanos { } }
+    animateScrollTo(maxValue)
 }
 
 /** The business, what is being paid for, and the total. */
@@ -460,7 +483,7 @@ private fun Header(config: CheckoutConfig, merchant: String, amount: String) {
                     if (!config.livemode) {
                         Box(
                             Modifier
-                                .height(20.dp)
+                                .heightIn(min = 20.dp)
                                 .clip(CircleShape)
                                 .background(p.warn)
                                 .padding(horizontal = 7.dp),

@@ -250,7 +250,7 @@ internal fun PrimaryButton(
     Box(
         modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .heightIn(min = 56.dp)
             .scale(if (pressed) 0.985f else 1f)
             .alpha(if (pressed) 0.94f else 1f)
             .then(
@@ -295,7 +295,7 @@ internal fun GhostButton(label: String, onClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .heightIn(min = 50.dp)
             .clip(CircleShape)
             .background(p.surface2)
             .clickable(role = Role.Button, onClick = onClick),
@@ -341,7 +341,7 @@ internal fun <K> Segmented(
             Box(
                 Modifier
                     .weight(1f)
-                    .height(38.dp)
+                    .heightIn(min = 38.dp)
                     .then(
                         if (on) {
                             Modifier
