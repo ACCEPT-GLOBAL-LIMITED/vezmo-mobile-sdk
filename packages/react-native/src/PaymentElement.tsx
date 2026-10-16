@@ -7,6 +7,8 @@ export interface PaymentElementHandle {
   confirm(): void;
   /** Answer `onConfirmationToken` with the intent's client secret, or an error message to show. */
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
+  /** Unselect the element's method. */
+  clearSelection(): void;
 }
 
 export interface PaymentElementProps {
@@ -32,6 +34,9 @@ export const PaymentElement = forwardRef<PaymentElementHandle, PaymentElementPro
       },
       resolveConfirmation(clientSecret, errorMessage) {
         if (native.current) Commands.resolveConfirmation(native.current, clientSecret ?? '', errorMessage ?? '');
+      },
+      clearSelection() {
+        if (native.current) Commands.clearSelection(native.current);
       },
     }));
 

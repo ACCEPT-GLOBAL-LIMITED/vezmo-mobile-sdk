@@ -32,7 +32,7 @@ function setup() {
     startQr: jest.fn<any>().mockResolvedValue({ status: 'requires_action', qr: null, link: 'upi://pay?pa=x', code: null }),
     checkoutPageUrl: jest.fn((t: string) => `https://api.test/v1/secure-payments/${t}`),
   };
-  const element = { confirm: jest.fn(), resolveConfirmation: jest.fn() };
+  const element = { confirm: jest.fn(), resolveConfirmation: jest.fn(), clearSelection: jest.fn() };
   const session = new CheckoutSession(api as any, 'tok', 'acme://vezmo/return');
   session.attachElement(element);
   return { api, element, session };
@@ -123,6 +123,17 @@ describe('CheckoutSession', () => {
     u.session.choosePayLocal(false);
     expect(u.session.getSnapshot().charge?.currency).toBe('USD');
     expect(u.session.getSnapshot().methods?.elementTypes).toEqual(['card', 'klarna']);
+  });
+
+  it('one method at a time: UPI unselects the element, picking an element method leaves UPI', () => {
+    t.session.setOption({ label: 'Visa •••• 4242' });
+    expect(t.session.getSnapshot()).toMatchObject({ canPay: true, option: 'Visa •••• 4242', method: 'element' });
+    t.session.chooseMethod('upi');
+    expect(t.element.clearSelection).toHaveBeenCalled();
+    t.session.setOption(null); // the element reports the cleared selection
+    expect(t.session.getSnapshot()).toMatchObject({ canPay: false, option: null, method: 'upi' });
+    t.session.setOption({ label: 'Klarna' });
+    expect(t.session.getSnapshot()).toMatchObject({ canPay: true, option: 'Klarna', method: 'element' });
   });
 
   it('UPI: starts on the session intent, waits for the bank app, records it when paid', async () => {

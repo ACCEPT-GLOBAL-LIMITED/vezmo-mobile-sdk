@@ -98,6 +98,11 @@ static std::string VZString(id value)
   [_host resolveConfirmationWithClientSecret:clientSecret errorMessage:errorMessage];
 }
 
+- (void)clearSelection
+{
+  [_host clearSelection];
+}
+
 @end
 
 Class<RCTComponentViewProtocol> VezmoPaymentElementViewCls(void)

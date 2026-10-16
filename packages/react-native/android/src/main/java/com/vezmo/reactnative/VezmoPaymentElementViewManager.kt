@@ -50,6 +50,10 @@ class VezmoPaymentElementViewManager :
     view.confirm()
   }
 
+  override fun clearSelection(view: VezmoPaymentElementView) {
+    view.clearSelection()
+  }
+
   override fun resolveConfirmation(
     view: VezmoPaymentElementView,
     clientSecret: String,

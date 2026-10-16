@@ -104,11 +104,13 @@ export function QrWaiting(props: {
   session: CheckoutSession;
   method: 'upi' | 'pix';
   qr: QrPayment;
+  amount: string;
   p: SheetPalette;
   s: Styles;
 }) {
   const { session, method, qr, s, p } = props;
   const left = useCountdown(qr.qr?.expiresAt);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (method === 'upi' && qr.link) Linking.openURL(qr.link).catch(() => undefined);
@@ -118,30 +120,41 @@ export function QrWaiting(props: {
     return () => sub.remove();
   }, [session, method, qr.link]);
 
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  // The share sheet offers Copy first; iOS tells us when that was the choice.
+  const copyCode = () =>
+    Share.share({ message: qr.code! })
+      .then((r) => setCopied(/CopyToPasteboard/i.test(r.activityType ?? '')))
+      .catch(() => undefined);
+
   const steps =
     method === 'pix'
-      ? ['Copy the Pix code below.', 'In your bank app, choose Pix copia e cola and paste it.', 'Confirm there. This screen updates by itself.']
-      : ['Open your UPI app.', 'Approve the payment request there.', 'Come back here. This screen updates by itself.'];
+      ? ['Tap Copy Pix code.', 'In your bank app, choose Pix Copia e Cola and paste it.', 'Confirm there. This screen updates by itself.']
+      : [`Approve the ${props.amount} request in your UPI app.`, 'Come back here. This screen updates by itself.'];
 
   return (
-    <View style={{ gap: 18 }}>
+    <View style={{ gap: 20 }}>
       <View style={s.status} accessibilityLiveRegion="polite">
         <Pulse color={p.accent} />
-        <Text style={s.statusText}>Waiting for your payment</Text>
+        <Text style={s.statusText}>
+          {left === '0:00' ? 'Code expired' : `Waiting for your payment${left ? ` · ${left} left` : ''}`}
+        </Text>
       </View>
 
       {method === 'pix' && qr.code && (
         <View style={{ gap: 10 }}>
           <View style={s.codeBox}>
-            <View style={s.codeHead}>
-              <Text style={s.label}>Pix code</Text>
-              {left && <Text style={[s.hint, { fontVariant: ['tabular-nums'] }]}>{left === '0:00' ? 'Expired' : `Expires in ${left}`}</Text>}
-            </View>
-            <Text selectable style={s.code} numberOfLines={3}>
+            <Text style={s.label}>Pix code</Text>
+            <Text selectable style={s.code} numberOfLines={1} ellipsizeMode="middle">
               {qr.code}
             </Text>
           </View>
-          <PrimaryButton label="Copy or share code" onPress={() => Share.share({ message: qr.code! }).catch(() => undefined)} s={s} p={p} />
+          <PrimaryButton label={copied ? 'Copied' : 'Copy Pix code'} onPress={copyCode} s={s} p={p} />
         </View>
       )}
       {method === 'upi' && qr.link && (
@@ -161,19 +174,21 @@ export function QrWaiting(props: {
 
       {!!qr.qr?.png && (
         <View style={s.qrRow}>
-          <Image source={{ uri: qr.qr.png }} style={s.qr} accessibilityLabel={`${method === 'upi' ? 'UPI' : 'Pix'} QR code`} />
+          <View style={s.qrTile}>
+            <Image source={{ uri: qr.qr.png }} style={s.qr} accessibilityLabel={`${method === 'upi' ? 'UPI' : 'Pix'} QR code`} />
+          </View>
           <Text style={[s.hint, { flex: 1, fontSize: 13.5, lineHeight: 19 }]}>
             Paying from another phone? Scan this code in its {method === 'upi' ? 'UPI' : 'bank'} app.
           </Text>
         </View>
       )}
 
-      <View style={{ gap: 12 }}>
+      <View style={{ gap: 14 }}>
         <Pressable accessibilityRole="button" onPress={() => void session.checkNow()} style={s.ghost}>
-          <Text style={s.ghostText}>I’ve paid</Text>
+          <Text style={s.ghostText}>Check status</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => session.stopWaiting()} hitSlop={8}>
-          <Text style={[s.link, { fontSize: 14 }]}>Use another way to pay</Text>
+          <Text style={s.link}>Use another way to pay</Text>
         </Pressable>
       </View>
     </View>

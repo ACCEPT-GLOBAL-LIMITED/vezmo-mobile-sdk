@@ -16,6 +16,7 @@ import type { CheckoutConfig, CheckoutResult, PayResponse, QrBilling, QrPayment,
 export interface ElementPort {
   confirm(): void;
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
+  clearSelection(): void;
 }
 
 export type SessionPhase =
@@ -112,9 +113,10 @@ export class CheckoutSession {
     this.apply(this.snapshot.config, payLocal);
   }
 
-  /** The element's selected method changed (null: nothing selected). */
+  /** The element's selected method changed (null: nothing selected). Choosing one leaves UPI or Pix. */
   setOption(option: { label: string } | null) {
-    this.set({ canPay: !!option, option: option?.label || null });
+    const leave = !!option && this.snapshot.method !== 'element' && this.snapshot.phase.name === 'ready';
+    this.set({ canPay: !!option, option: option?.label || null, ...(leave ? { method: 'element' as const } : {}) });
   }
 
   setElementError(message: string | null) {
@@ -134,8 +136,10 @@ export class CheckoutSession {
     this.set({ config, payLocal: !!charge.localOffer, charge, methods, method });
   }
 
+  /** UPI or Pix (the sheet's own rows) or back to the element; one method is selected at a time. */
   chooseMethod(method: 'element' | 'upi' | 'pix') {
     if (this.snapshot.phase.name !== 'ready') return;
+    if (method !== 'element') this.element?.clearSelection();
     this.set({ method, phase: { name: 'ready', error: null } });
   }
 

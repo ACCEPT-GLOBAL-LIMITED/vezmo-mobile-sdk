@@ -65,6 +65,8 @@ class VezmoPaymentElementView(
     ) : Command
 
     data object Confirm : Command
+
+    data object Clear : Command
   }
 
   private val commands = Channel<Command>(Channel.UNLIMITED)
@@ -120,6 +122,10 @@ class VezmoPaymentElementView(
 
   fun confirm() {
     commands.trySend(Command.Confirm)
+  }
+
+  fun clearSelection() {
+    commands.trySend(Command.Clear)
   }
 
   fun resolveConfirmation(
@@ -221,6 +227,7 @@ class VezmoPaymentElementView(
                 loaded = false,
               )
             is Command.Confirm -> embedded.confirm()
+            is Command.Clear -> embedded.clearPaymentOption()
           }
         }
       }
@@ -394,15 +401,32 @@ class VezmoPaymentElementView(
         .colorsLight(palette(PaymentSheet.Colors.Builder.light()))
         .colorsDark(palette(PaymentSheet.Colors.Builder.dark()))
         .shapes(shapes.build())
-    // Methods as separate tiles, the chosen one outlined in the accent (as the sheet's own choices are).
+    // Methods as a flat list with a checkmark, inside the sheet's own rounded group (which draws the outer edges).
     val row = params.optJSONObject("row")
-    if (row?.optString("style") == "floating") {
+    if (row?.optString("style") == "checkmark") {
+      val separator = row.optString("separatorColor").takeIf { it.isNotEmpty() }?.let {
+        try {
+          Color.parseColor(it)
+        } catch (_: IllegalArgumentException) {
+          null
+        }
+      }
+      fun rowColors(base: PaymentSheet.Appearance.Embedded.RowStyle.FlatWithCheckmark.Colors.Builder) =
+        base
+          .apply {
+            color("primary")?.let { checkmarkColor(it) }
+            separator?.let { separatorColor(it) }
+          }.build()
       builder.embeddedAppearance(
         PaymentSheet.Appearance.Embedded(
-          PaymentSheet.Appearance.Embedded.RowStyle.FloatingButton
+          PaymentSheet.Appearance.Embedded.RowStyle.FlatWithCheckmark
             .Builder()
-            .spacingDp(row.optDouble("spacing", 12.0).toFloat())
-            .additionalInsetsDp(row.optDouble("insets", 6.0).toFloat())
+            .topSeparatorEnabled(false)
+            .bottomSeparatorEnabled(false)
+            .horizontalInsetsDp(0f)
+            .additionalVerticalInsetsDp(row.optDouble("insets", 6.0).toFloat())
+            .colorsLight(rowColors(PaymentSheet.Appearance.Embedded.RowStyle.FlatWithCheckmark.Colors.Builder.light()))
+            .colorsDark(rowColors(PaymentSheet.Appearance.Embedded.RowStyle.FlatWithCheckmark.Colors.Builder.dark()))
             .build(),
         ),
       )

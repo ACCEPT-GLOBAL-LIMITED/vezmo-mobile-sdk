@@ -62,6 +62,10 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     }
   }
 
+  @objc public func clearSelection() {
+    element?.clearPaymentOption()
+  }
+
   @objc public func resolveConfirmation(clientSecret: String, errorMessage: String) {
     guard let continuation = pendingSecret else { return }
     pendingSecret = nil
@@ -202,10 +206,16 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     if let radius = params["cornerRadius"] as? NSNumber { appearance.cornerRadius = CGFloat(radius.doubleValue) }
     if let width = params["borderWidth"] as? NSNumber { appearance.borderWidth = CGFloat(width.doubleValue) }
     if let width = params["selectedBorderWidth"] as? NSNumber { appearance.selectedBorderWidth = CGFloat(width.doubleValue) }
-    // Methods as separate tiles, the chosen one outlined in the accent (as the sheet's own choices are).
+    // Methods as a flat list with a checkmark, inside the sheet's own rounded group (which draws the outer edges).
     if let row = params["row"] as? [String: Any] {
-      if row["style"] as? String == "floating" { appearance.embeddedPaymentElement.row.style = .floatingButton }
-      if let spacing = row["spacing"] as? NSNumber { appearance.embeddedPaymentElement.row.floating.spacing = CGFloat(spacing.doubleValue) }
+      if row["style"] as? String == "checkmark" {
+        appearance.embeddedPaymentElement.row.style = .flatWithCheckmark
+        appearance.embeddedPaymentElement.row.flat.topSeparatorEnabled = false
+        appearance.embeddedPaymentElement.row.flat.bottomSeparatorEnabled = false
+      }
+      if let c = (row["separatorColor"] as? String).flatMap(UIColor.vezmoHex) {
+        appearance.embeddedPaymentElement.row.flat.separatorColor = c
+      }
       if let insets = row["insets"] as? NSNumber { appearance.embeddedPaymentElement.row.additionalInsets = CGFloat(insets.doubleValue) }
     }
     if let family = params["fontFamily"] as? String, let font = UIFont(name: family, size: UIFont.systemFontSize) {

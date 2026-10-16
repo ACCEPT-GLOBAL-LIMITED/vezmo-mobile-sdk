@@ -37,10 +37,12 @@ interface NativeCommands {
     clientSecret: string,
     errorMessage: string,
   ) => void;
+  /** Unselect the element's method (the buyer chose one of the sheet's own, UPI or Pix). */
+  clearSelection: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ['confirm', 'resolveConfirmation'],
+  supportedCommands: ['confirm', 'resolveConfirmation', 'clearSelection'],
 });
 
 export default codegenNativeComponent<NativeProps>(

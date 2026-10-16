@@ -9,6 +9,11 @@ export interface SheetPalette {
   surface2: string;
   /** The chosen side of a segmented track (lighter than the track in both themes). */
   raised: string;
+  /** System-grey fill behind small round controls (close). */
+  fill: string;
+  /** The Pay button before a method is chosen, and its text. */
+  disabled: string;
+  onDisabled: string;
   field: string;
   fieldLine: string;
   line: string;
@@ -21,6 +26,8 @@ export interface SheetPalette {
   accentSoft: string;
   /** The Pay button's fill: the logo's indigo-to-blue. Dropped when a merchant sets their own accent. */
   accentGradient: string | null;
+  /** The Pay button's lift (none in dark, where a glow reads as cheap). */
+  payShadow: string;
   good: string;
   bad: string;
   badSoft: string;
@@ -38,6 +45,9 @@ export const LIGHT: SheetPalette = {
   surface: '#FFFFFF',
   surface2: '#F4F5FA',
   raised: '#FFFFFF',
+  fill: 'rgba(118,118,128,0.12)',
+  disabled: '#ECECF1',
+  onDisabled: '#A1A1AA',
   field: '#FFFFFF',
   fieldLine: '#E1E3EC',
   line: '#E8EAF1',
@@ -48,6 +58,7 @@ export const LIGHT: SheetPalette = {
   onAccent: '#FFFFFF',
   accentSoft: 'rgba(80,58,242,0.08)',
   accentGradient: GRADIENT,
+  payShadow: '0 1px 2px rgba(80,58,242,0.22), 0 8px 18px -8px rgba(80,58,242,0.45)',
   good: '#0E8A55',
   bad: '#D12C4B',
   badSoft: 'rgba(209,44,75,0.07)',
@@ -61,6 +72,9 @@ export const DARK: SheetPalette = {
   surface: '#14151F',
   surface2: '#1C1D29',
   raised: '#2C2D3C',
+  fill: 'rgba(118,118,128,0.24)',
+  disabled: '#26262F',
+  onDisabled: '#6B6B76',
   field: '#1B1C27',
   fieldLine: '#2A2B37',
   line: '#24252F',
@@ -71,6 +85,7 @@ export const DARK: SheetPalette = {
   onAccent: '#FFFFFF',
   accentSoft: 'rgba(123,107,255,0.16)',
   accentGradient: GRADIENT,
+  payShadow: 'none',
   good: '#3DD68C',
   bad: '#FF6B85',
   badSoft: 'rgba(255,107,133,0.1)',
@@ -81,7 +96,7 @@ export const DARK: SheetPalette = {
 
 /** What a merchant may change. Each colour can differ between light and dark. */
 export interface VezmoAppearance {
-  colors?: Partial<Record<Exclude<keyof SheetPalette, 'accentGradient'>, string | { light: string; dark: string }>>;
+  colors?: Partial<Record<Exclude<keyof SheetPalette, 'accentGradient' | 'payShadow'>, string | { light: string; dark: string }>>;
   /** Corner radius of fields and payment method rows, in points. Default 14. */
   cornerRadius?: number;
   /** A font family already loaded in the app (iOS: its PostScript or family name). */
@@ -91,9 +106,14 @@ export interface VezmoAppearance {
 export function paletteFor(scheme: 'light' | 'dark', appearance?: VezmoAppearance): SheetPalette {
   const base = scheme === 'dark' ? DARK : LIGHT;
   const overrides = appearance?.colors ?? {};
-  // A merchant's own accent replaces the Vezmo gradient on the Pay button.
-  const out = { ...base, ...(overrides.accent ? { accentGradient: null } : {}) };
-  for (const [key, value] of Object.entries(overrides) as [Exclude<keyof SheetPalette, 'accentGradient'>, unknown][]) {
+  // A merchant's own accent replaces the Vezmo gradient (and its indigo lift) on the Pay button.
+  const out = {
+    ...base,
+    ...(overrides.accent
+      ? { accentGradient: null, payShadow: base.payShadow === 'none' ? 'none' : '0 1px 2px rgba(16,24,64,0.16), 0 8px 18px -8px rgba(16,24,64,0.3)' }
+      : {}),
+  };
+  for (const [key, value] of Object.entries(overrides) as [Exclude<keyof SheetPalette, 'accentGradient' | 'payShadow'>, unknown][]) {
     if (typeof value === 'string') out[key] = value;
     else if (value && typeof value === 'object') {
       const v = (value as { light: string; dark: string })[scheme];
@@ -105,12 +125,13 @@ export function paletteFor(scheme: 'light' | 'dark', appearance?: VezmoAppearanc
 
 export const DEFAULT_RADIUS = 14;
 
-/** The element's appearance (card fields, method rows as separate tiles), from the sheet's palette. */
+/** The element's appearance (card fields, method rows), from the sheet's palette. */
 export function elementAppearance(p: SheetPalette, appearance?: VezmoAppearance) {
   return {
     colors: {
       primary: p.accent,
-      background: p.surface,
+      // The rows sit in the sheet's group, on the field colour.
+      background: p.field,
       componentBackground: p.field,
       componentBorder: p.fieldLine,
       componentDivider: p.line,
@@ -123,8 +144,8 @@ export function elementAppearance(p: SheetPalette, appearance?: VezmoAppearance)
     },
     cornerRadius: appearance?.cornerRadius ?? DEFAULT_RADIUS,
     borderWidth: 1,
-    selectedBorderWidth: 2,
-    row: { style: 'floating', spacing: 10, insets: 4 },
+    // A flat list with a checkmark; the sheet draws the rounded group around it.
+    row: { style: 'checkmark', insets: 6, separatorColor: p.line },
     ...(appearance?.fontFamily ? { fontFamily: appearance.fontFamily } : {}),
   };
 }
