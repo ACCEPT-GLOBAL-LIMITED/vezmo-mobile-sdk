@@ -1,15 +1,20 @@
 # A bad session token: the app shows the error and the sheet never opens.
 appId: com.vezmo.example
 ---
-- launchApp:
-    clearState: true
-- tapOn:
-    text: "Wait"
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: "client-token"
-    timeout: 30000
+# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # A just-booted emulator can show a system "isn't responding" dialog over the app.
+      - tapOn:
+          text: "Wait"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "client-token"
+          timeout: 30000
 # A session token the server doesn't know: the app hears it back as an error, the sheet never opens.
 - tapOn:
     id: "client-token"
