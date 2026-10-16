@@ -1,0 +1,28 @@
+# The sheet at the largest text size (set before this runs; the sheet's text grows only to the first accessibility
+# size): screenshots only, no payment.
+appId: com.vezmo.example
+---
+- launchApp:
+    clearState: true
+- scrollUntilVisible:
+    element:
+      id: "new-session"
+    timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "pay"
+    direction: UP
+    timeout: 10000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: large-01-sheet

@@ -7,8 +7,9 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
+  Text as RNText,
   View,
+  type TextProps,
   type ViewStyle,
 } from 'react-native';
 import { VEZMO_LOGO } from './logo';
@@ -30,6 +31,17 @@ const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as c
  */
 const ROW_LEAD = Platform.OS === 'ios' ? 13 : 1;
 const HAIRLINE = StyleSheet.hairlineWidth;
+
+/**
+ * How far the sheet's text grows with the buyer's text size: up to the first accessibility size (iOS's Accessibility
+ * Medium, in React Native's scale), as the native sheet does. Larger, the Pay button and the rows would clip.
+ */
+export const MAX_TEXT_SCALE = 1.786;
+
+/** The sheet's text: it follows the buyer's text size, up to `MAX_TEXT_SCALE`. */
+export function Text(props: TextProps) {
+  return <RNText maxFontSizeMultiplier={MAX_TEXT_SCALE} {...props} />;
+}
 
 export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string) {
   const font = fontFamily ? { fontFamily } : {};
@@ -85,7 +97,7 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
     merchantRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     merchant: { ...font, color: p.ink, fontSize: 15, fontWeight: '600', flexShrink: 1 },
     title: { ...font, color: p.ink3, fontSize: 13 },
-    badge: { height: 20, paddingHorizontal: 7, borderRadius: 999, backgroundColor: p.warn, justifyContent: 'center' },
+    badge: { minHeight: 20, paddingHorizontal: 7, borderRadius: 999, backgroundColor: p.warn, justifyContent: 'center' },
     badgeText: { ...font, color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.6 },
     amount: {
       ...font,
@@ -220,7 +232,7 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      height: 30,
+      minHeight: 30,
       paddingHorizontal: 12,
       borderRadius: 999,
       backgroundColor: p.accentSoft,
@@ -402,6 +414,9 @@ export function CardRow(props: {
       accessibilityRole="radio"
       accessibilityLabel={card ? `Card ${card.label}` : 'Card'}
       accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+      // The row reads as one element, so its Change button is offered as an action (VoiceOver, TalkBack).
+      accessibilityActions={props.selected && card ? [{ name: 'change', label: 'Change card' }] : undefined}
+      onAccessibilityAction={(e) => e.nativeEvent.actionName === 'change' && !props.disabled && props.onChange()}
       disabled={props.disabled}
       onPress={props.onPress}
       style={[s.row, s.ownRow]}

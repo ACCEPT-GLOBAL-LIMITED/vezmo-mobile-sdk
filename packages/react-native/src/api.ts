@@ -12,6 +12,15 @@ import type {
 
 export const DEFAULT_API_BASE = 'https://api.vezmo.com/api/v1';
 
+/**
+ * How long a call may take before the buyer is told to check their connection (`network`): a hung request otherwise
+ * leaves the sheet, or `prepareCheckout()`, waiting forever. The native SDKs give up after about as long (Android
+ * reads for 30 s; iOS waits 60 s between packets).
+ */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+const FALLBACK_MESSAGE = 'Something went wrong. Please try again.';
+
 /** A failed call, already in Vezmo's words (the API never names its processor to a buyer). */
 export class VezmoApiError extends Error {
   readonly code: VezmoError['code'];
@@ -49,31 +58,40 @@ export class VezmoApi {
   ) {}
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
     let res: Response;
-    try {
-      res = await this.fetchImpl(`${this.apiBase}${path}`, {
-        method,
-        headers: {
-          Accept: 'application/json',
-          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-          'Vezmo-SDK': `react-native/${SDK_VERSION}`,
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-      });
-    } catch {
-      throw new VezmoApiError('network', 'Check your connection and try again.', null);
-    }
     let json: any = null;
     try {
-      json = await res.json();
-    } catch {
-      /* an empty or non-JSON body */
+      try {
+        res = await this.fetchImpl(`${this.apiBase}${path}`, {
+          method,
+          headers: {
+            Accept: 'application/json',
+            ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            'Vezmo-SDK': `react-native/${SDK_VERSION}`,
+          },
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          signal: abort.signal,
+        });
+      } catch {
+        throw new VezmoApiError('network', 'Check your connection and try again.', null);
+      }
+      try {
+        json = await res.json();
+      } catch {
+        // An empty or non-JSON body; or no answer in time.
+        if (abort.signal.aborted) throw new VezmoApiError('network', 'Check your connection and try again.', null);
+      }
+    } finally {
+      clearTimeout(timer);
     }
-    if (res.ok && json?.success !== false) return (json?.data ?? json) as T;
+    // A success with no readable answer is a failure (as the native SDKs read it), never a null result.
+    if (res.ok && json && json.success !== false) return (json.data ?? json) as T;
     const message: string =
       (typeof json?.message === 'string' && json.message) ||
       json?.errors?.[0]?.message ||
-      'Something went wrong. Please try again.';
+      FALLBACK_MESSAGE;
     const reason = typeof json?.errors?.[0]?.code === 'string' ? json.errors[0].code : null;
     throw new VezmoApiError(codeFor(res.status, json), message, res.status, reason);
   }

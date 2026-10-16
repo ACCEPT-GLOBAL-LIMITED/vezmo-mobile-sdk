@@ -105,6 +105,8 @@ export class CheckoutSession {
   private lastPay: PayResponse | null = null;
   private lastError: VezmoError | null = null;
   private watching: ReturnType<typeof setInterval> | null = null;
+  /** A status check is on its way (the poll, Check status and the return from the bank app don't overlap). */
+  private checking = false;
   private qrIntentId: string | null = null;
   /** The card form was opened by the buyer: the card it returns becomes the selection. */
   private awaitingCard = false;
@@ -243,6 +245,11 @@ export class CheckoutSession {
     } catch (e) {
       const err = e instanceof VezmoApiError ? e.toVezmoError() : { code: 'unknown' as const, message: DECLINED.message };
       if (err.code === 'expired' || err.code === 'already_paid') return this.close(e);
+      // UPI and Pix are always in the buyer's currency: an offer that ran out is fetched again, not retried as is.
+      if (e instanceof VezmoApiError && e.reason === 'local_price_changed') {
+        this.refreshOffer();
+        return this.set({ phase: { name: 'ready', error: { code: 'unknown', message: PRICE_CHANGED } } });
+      }
       this.set({ phase: { name: 'ready', error: err } });
     }
   }
@@ -255,23 +262,28 @@ export class CheckoutSession {
 
   /** Check now (the buyer came back from their bank app). */
   async checkNow() {
-    if (this.snapshot.phase.name !== 'waiting') return;
-    let status;
+    if (this.snapshot.phase.name !== 'waiting' || this.checking) return;
+    this.checking = true;
     try {
-      status = await this.api.status(this.token);
-    } catch {
-      return;
+      let status;
+      try {
+        status = await this.api.status(this.token);
+      } catch {
+        return;
+      }
+      const result = resultFromStatus(status);
+      if (!result || this.snapshot.phase.name !== 'waiting') return;
+      this.unwatch();
+      if (result.status === 'failed') {
+        this.set({ phase: { name: 'ready', error: { code: 'declined', message: 'The payment didn’t go through. Try again.' } } });
+        return;
+      }
+      // Recorded now rather than when the webhook arrives (as the web checkout does).
+      if (this.qrIntentId) await this.api.confirm(this.token, this.qrIntentId).catch(() => undefined);
+      this.set({ phase: { name: 'done', result } });
+    } finally {
+      this.checking = false;
     }
-    const result = resultFromStatus(status);
-    if (!result || this.snapshot.phase.name !== 'waiting') return;
-    this.unwatch();
-    if (result.status === 'failed') {
-      this.set({ phase: { name: 'ready', error: { code: 'declined', message: 'The payment didn’t go through. Try again.' } } });
-      return;
-    }
-    // Recorded now rather than when the webhook arrives (as the web checkout does).
-    if (this.qrIntentId) await this.api.confirm(this.token, this.qrIntentId).catch(() => undefined);
-    this.set({ phase: { name: 'done', result } });
   }
 
   private watch() {
@@ -338,10 +350,7 @@ export class CheckoutSession {
       const err = e instanceof VezmoApiError ? e : null;
       if (err?.reason === 'local_price_changed') {
         this.lastError = { code: 'unknown', message: PRICE_CHANGED };
-        // Fetch the new offer; the buyer sees the new amount before paying again.
-        this.fetchConfig()
-          .then((config) => this.apply(config, this.snapshot.payLocal))
-          .catch(() => undefined);
+        this.refreshOffer();
       } else {
         this.lastError = err?.toVezmoError() ?? { code: 'unknown', message: DECLINED.message };
       }
@@ -358,7 +367,8 @@ export class CheckoutSession {
       return;
     }
     if (status === 'failed') {
-      this.set({ phase: { name: 'ready', error: this.lastError ?? { code: 'declined', message: message || DECLINED.message } } });
+      const error = this.lastError ?? (await this.deviceFailure()) ?? { code: 'declined' as const, message: message || DECLINED.message };
+      this.set({ phase: { name: 'ready', error } });
       return;
     }
     // Completed. A payment our server already recorded is done; one finished on the device (3D Secure, a redirect)
@@ -379,6 +389,29 @@ export class CheckoutSession {
       /* the webhook records it either way; the status below is the answer */
     }
     this.set({ phase: { name: 'done', result: await this.settledResult() } });
+  }
+
+  /** The buyer's currency offer no longer holds: fetch the new one; the buyer sees the new amount before paying again. */
+  private refreshOffer() {
+    this.fetchConfig()
+      .then((config) => this.apply(config, this.snapshot.payLocal))
+      .catch(() => undefined);
+  }
+
+  /**
+   * A payment Vezmo handed to the device (3D Secure, a redirect) that then failed there: Vezmo's own verdict and words
+   * (the platforms word a decline differently), and the decline recorded now. Null when Vezmo has no such answer.
+   */
+  private async deviceFailure(): Promise<VezmoError | null> {
+    const intentId = this.lastPay?.state === 'requires_action' ? intentIdOf(this.lastPay.clientSecret) : null;
+    if (!intentId) return null;
+    try {
+      if (this.kind === 'subscription') await this.api.subscriptionConfirm(this.token, intentId);
+      else await this.api.confirm(this.token, intentId);
+    } catch (e) {
+      if (e instanceof VezmoApiError && e.code === 'declined') return e.toVezmoError();
+    }
+    return null;
   }
 
   /** A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands. */
