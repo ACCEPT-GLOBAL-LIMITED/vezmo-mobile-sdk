@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
@@ -17,9 +17,11 @@ import { formatAmount } from './flow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
 import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
 import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
-import type { CheckoutResult } from './types';
+import { markForBrand } from './marks';
+import type { CheckoutResult, PaidMethod } from './types';
 import {
   Banner,
+  BrandTile,
   Cross,
   makeStyles,
   MethodRow,
@@ -163,6 +165,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               amount={amount}
               merchant={merchant}
               paidWith={snap.paidWith}
+              paidMethod={snap.paidMethod}
               s={s}
               p={p}
               onDone={() => close(phase.result)}
@@ -242,7 +245,16 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                     )}
 
                     <View style={s.section}>
-                      <Text style={s.label}>Payment method</Text>
+                      <View style={s.labelRow}>
+                        <Text style={s.label}>Payment method</Text>
+                        {/* The card networks, as their real marks (the card row itself shows a plain card). */}
+                        <View style={s.marks} accessible accessibilityLabel="Visa, Mastercard, American Express and Discover accepted">
+                          <BrandTile mark="visa" s={s} />
+                          <BrandTile mark="mastercard" s={s} />
+                          <BrandTile mark="amex" s={s} />
+                          <BrandTile mark="discover" s={s} />
+                        </View>
+                      </View>
                       <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel="Payment method">
                         <PaymentElement
                           ref={element}
@@ -268,7 +280,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                         )}
                         {own && (
                           <MethodRow
-                            icon={<OwnIcon method={own} s={s} />}
+                            icon={<BrandTile mark={own} s={s} large />}
                             title={own === 'upi' ? 'UPI' : 'Pix'}
                             sub={own === 'upi' ? 'Pay from your UPI app' : 'Instant transfer from your bank app'}
                             selected={snap.method === own}
@@ -335,26 +347,12 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   );
 }
 
-/** UPI and Pix in the list: a neutral tile like the element's own method icons. */
-function OwnIcon({ method, s }: { method: 'upi' | 'pix'; s: Styles }) {
-  return (
-    <View style={s.rowIcon}>
-      {method === 'pix' ? (
-        <View style={{ width: 10, height: 10, borderRadius: 2.5, backgroundColor: '#32BCAD', transform: [{ rotate: '45deg' }] }} />
-      ) : (
-        <Text style={{ fontSize: 9.5, fontWeight: '800', fontStyle: 'italic', color: '#5F6368', letterSpacing: -0.2 }}>
-          UPI
-        </Text>
-      )}
-    </View>
-  );
-}
-
 function ResultView(props: {
   result: CheckoutResult;
   amount: string;
   merchant: string;
   paidWith: string | null;
+  paidMethod: PaidMethod | null;
   s: Styles;
   p: SheetPalette;
   onDone(): void;
@@ -376,11 +374,16 @@ function ResultView(props: {
   const paymentId = result.status === 'succeeded' || result.status === 'processing' ? result.paymentId : '';
   // The short transaction reference the buyer can quote; the payment's own id until there is one.
   const reference = (result.status === 'succeeded' && result.transactionId) || paymentId;
-  const rows = [
+  // Paid with: the network's mark and last four from Vezmo's server, else the element's own label (or UPI / Pix).
+  const mark = markForBrand(props.paidMethod?.brand) ?? (props.paidWith === 'UPI' ? 'upi' : props.paidWith === 'Pix' ? 'pix' : null);
+  const last4 = props.paidMethod?.last4;
+  const paidText = last4 ? `•••• ${last4}` : mark === 'upi' || mark === 'pix' ? '' : (props.paidWith ?? '');
+  const rows: [string, string, ReactNode?][] = [
     ['Paid to', props.merchant],
-    ['Paid with', props.paidWith ?? ''],
+    ['Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
     ['Reference', reference],
-  ].filter(([, v]) => !!v);
+  ];
+  const shown = rows.filter(([, v]) => !!v);
   return (
     <View style={s.result}>
       <ResultMark kind={copy.kind} p={p} />
@@ -391,12 +394,17 @@ function ResultView(props: {
       {!!copy.body && <Text style={s.resultBody}>{copy.body}</Text>}
       {!!paymentId && (
         <View style={s.receipt}>
-          {rows.map(([k, v], i) => (
+          {shown.map(([k, v, logo], i) => (
             <View key={k} style={[s.receiptRow, i > 0 && s.rowLine]}>
               <Text style={s.receiptKey}>{k}</Text>
-              <Text style={s.receiptValue} numberOfLines={1} ellipsizeMode="middle" selectable>
-                {v}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+                {logo}
+                {!(logo && v === mark) && (
+                  <Text style={s.receiptValue} numberOfLines={1} ellipsizeMode="middle" selectable>
+                    {v}
+                  </Text>
+                )}
+              </View>
             </View>
           ))}
         </View>

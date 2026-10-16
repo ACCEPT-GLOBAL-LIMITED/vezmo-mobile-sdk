@@ -53,10 +53,13 @@ describe('CheckoutSession', () => {
   });
 
   it('a card paid by the server: hands the element the secret, the result is the server’s', async () => {
-    t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', clientSecret: 'pi_1_secret_a' });
+    const method = { type: 'card', brand: 'visa', last4: '4242', wallet: null };
+    t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', clientSecret: 'pi_1_secret_a', method });
     t.session.pay();
     expect(t.element.confirm).toHaveBeenCalled();
     await t.session.onConfirmationToken('ctoken_1');
+    // The receipt's Visa mark and last four come from the server's reading of the payment.
+    expect(t.session.getSnapshot().paidMethod).toEqual(method);
     expect(t.api.pay).toHaveBeenCalledWith('tok', { confirmationToken: 'ctoken_1', localOffer: null, returnUrl: 'acme://vezmo/return' });
     expect(t.element.resolveConfirmation).toHaveBeenCalledWith('pi_1_secret_a', undefined);
     await t.session.onConfirmResult('completed', '');

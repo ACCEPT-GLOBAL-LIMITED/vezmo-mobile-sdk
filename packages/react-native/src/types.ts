@@ -81,10 +81,21 @@ export type MethodKey =
   | 'pix';
 
 /** POST …/pay — what the server did with the buyer's confirmation token. */
-export type PayResponse =
+export type PayResponse = (
   | { state: 'succeeded'; paymentId: string; transactionId: string | null; clientSecret: string | null }
   | { state: 'processing'; paymentId: string; clientSecret: string | null }
-  | { state: 'requires_action'; paymentId: string; clientSecret: string };
+  | { state: 'requires_action'; paymentId: string; clientSecret: string }
+) & {
+  /** What the buyer paid with (for the receipt): the card's network and last four, or the method. */
+  method?: PaidMethod | null;
+};
+
+export interface PaidMethod {
+  type: string;
+  brand: string | null;
+  last4: string | null;
+  wallet: string | null;
+}
 
 export type SessionState =
   | 'open'

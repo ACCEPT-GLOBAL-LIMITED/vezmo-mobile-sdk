@@ -10,7 +10,7 @@ import {
   type Charge,
   type SheetMethods,
 } from './flow';
-import type { CheckoutConfig, CheckoutResult, PayResponse, QrBilling, QrPayment, VezmoError } from './types';
+import type { CheckoutConfig, CheckoutResult, PaidMethod, PayResponse, QrBilling, QrPayment, VezmoError } from './types';
 
 /** What the element can be asked to do (the native view's commands). */
 export interface ElementPort {
@@ -42,6 +42,8 @@ export interface SessionSnapshot {
   option: string | null;
   /** The method the buyer paid with, kept for the receipt (the element clears its selection after paying). */
   paidWith: string | null;
+  /** The same as Vezmo's server read it from the payment (the card's network for its logo). */
+  paidMethod: PaidMethod | null;
   /** The element couldn't load (shown in the sheet with Try again). */
   elementError: string | null;
   /** Bumped by Try again: rebuilds the native element. */
@@ -66,6 +68,7 @@ export class CheckoutSession {
     canPay: false,
     option: null,
     paidWith: null,
+    paidMethod: null,
     elementError: null,
     elementAttempt: 0,
     method: 'element',
@@ -236,6 +239,7 @@ export class CheckoutSession {
         returnUrl: this.returnUrl,
       });
       this.lastPay = res;
+      if (res.method) this.set({ paidMethod: res.method });
       this.element?.resolveConfirmation(res.clientSecret ?? null, res.clientSecret ? undefined : DECLINED.message);
     } catch (e) {
       const err = e instanceof VezmoApiError ? e : null;

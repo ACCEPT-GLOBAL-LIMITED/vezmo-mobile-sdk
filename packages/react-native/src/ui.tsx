@@ -12,6 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { VEZMO_LOGO } from './logo';
+import { MARKS, type MarkKey } from './marks';
 import type { SheetPalette } from './theme';
 
 /**
@@ -134,6 +135,19 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
       alignItems: 'center',
       justifyContent: 'center',
     },
+    // A brand's mark on a white tile (white in both themes: other companies' marks are not recoloured).
+    tile: {
+      width: 30,
+      height: 20,
+      borderRadius: 5,
+      borderWidth: 1,
+      borderColor: p.fieldLine,
+      backgroundColor: '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+    marks: { flexDirection: 'row', gap: 4 },
     rowTitle: { ...font, color: p.ink, fontSize: 15, fontWeight: '500' },
     rowSub: { ...font, color: p.ink3, fontSize: 12.5, marginTop: 1 },
     empty: { paddingVertical: 22, alignItems: 'center', gap: 4 },
@@ -318,6 +332,19 @@ export function MethodRow(props: {
       </View>
       {props.selected && <Tick color={p.accent} size={16} />}
     </Pressable>
+  );
+}
+
+/** A payment brand's mark (Visa, Mastercard, UPI…) on its white tile, as on the web checkout. */
+export function BrandTile({ mark, s, large }: { mark: MarkKey; s: Styles; large?: boolean }) {
+  const m = MARKS[mark];
+  // Fit the mark inside the tile with a little room, keeping its shape.
+  const box = large ? { w: 25, h: 16 } : { w: 22, h: 13 };
+  const k = Math.min(box.w / m.width, box.h / m.height, 1);
+  return (
+    <View style={[s.tile, large && { width: 34, height: 24 }]} accessible={false}>
+      <Image source={{ uri: m.uri }} style={{ width: m.width * k, height: m.height * k }} resizeMode="contain" />
+    </View>
   );
 }
 
