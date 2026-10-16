@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.PlatformTextStyle
@@ -178,7 +180,15 @@ private fun Shop() {
             .padding(start = 20.dp, end = 20.dp, top = 44.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        BasicText("Northwind Audio", style = style(28f, weight = FontWeight.Bold, spacing = -0.5f))
+        // A focusable heading first: when focus comes back without a touch (keyboard navigation, the e2e tests), it
+        // lands here, not in the token field with its keyboard.
+        BasicText(
+            "Northwind Audio",
+            Modifier
+                .semantics { heading() }
+                .focusable(),
+            style = style(28f, weight = FontWeight.Bold, spacing = -0.5f),
+        )
 
         ProductCard {
             Box(
