@@ -6,7 +6,7 @@ name: Android SDK
 on:
   workflow_dispatch:
   push:
-    branches: [main, native-android]
+    branches: [main]
     paths: ['packages/android/**', '.github/workflows/android.yml']
   pull_request:
     branches: [main]
@@ -14,7 +14,7 @@ on:
 
 concurrency:
   group: android-sdk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 defaults:
   run:

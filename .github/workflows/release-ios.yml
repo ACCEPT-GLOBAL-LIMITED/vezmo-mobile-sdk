@@ -1,0 +1,30 @@
+name: Release iOS SDK
+
+# Checks an iOS SDK release tag. Swift Package Manager reads plain semver tags at the repository root (for example
+# `0.1.0`) directly, so there is nothing to publish: this only makes sure the tag equals VezmoCheckout.version and
+# that Package.swift reads. Also runs on pull requests that change this file.
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/release-ios.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Tag matches VezmoCheckout.version
+        run: |
+          SWIFT=$(sed -n 's/.*public static let version = "\([^"]*\)".*/\1/p' packages/ios/Sources/VezmoCheckout/VezmoCheckout.swift)
+          echo "VezmoCheckout.version: $SWIFT"
+          [ -n "$SWIFT" ] || { echo "::error::Could not read VezmoCheckout.version in packages/ios/Sources/VezmoCheckout/VezmoCheckout.swift"; exit 1; }
+          [ "$GITHUB_REF_TYPE" != tag ] || [ "$GITHUB_REF_NAME" = "$SWIFT" ] \
+            || { echo "::error::Tag $GITHUB_REF_NAME does not match VezmoCheckout.version $SWIFT"; exit 1; }
+      - name: Package.swift reads
+        run: swift package dump-package > /dev/null
