@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Vezmo mobile docs
-    url: https://user.vezmo.com/docs/v1/mobile
-    about: Setup guides for React Native, iOS, Android and Flutter, with troubleshooting.
+  - name: Setup guides
+    url: https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk#choose-your-sdk
+    about: The guide for each SDK (React Native, iOS, Android, Flutter), with troubleshooting.
   - name: Report a security vulnerability
     url: https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/security/advisories/new
     about: Please report security problems privately, never in a public issue.

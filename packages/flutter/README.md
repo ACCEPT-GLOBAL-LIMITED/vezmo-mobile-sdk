@@ -313,8 +313,8 @@ iPhone simulator: a card with 3D Secure on both business models, a decline, canc
 subscription's free trial and its first payment.
 
 To release, push a tag `flutter-v<version>` after the Android and iOS SDKs it pins are out; the release order and
-every place the version lives are in the
-[root README](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk#releases). `release-flutter.yml` publishes
+every place the version lives are in
+[RELEASING.md](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/blob/main/RELEASING.md). `release-flutter.yml` publishes
 to pub.dev from GitHub Actions, with no stored secret.
 
 ## License
