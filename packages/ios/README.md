@@ -205,6 +205,8 @@ against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open
   link registered under Developers → Mobile apps, your app must declare that URL scheme, and it must pass the link
   to `VezmoCheckout.handleURL`.
 - **`.config` from `present`**: call `prepare(clientToken:)` first, and present each prepared session once.
+- **"Couldn't load payment options" in the sheet**: the reason is in the app's console (Xcode or Console.app,
+  subsystem `com.vezmo.checkout`). The buyer can tap **Try again**.
 
 ## License
 
