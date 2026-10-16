@@ -3,6 +3,7 @@
 //
 //   node asc-signing.mjs setup <bundleId> <workDir>   → key.pem, cert.cer, profile.mobileprovision; prints PROFILE_*
 //   node asc-signing.mjs cleanup <workDir>            → revokes the certificate, deletes the profile
+//   node asc-signing.mjs testflight <bundleId>        → the latest builds' state; a ready build joins the internal groups
 //
 // Env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH (the .p8). Only names and ids are printed, never key material.
 import { execFileSync } from 'node:child_process';
@@ -90,10 +91,45 @@ async function cleanup(dir) {
   }
 }
 
+/** Where the app's builds are in TestFlight; a processed build is added to every internal group that lacks it. */
+async function testflight(bundleId) {
+  const apps = await api('GET', `/apps?filter[bundleId]=${encodeURIComponent(bundleId)}`);
+  const app = apps.data[0];
+  if (!app) throw new Error(`No app with bundle id ${bundleId} in App Store Connect.`);
+  const builds = await api('GET', `/builds?filter[app]=${app.id}&sort=-uploadedDate&limit=3&include=buildBetaDetail`);
+  const details = Object.fromEntries((builds.included ?? []).map((d) => [d.id, d.attributes]));
+  for (const b of builds.data) {
+    const beta = details[b.relationships?.buildBetaDetail?.data?.id] ?? {};
+    console.log(
+      `Build ${b.attributes.version}: processing ${b.attributes.processingState}, TestFlight ${beta.internalBuildState ?? '?'},` +
+        ` encryption answered ${b.attributes.usesNonExemptEncryption ?? 'no'}, expired ${b.attributes.expired}`,
+    );
+  }
+  const latest = builds.data[0];
+  if (!latest) return console.log('No builds uploaded yet.');
+  if (latest.attributes.usesNonExemptEncryption == null) {
+    await api('PATCH', `/builds/${latest.id}`, { data: { type: 'builds', id: latest.id, attributes: { usesNonExemptEncryption: false } } });
+    console.log('Answered the encryption question for the latest build (standard encryption only).');
+  }
+  const groups = await api('GET', `/apps/${app.id}/betaGroups`);
+  for (const g of groups.data.filter((x) => x.attributes.isInternalGroup)) {
+    const inGroup = await api('GET', `/betaGroups/${g.id}/builds?limit=20`);
+    const testers = await api('GET', `/betaGroups/${g.id}/betaTesters?limit=50`);
+    const states = testers.data.map((t) => t.attributes.state ?? '?').join(', ') || 'none';
+    const has = inGroup.data.some((x) => x.id === latest.id);
+    console.log(`Internal group "${g.attributes.name}": testers ${testers.data.length} (${states}); latest build in group: ${has}`);
+    if (!has && latest.attributes.processingState === 'VALID') {
+      await api('POST', `/betaGroups/${g.id}/relationships/builds`, { data: [{ type: 'builds', id: latest.id }] });
+      console.log(`Added build ${latest.attributes.version} to "${g.attributes.name}".`);
+    }
+  }
+}
+
 const [cmd, a, b] = process.argv.slice(2);
 try {
   if (cmd === 'setup') await setup(a, b);
   else if (cmd === 'cleanup') await cleanup(a);
+  else if (cmd === 'testflight') await testflight(a);
   else throw new Error('usage: asc-signing.mjs setup <bundleId> <dir> | cleanup <dir>');
 } catch (e) {
   console.error(e.message);

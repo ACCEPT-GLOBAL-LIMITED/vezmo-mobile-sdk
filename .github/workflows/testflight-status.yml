@@ -1,0 +1,28 @@
+name: TestFlight status
+
+# Where the example app's builds are in TestFlight (processing, tester group, invitations); a processed build is added
+# to the internal tester groups. Run by hand. Prints states and counts only.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Check
+        env:
+          ASC_KEY_P8: ${{ secrets.VEZMOAPPLE }}
+        run: |
+          body=$(printf '%s' "$ASC_KEY_P8" | perl -0777 -ne 'print $1 if /-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/s' | tr -d ' \r\n\t')
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          { echo '-----BEGIN PRIVATE KEY-----'; printf '%s\n' "$body" | fold -w 64; echo '-----END PRIVATE KEY-----'; } > "$ASC_KEY_PATH"
+          node .github/scripts/asc-signing.mjs testflight com.vezmo.example
+          rm -f "$ASC_KEY_PATH"
