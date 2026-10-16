@@ -135,12 +135,20 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # Flutter names the plugin's Swift package after the plugin's folder, and Xcode refuses a package whose folder
+      # name differs from its own (packages/flutter vs vezmo_checkout): reach the plugin through a folder named
+      # vezmo_checkout, as an app that installs it from pub.dev does.
+      - name: Point the example at the plugin as vezmo_checkout
+        run: |
+          ln -s flutter ../vezmo_checkout
+          printf 'dependency_overrides:\n  vezmo_checkout:\n    path: ../../vezmo_checkout\n' > example/pubspec_overrides.yaml
       - name: Build the example app for the simulator
         working-directory: packages/flutter/example
         run: |
           flutter build ios --simulator --debug --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE || {
-            ls -la ios/Flutter/ephemeral/Packages ios/Flutter/ephemeral/Packages/.packages
+            ls -la ios/Flutter/ephemeral/Packages/.packages
             cat ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
+            find ~/Library/Developer/Xcode/DerivedData -name workspace-state.json -maxdepth 6 -exec cat {} \;
             exit 1
           }
       - name: Boot an iPhone simulator
