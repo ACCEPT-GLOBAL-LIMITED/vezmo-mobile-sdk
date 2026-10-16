@@ -23,6 +23,8 @@ export function elementConfigJson(args: {
   appearance?: VezmoAppearance;
   wallets?: WalletOptions;
   charge: Charge;
+  /** Bumped to rebuild the element (Try again after a failed load). */
+  attempt?: number;
 }): string {
   const { config, methods, wallets } = args;
   return JSON.stringify({
@@ -50,6 +52,7 @@ export function elementConfigJson(args: {
         ? { name: config.customerName ?? '', email: config.customerEmail ?? '' }
         : null,
     appearance: elementAppearance(args.palette, args.appearance),
+    attempt: args.attempt ?? 0,
   });
 }
 

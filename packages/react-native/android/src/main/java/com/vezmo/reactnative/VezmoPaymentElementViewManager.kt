@@ -36,6 +36,11 @@ class VezmoPaymentElementViewManager :
     view.setIntentJson(value)
   }
 
+  override fun onDropViewInstance(view: VezmoPaymentElementView) {
+    view.dispose()
+    super.onDropViewInstance(view)
+  }
+
   override fun onAfterUpdateTransaction(view: VezmoPaymentElementView) {
     super.onAfterUpdateTransaction(view)
     view.commit()

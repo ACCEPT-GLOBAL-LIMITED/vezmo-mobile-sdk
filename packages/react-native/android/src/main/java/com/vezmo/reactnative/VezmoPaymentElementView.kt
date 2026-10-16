@@ -17,11 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
@@ -162,15 +162,26 @@ class VezmoPaymentElementView(
     val activity = reactContext.currentActivity as? ComponentActivity
     composeView =
       ComposeView(reactContext).also { view ->
-        // The view tree normally carries these from the activity; set them when it doesn't (an unusual host).
+        // The activity's owners, set on the view and provided to the composition: React Native may detach and
+        // re-attach this view (a payment step in front of it), and the element must find them every time.
         if (activity != null) {
-          if (findViewTreeLifecycleOwner() == null) view.setViewTreeLifecycleOwner(activity)
-          if (findViewTreeViewModelStoreOwner() == null) view.setViewTreeViewModelStoreOwner(activity)
-          if (findViewTreeSavedStateRegistryOwner() == null) view.setViewTreeSavedStateRegistryOwner(activity)
+          view.setViewTreeLifecycleOwner(activity)
+          view.setViewTreeViewModelStoreOwner(activity)
+          view.setViewTreeSavedStateRegistryOwner(activity)
         }
+        // Kept across detach and re-attach (the element's state survives a payment step); released in [dispose].
+        view.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         view.setContent { Content(activity) }
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
       }
+  }
+
+  /** React Native dropped this view (the sheet closed). */
+  fun dispose() {
+    composeView?.disposeComposition()
+    composeView = null
+    pendingSecret?.complete(CreateIntentResult.Failure(cause = Exception("closed"), displayMessage = DEFAULT_ERROR))
+    pendingSecret = null
   }
 
   @Composable
@@ -188,7 +199,11 @@ class VezmoPaymentElementView(
           resultCallback = { result -> emitResult(result) },
         )
       }
-    CompositionLocalProvider(LocalActivityResultRegistryOwner provides activity) {
+    CompositionLocalProvider(
+      LocalActivityResultRegistryOwner provides activity,
+      LocalViewModelStoreOwner provides activity,
+      LocalLifecycleOwner provides activity,
+    ) {
       val embedded = rememberEmbeddedPaymentElement(builder)
       val density = LocalDensity.current
 

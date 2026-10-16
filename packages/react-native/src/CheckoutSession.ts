@@ -37,8 +37,10 @@ export interface SessionSnapshot {
   methods: SheetMethods | null;
   /** The element has a method selected and can be paid. */
   canPay: boolean;
-  /** The element couldn't load (shown in the sheet). */
+  /** The element couldn't load (shown in the sheet with Try again). */
   elementError: string | null;
+  /** Bumped by Try again: rebuilds the native element. */
+  elementAttempt: number;
   /** Which way to pay is showing: the element (cards, wallets, pay-later), or our UPI or Pix panel. */
   method: 'element' | 'upi' | 'pix';
 }
@@ -58,6 +60,7 @@ export class CheckoutSession {
     methods: null,
     canPay: false,
     elementError: null,
+    elementAttempt: 0,
     method: 'element',
   };
   private listeners = new Set<() => void>();
@@ -112,6 +115,10 @@ export class CheckoutSession {
 
   setElementError(message: string | null) {
     this.set({ elementError: message, ...(message ? { canPay: false } : {}) });
+  }
+
+  retryElement() {
+    this.set({ elementError: null, elementAttempt: this.snapshot.elementAttempt + 1 });
   }
 
   private apply(config: CheckoutConfig, payLocal: boolean) {

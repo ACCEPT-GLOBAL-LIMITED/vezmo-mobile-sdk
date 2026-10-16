@@ -16,6 +16,9 @@ import { QrForm, QrWaiting } from './QrPanels';
 import { paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutResult } from './types';
 
+/** Shown instead of a technical message when the payment methods can't load (a network hiccup, usually). */
+const LOAD_FAILED = 'We couldn’t load the ways to pay. Check your connection and try again.';
+
 export interface CheckoutSheetProps {
   session: CheckoutSession;
   merchantDisplayName?: string;
@@ -73,11 +76,12 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
             appearance: props.appearance,
             wallets: props.wallets,
             charge,
+            attempt: snap.elementAttempt,
           })
         : '',
     // The element is rebuilt only for new keys, wallets or look, never for a new amount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [config?.publishableKey, config?.connectedAccountId, methods?.applePay, methods?.googlePay, charge?.currency, scheme, p, merchant, props.returnUrl],
+    [config?.publishableKey, config?.connectedAccountId, methods?.applePay, methods?.googlePay, charge?.currency, scheme, p, merchant, props.returnUrl, snap.elementAttempt],
   );
   const intentJson = useMemo(() => (charge && methods ? elementIntentJson(charge, methods) : ''), [charge, methods]);
 
@@ -186,15 +190,20 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                 intentJson={intentJson}
                 onPaymentOptionChange={(option) => session.setCanPay(!!option)}
                 onLoaded={() => session.setElementError(null)}
-                onLoadFailed={(message) => session.setElementError(message || 'The payment form couldn’t load.')}
+                onLoadFailed={(message) => session.setElementError(message || LOAD_FAILED)}
                 onConfirmationToken={(id) => void session.onConfirmationToken(id)}
                 onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
               />
 
               {!!snap.elementError && (
-                <Text testID="vezmo-element-error" style={s.error}>
-                  {snap.elementError}
-                </Text>
+                <View style={{ gap: 8, alignItems: 'flex-start' }}>
+                  <Text testID="vezmo-element-error" style={s.error}>
+                    {LOAD_FAILED}
+                  </Text>
+                  <Pressable testID="vezmo-retry" accessibilityRole="button" onPress={() => session.retryElement()}>
+                    <Text style={s.link}>Try again</Text>
+                  </Pressable>
+                </View>
               )}
 
               {phase.name === 'ready' && phase.error && (
