@@ -31,3 +31,6 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 /build/
 /coverage/
+
+# The repository ignores lib/ (React Native build output); Dart sources live in lib/.
+!lib/
