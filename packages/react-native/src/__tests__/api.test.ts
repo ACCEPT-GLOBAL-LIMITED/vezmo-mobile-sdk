@@ -18,10 +18,27 @@ describe('VezmoApi', () => {
     expect(url).toBe('https://api.test/v1/secure-payments/tok%2F1/pay');
     expect(init?.method).toBe('POST');
     expect((init?.headers as Record<string, string>)['Vezmo-SDK']).toMatch(/^react-native\/\d+\.\d+\.\d+/);
+    // Android leaves the return to the confirmation token's own link (the payment engine's way back into the app).
     expect(JSON.parse(init?.body as string)).toEqual({
       confirmationToken: 'ctoken_1',
       integration: 'android',
       localOffer: 'o',
+    });
+  });
+
+  it("sends the app's return link from iOS, where the sheet hands it to the payment", async () => {
+    const fetchImpl = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(ok({ state: 'processing', paymentId: 'p', clientSecret: null }));
+    await new VezmoApi('https://api.test/v1', 'ios', fetchImpl).subscriptionPay('sub', {
+      confirmationToken: 'ctoken_1',
+      returnUrl: 'acme://vezmo',
+    });
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('https://api.test/v1/subscription-checkout/sub/pay');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      confirmationToken: 'ctoken_1',
+      integration: 'ios',
       returnUrl: 'acme://vezmo',
     });
   });

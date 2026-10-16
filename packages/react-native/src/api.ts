@@ -91,7 +91,7 @@ export class VezmoApi {
       confirmationToken: body.confirmationToken,
       integration: this.integration,
       ...(body.localOffer ? { localOffer: body.localOffer } : {}),
-      ...(body.returnUrl ? { returnUrl: body.returnUrl } : {}),
+      ...this.returnLink(body.returnUrl),
     });
   }
 
@@ -142,6 +142,15 @@ export class VezmoApi {
     return this.call<SessionStatus>('GET', `/secure-payments/${encodeURIComponent(token)}/status`);
   }
 
+  /**
+   * Where a bank app or pay-later provider sends the buyer back. iOS: the app's own link (the sheet hands it to the
+   * payment). Android: none, so the confirmation token's own link is used — the payment engine's return into the app;
+   * the app's link there would open the app but leave the payment waiting.
+   */
+  private returnLink(returnUrl?: string | null) {
+    return returnUrl && this.integration === 'ios' ? { returnUrl } : {};
+  }
+
   // ── subscriptions (a subscription checkout's token) ─────────────────────
   /** The subscription checkout: plan, first charge or free trial, keys. A used or unknown link reads as expired. */
   async subscription(token: string, opts: { currency?: string } = {}) {
@@ -165,7 +174,7 @@ export class VezmoApi {
       confirmationToken: body.confirmationToken,
       integration: this.integration,
       ...(body.localOffer ? { localOffer: body.localOffer } : {}),
-      ...(body.returnUrl ? { returnUrl: body.returnUrl } : {}),
+      ...this.returnLink(body.returnUrl),
     });
   }
 
