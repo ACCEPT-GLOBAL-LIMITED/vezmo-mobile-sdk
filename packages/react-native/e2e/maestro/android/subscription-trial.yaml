@@ -22,7 +22,8 @@ appId: com.vezmo.example
     visible: "Card"
     timeout: 60000
 - assertVisible: "Due today"
-- assertVisible: "7-day free trial"
+# The plan block reads as one element to VoiceOver: its label holds both lines.
+- assertVisible: ".*7-day free trial.*"
 - takeScreenshot: sub-trial-01-sheet
 - tapOn: "Card"
 - extendedWaitUntil:
