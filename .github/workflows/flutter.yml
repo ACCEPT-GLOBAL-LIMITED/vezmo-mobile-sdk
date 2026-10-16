@@ -123,8 +123,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 90
     env:
-      # Build against this checkout's iOS SDK (the Swift package at the repository root), not a published release.
-      VEZMO_IOS_SDK_PATH: ${{ github.workspace }}
+      # Build against this commit's iOS SDK (the Swift package at the repository root), not a published release.
+      VEZMO_IOS_SDK_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
@@ -137,7 +137,12 @@ jobs:
           cache: true
       - name: Build the example app for the simulator
         working-directory: packages/flutter/example
-        run: flutter build ios --simulator --debug --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE
+        run: |
+          flutter build ios --simulator --debug --dart-define=VEZMO_API_BASE=$VEZMO_API_BASE || {
+            ls -la ios/Flutter/ephemeral/Packages ios/Flutter/ephemeral/Packages/.packages
+            cat ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
+            exit 1
+          }
       - name: Boot an iPhone simulator
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c '

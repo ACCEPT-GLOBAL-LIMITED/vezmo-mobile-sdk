@@ -116,22 +116,22 @@ class VezmoConfiguration {
   final String? apiBase;
 
   Map<String, Object?> _toMap() => {
-        'returnUrl': returnUrl,
-        'applePay': applePay == null
-            ? null
-            : {'merchantId': applePay!.merchantId, 'merchantCountryCode': applePay!.merchantCountryCode},
-        'googlePay': googlePay == null ? null : {'merchantCountryCode': googlePay!.merchantCountryCode},
-        'style': style.name,
-        'appearance': {
-          'colors': {
-            for (final MapEntry(:key, :value) in appearance.colors.entries)
-              key.name: {'light': value.light.toARGB32(), 'dark': value.dark.toARGB32()},
-          },
-          'cornerRadius': appearance.cornerRadius,
-          'fontFamily': appearance.fontFamily,
-        },
-        'apiBase': apiBase,
-      };
+    'returnUrl': returnUrl,
+    'applePay': applePay == null
+        ? null
+        : {'merchantId': applePay!.merchantId, 'merchantCountryCode': applePay!.merchantCountryCode},
+    'googlePay': googlePay == null ? null : {'merchantCountryCode': googlePay!.merchantCountryCode},
+    'style': style.name,
+    'appearance': {
+      'colors': {
+        for (final MapEntry(:key, :value) in appearance.colors.entries)
+          key.name: {'light': value.light.toARGB32(), 'dark': value.dark.toARGB32()},
+      },
+      'cornerRadius': appearance.cornerRadius,
+      'fontFamily': appearance.fontFamily,
+    },
+    'apiBase': apiBase,
+  };
 }
 
 class ApplePayOptions {
@@ -246,17 +246,17 @@ sealed class CheckoutResult {
     final error = json['error'];
     return switch (json['status']) {
       'succeeded' => CheckoutSucceeded(
-          paymentId: json['paymentId'] as String?,
-          transactionId: json['transactionId'] as String?,
-          subscription: sub,
-        ),
+        paymentId: json['paymentId'] as String?,
+        transactionId: json['transactionId'] as String?,
+        subscription: sub,
+      ),
       'processing' => CheckoutProcessing(paymentId: json['paymentId'] as String?, subscription: sub),
       'canceled' => const CheckoutCanceled(),
       _ => CheckoutFailed(
-          error is Map
-              ? VezmoError.fromJson(error.cast<String, Object?>())
-              : const VezmoError(VezmoErrorCode.unknown, 'Something went wrong. Try again.'),
-        ),
+        error is Map
+            ? VezmoError.fromJson(error.cast<String, Object?>())
+            : const VezmoError(VezmoErrorCode.unknown, 'Something went wrong. Try again.'),
+      ),
     };
   }
 
@@ -277,11 +277,11 @@ final class CheckoutSucceeded extends CheckoutResult {
 
   @override
   Map<String, Object?> toJson() => {
-        'status': 'succeeded',
-        'paymentId': paymentId,
-        'transactionId': transactionId,
-        if (subscription != null) 'subscription': subscription!.toJson(),
-      };
+    'status': 'succeeded',
+    'paymentId': paymentId,
+    'transactionId': transactionId,
+    if (subscription != null) 'subscription': subscription!.toJson(),
+  };
 }
 
 /// Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook.
@@ -293,10 +293,10 @@ final class CheckoutProcessing extends CheckoutResult {
 
   @override
   Map<String, Object?> toJson() => {
-        'status': 'processing',
-        'paymentId': paymentId,
-        if (subscription != null) 'subscription': subscription!.toJson(),
-      };
+    'status': 'processing',
+    'paymentId': paymentId,
+    if (subscription != null) 'subscription': subscription!.toJson(),
+  };
 }
 
 /// The buyer closed the sheet. Not an error.
@@ -321,9 +321,9 @@ class SubscriptionResult {
   const SubscriptionResult({required this.ref, required this.status});
 
   factory SubscriptionResult.fromJson(Map<String, Object?> json) => SubscriptionResult(
-        ref: json['ref'] as String? ?? '',
-        status: SubscriptionStatus.values.asNameMap()[json['status']] ?? SubscriptionStatus.incomplete,
-      );
+    ref: json['ref'] as String? ?? '',
+    status: SubscriptionStatus.values.asNameMap()[json['status']] ?? SubscriptionStatus.incomplete,
+  );
 
   /// The subscription's reference, as in the dashboard and the webhooks.
   final String ref;
@@ -348,9 +348,9 @@ class VezmoError {
   const VezmoError(this.code, this.message);
 
   factory VezmoError.fromJson(Map<String, Object?> json) => VezmoError(
-        VezmoErrorCode.values.firstWhere((c) => c.wireName == json['code'], orElse: () => VezmoErrorCode.unknown),
-        json['message'] as String? ?? 'Something went wrong. Try again.',
-      );
+    VezmoErrorCode.values.firstWhere((c) => c.wireName == json['code'], orElse: () => VezmoErrorCode.unknown),
+    json['message'] as String? ?? 'Something went wrong. Try again.',
+  );
 
   final VezmoErrorCode code;
   final String message;

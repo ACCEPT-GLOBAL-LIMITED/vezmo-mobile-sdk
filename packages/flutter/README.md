@@ -281,8 +281,9 @@ cd example && flutter run
 Until the Android SDK is on Maven Central, build it into Maven local first: `gradle -p packages/android
 :checkout:publishToMavenLocal` (Gradle 8.14, JDK 17).
 
-To build the iPhone side against this repository's iOS SDK rather than a release, set `VEZMO_IOS_SDK_PATH` to the
-repository's root: `VEZMO_IOS_SDK_PATH=$(git rev-parse --show-toplevel) flutter build ios --simulator`.
+To build the iPhone side against a commit of this repository's iOS SDK rather than a release, set
+`VEZMO_IOS_SDK_REVISION` to that commit (pushed to GitHub): `VEZMO_IOS_SDK_REVISION=$(git rev-parse HEAD) flutter build
+ios --simulator`.
 
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
 Maestro (`e2e/maestro`). On an Android emulator: a card with 3D Secure, a decline, cancel, a bad token, Cash App on

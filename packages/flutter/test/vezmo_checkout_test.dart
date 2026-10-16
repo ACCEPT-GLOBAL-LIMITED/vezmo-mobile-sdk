@@ -1,4 +1,3 @@
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vezmo_checkout/vezmo_checkout.dart';
@@ -12,7 +11,10 @@ void main() {
 
   setUp(() {
     calls.clear();
-    answers = {'prepare': (_) => null, 'present': (_) => {'status': 'canceled'}};
+    answers = {
+      'prepare': (_) => null,
+      'present': (_) => {'status': 'canceled'},
+    };
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       return answers[call.method]!(call);
@@ -68,7 +70,10 @@ void main() {
     test('anything unexpected is a failure, never a throw', () {
       final empty = CheckoutResult.fromJson({});
       expect((empty as CheckoutFailed).error.code, VezmoErrorCode.unknown);
-      final odd = CheckoutResult.fromJson({'status': 'failed', 'error': {'code': 'new_code'}});
+      final odd = CheckoutResult.fromJson({
+        'status': 'failed',
+        'error': {'code': 'new_code'},
+      });
       expect((odd as CheckoutFailed).error.code, VezmoErrorCode.unknown);
       expect(odd.error.message, isNotEmpty);
       final sub = SubscriptionResult.fromJson({'ref': 'SUB-1', 'status': 'paused'});
@@ -186,11 +191,11 @@ void main() {
 
     test('present returns the native result, once per prepare', () async {
       answers['present'] = (_) => {
-            'status': 'succeeded',
-            'paymentId': 'pay_9',
-            'transactionId': 'TX-9',
-            'subscription': null,
-          };
+        'status': 'succeeded',
+        'paymentId': 'pay_9',
+        'transactionId': 'TX-9',
+        'subscription': null,
+      };
       final vezmo = VezmoCheckout();
       await vezmo.prepare(clientToken: 'tok');
       final result = await vezmo.present();
