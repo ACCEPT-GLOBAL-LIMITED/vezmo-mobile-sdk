@@ -114,18 +114,28 @@ struct Shop: View {
           .overlay(Capsule().strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
       }
       .accessibilityIdentifier("new-session")
+      // The sandbox's merchant-of-record business (Cash App, Klarna and Amazon Pay on).
+      Button { Task { await newSession(track: "mor") } } label: {
+        Text("New session · merchant of record").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
+          .frame(maxWidth: .infinity).frame(height: 44)
+          .background(Capsule().fill(Color.white))
+          .overlay(Capsule().strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
+      }
+      .accessibilityIdentifier("new-session-mor")
     }
     .padding(14)
     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(hex: 0xE1E3EC), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
   }
 
-  private func newSession() async {
-    guard let demo = setting("VezmoDemoURL").flatMap(URL.init(string:)) else {
+  private func newSession(track: String? = nil) async {
+    guard var demo = setting("VezmoDemoURL") else {
       status = "Paste a client token, or set VEZMO_DEMO_URL."
       return
     }
+    if let track { demo += "?track=\(track)" }
+    guard let url = URL(string: demo) else { return }
     status = "Creating a sandbox session…"
-    var request = URLRequest(url: demo)
+    var request = URLRequest(url: url)
     request.httpMethod = "POST"
     do {
       let (data, _) = try await URLSession.shared.data(for: request)

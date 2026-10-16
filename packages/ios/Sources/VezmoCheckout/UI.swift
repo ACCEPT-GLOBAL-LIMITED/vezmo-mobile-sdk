@@ -588,9 +588,10 @@ struct SheetSkeleton: View {
 }
 
 extension View {
-  /// The ways to pay: one rounded group on the field colour.
+  /// The ways to pay: one rounded group on the field colour, its 1pt border outside the rows (as a CSS border).
   func methodGroup(_ look: Look) -> some View {
-    background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(look.p.field)))
+    padding(1)
+      .background(RoundedRectangle(cornerRadius: look.radius, style: .continuous).fill(look.c(look.p.field)))
       .clipShape(RoundedRectangle(cornerRadius: look.radius, style: .continuous))
       .overlay(RoundedRectangle(cornerRadius: look.radius, style: .continuous).strokeBorder(look.c(look.p.fieldLine), lineWidth: 1))
   }
