@@ -1,4 +1,4 @@
-# @vezmo/react-native
+# @vezmopay/react-native
 
 Vezmo checkout for React Native and Expo apps: a native payment sheet for cards, Apple Pay, Google Pay, pay-later
 methods, Cash App, UPI and Pix, in the buyer's own currency, with 3D Secure.

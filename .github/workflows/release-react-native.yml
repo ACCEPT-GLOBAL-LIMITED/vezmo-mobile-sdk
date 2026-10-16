@@ -1,7 +1,7 @@
 name: Release React Native SDK
 
-# Publishes @vezmo/react-native when a tag like `react-native-v1.2.3` is pushed. The tag's version must match
-# packages/react-native/package.json. Needs the NPM_TOKEN secret (an automation token of the `vezmo` npm org).
+# Publishes @vezmopay/react-native when a tag like `react-native-v1.2.3` is pushed. The tag's version must match
+# packages/react-native/package.json. Needs the NPM_TOKEN secret (a granular write token of the `vezmopay` npm org).
 on:
   push:
     tags: ['react-native-v*']

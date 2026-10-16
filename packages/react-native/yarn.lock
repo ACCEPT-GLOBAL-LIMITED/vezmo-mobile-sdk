@@ -2863,9 +2863,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vezmo/react-native-example@workspace:example":
+"@vezmopay/react-native-example@workspace:example":
   version: 0.0.0-use.local
-  resolution: "@vezmo/react-native-example@workspace:example"
+  resolution: "@vezmopay/react-native-example@workspace:example"
   dependencies:
     "@expo/metro-runtime": "npm:~57.0.17"
     expo: "npm:~57.0.30"
@@ -2879,9 +2879,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@vezmo/react-native@workspace:.":
+"@vezmopay/react-native@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@vezmo/react-native@workspace:."
+  resolution: "@vezmopay/react-native@workspace:."
   dependencies:
     "@jest/globals": "npm:^29.7.0"
     "@react-native/babel-preset": "npm:0.86.2"

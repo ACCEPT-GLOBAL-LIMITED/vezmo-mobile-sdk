@@ -1,7 +1,7 @@
 /**
- * Expo config plugin for @vezmo/react-native.
+ * Expo config plugin for @vezmopay/react-native.
  *
- *   plugins: [["@vezmo/react-native", { merchantIdentifier: "merchant.com.acme" }]]
+ *   plugins: [["@vezmopay/react-native", { merchantIdentifier: "merchant.com.acme" }]]
  *
  * - iOS: adds Apple Pay (the In-App Payments entitlement with your Apple Merchant ID) and the camera text for
  *   scanning a card. Without a merchant identifier, Apple Pay is simply not offered.

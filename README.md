@@ -5,7 +5,7 @@ UPI and Pix, in the buyer's own currency, with 3D Secure, in a native payment sh
 
 | Package | Status |
 |---|---|
-| `@vezmo/react-native` (React Native and Expo) | In development |
+| `@vezmopay/react-native` (React Native and Expo) | In development |
 | iOS (Swift Package) | Planned |
 | Android (Maven) | Planned |
 | Flutter | Planned |

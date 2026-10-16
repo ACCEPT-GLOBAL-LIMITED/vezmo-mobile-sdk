@@ -1,5 +1,5 @@
 {
-  "name": "@vezmo/react-native",
+  "name": "@vezmopay/react-native",
   "version": "0.1.0",
   "description": "Vezmo checkout for React Native and Expo apps: a native payment sheet for cards, Apple Pay, Google Pay, pay-later methods, UPI and Pix.",
   "main": "./lib/module/index.js",
@@ -32,7 +32,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "example": "yarn workspace @vezmo/react-native-example",
+    "example": "yarn workspace @vezmopay/react-native-example",
     "clean": "del-cli lib",
     "prepare": "bob build",
     "typecheck": "tsc",

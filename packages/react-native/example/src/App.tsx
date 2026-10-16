@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } from '@vezmo/react-native';
+import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } from '@vezmopay/react-native';
 
 /**
  * The Vezmo SDK example: a small shop with one product and a Buy button that opens the Vezmo sheet. A real app gets

@@ -5,7 +5,7 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 payment_engine_version = "26.14.0"
 
 if ENV["RCT_NEW_ARCH_ENABLED"] == "0"
-  raise "@vezmo/react-native needs the React Native New Architecture (RCT_NEW_ARCH_ENABLED=1)."
+  raise "@vezmopay/react-native needs the React Native New Architecture (RCT_NEW_ARCH_ENABLED=1)."
 end
 
 Pod::Spec.new do |s|
