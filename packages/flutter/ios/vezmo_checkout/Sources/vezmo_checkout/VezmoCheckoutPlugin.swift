@@ -59,7 +59,7 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
     Task { @MainActor in
       switch await vezmo.present(from: controller) {
       case .succeeded(let paymentId, let transactionId):
-        result(["status": "succeeded", "paymentId": paymentId, "transactionId": transactionId ?? NSNull()])
+        result(["status": "succeeded", "paymentId": paymentId, "transactionId": transactionId as Any? ?? NSNull()])
       case .processing(let paymentId):
         result(["status": "processing", "paymentId": paymentId])
       case .canceled:

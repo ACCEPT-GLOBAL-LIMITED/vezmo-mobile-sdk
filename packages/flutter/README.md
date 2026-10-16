@@ -281,6 +281,14 @@ cd example && flutter run
 Until the Android SDK is on Maven Central, build it into Maven local first: `gradle -p packages/android
 :checkout:publishToMavenLocal` (Gradle 8.14, JDK 17).
 
+On iPhone, Xcode needs the plugin's folder to be named `vezmo_checkout` (as it is when installed from pub.dev). To run
+the example on an iPhone from this repository, reach the plugin through such a folder first:
+
+```sh
+ln -s flutter ../vezmo_checkout   # from packages/flutter
+printf 'dependency_overrides:\n  vezmo_checkout:\n    path: ../../vezmo_checkout\n' > example/pubspec_overrides.yaml
+```
+
 To build the iPhone side against a commit of this repository's iOS SDK rather than a release, set
 `VEZMO_IOS_SDK_REVISION` to that commit (pushed to GitHub): `VEZMO_IOS_SDK_REVISION=$(git rev-parse HEAD) flutter build
 ios --simulator`.
