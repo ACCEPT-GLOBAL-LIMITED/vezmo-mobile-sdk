@@ -68,9 +68,9 @@ final class FlowTests: XCTestCase {
   func testServerAnswersMapToWhatTheMerchantGets() {
     XCTAssertEqual(
       resultFromPay(PayResponse(state: "succeeded", paymentId: "p", transactionId: "VT1", clientSecret: nil)),
-      .succeeded(paymentId: "p", transactionId: "VT1")
+      .succeeded(paymentId: "p", transactionId: "VT1", subscription: nil)
     )
-    XCTAssertEqual(resultFromPay(PayResponse(state: "processing", paymentId: "p", clientSecret: nil)), .processing(paymentId: "p"))
+    XCTAssertEqual(resultFromPay(PayResponse(state: "processing", paymentId: "p", clientSecret: nil)), .processing(paymentId: "p", subscription: nil))
     XCTAssertNil(resultFromPay(PayResponse(state: "requires_action", paymentId: "p", clientSecret: "pi_1_secret_x")))
     XCTAssertNil(resultFromStatus(SessionStatus(state: "open", paymentId: "p", transactionId: nil)))
     guard case .failed(let error)? = resultFromStatus(SessionStatus(state: "failed", paymentId: "p", transactionId: nil)) else {

@@ -2,13 +2,35 @@ import Foundation
 
 /// The outcome `present(from:)` returns. It never throws.
 public enum CheckoutResult: Equatable {
-  /// Paid. `paymentId` and `transactionId` match the dashboard and the webhook.
-  case succeeded(paymentId: String, transactionId: String?)
+  /// Paid. `paymentId` and `transactionId` match the dashboard and the webhook. `paymentId` is nil only when a
+  /// subscription's free trial started: nothing was charged today. `subscription` is set for a subscription checkout.
+  case succeeded(paymentId: String?, transactionId: String?, subscription: SubscriptionResult?)
   /// Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook.
-  case processing(paymentId: String)
+  case processing(paymentId: String?, subscription: SubscriptionResult?)
   /// The buyer closed the sheet. Not an error.
   case canceled
   case failed(VezmoError)
+}
+
+/// The subscription a subscription checkout started.
+public struct SubscriptionResult: Equatable {
+  public enum Status: String {
+    /// The first payment went through.
+    case active
+    /// A free trial started; the card is saved for the first charge.
+    case trialing
+    /// Still settling: the webhook tells your server when it is active.
+    case incomplete
+  }
+
+  /// The subscription's reference, as in the dashboard and the webhooks.
+  public let ref: String
+  public let status: Status
+
+  public init(ref: String, status: Status) {
+    self.ref = ref
+    self.status = status
+  }
 }
 
 public struct VezmoError: Error, Equatable {
@@ -58,8 +80,86 @@ struct CheckoutConfig: Decodable, Equatable {
   var theme: String?
   var paymentId: String
   var localOffer: LocalOffer?
+  /// A subscription checkout: the plan, and what starting it means. Nil for a one-time payment.
+  var subscription: SubscriptionPlan?
+
+  private enum CodingKeys: String, CodingKey {
+    case publishableKey, connectedAccountId, livemode, amountMinor, currency, title, merchantName, enabledMethods
+    case customerName, customerEmail, theme, paymentId, localOffer
+  }
 
   func enabled(_ method: String) -> Bool { (enabledMethods?[method] ?? nil) == true }
+}
+
+/// What the buyer subscribes to (from the subscription checkout).
+struct SubscriptionPlan: Equatable {
+  var ref: String
+  /// `payment`: the first period is charged now. `setup`: a free trial; the card is saved, nothing is charged today.
+  var mode: String
+  var planName: String
+  /// The price of each period, in the plan's currency (major units).
+  var recurringAmount: Double
+  var currency: String
+  /// `HOUR`, `DAY`, `WEEK`, `MONTH` or `YEAR`.
+  var interval: String
+  var intervalCount: Int
+  var trialDays: Int?
+  /// When the plan's price is next charged (ISO 8601): the trial's end, or the end of the first period.
+  var nextChargeAt: String?
+  /// The buyer's page to view or cancel the subscription.
+  var manageUrl: String?
+  /// The recurring authorization the buyer agrees to by subscribing.
+  var consentText: String
+
+  var trial: Bool { mode == "setup" }
+}
+
+/// GET /subscription-checkout/:token: the subscription checkout as the API returns it.
+struct SubscriptionView: Decodable, Equatable {
+  struct Merchant: Decodable, Equatable { var name: String? }
+  struct Customer: Decodable, Equatable {
+    var email: String?
+    var name: String?
+  }
+
+  var subscriptionRef: String
+  var mode: String
+  var publishableKey: String?
+  var connectedAccountId: String?
+  var amount: Double
+  var recurringAmount: Double
+  var currency: String
+  var planName: String
+  var interval: String
+  var intervalCount: Int
+  var trialDays: Int?
+  var merchant: Merchant?
+  var customer: Customer?
+  var consentText: String
+  var localOffer: LocalOffer?
+  var livemode: Bool
+  var nextChargeAt: String?
+  var manageUrl: String?
+}
+
+/// POST /subscription-checkout/:token/pay: the subscription twin of `PayResponse`.
+struct SubscriptionPayResponse: Decodable, Equatable {
+  /// `succeeded`, `processing` or `requires_action`.
+  var state: String
+  var subscriptionRef: String
+  var subscriptionStatus: String?
+  var paymentId: String?
+  var transactionId: String?
+  var clientSecret: String?
+  var method: PaidMethod?
+}
+
+/// POST /subscription-checkout/:token/confirm: how the subscription stands once the device finished it.
+struct SubscriptionConfirm: Decodable, Equatable {
+  var status: String
+  var subscriptionRef: String
+  var paymentId: String?
+  var transactionId: String?
 }
 
 /// The buyer's own currency, offered beside the price.
@@ -86,10 +186,16 @@ struct PaidMethod: Decodable, Equatable {
 struct PayResponse: Decodable, Equatable {
   /// `succeeded`, `processing` or `requires_action`.
   var state: String
-  var paymentId: String
+  var paymentId: String?
   var transactionId: String?
   var clientSecret: String?
   var method: PaidMethod?
+  /// A subscription checkout's subscription (set from `SubscriptionPayResponse`).
+  var subscription: SubscriptionResult?
+
+  private enum CodingKeys: String, CodingKey {
+    case state, paymentId, transactionId, clientSecret, method
+  }
 }
 
 struct SessionStatus: Decodable, Equatable {

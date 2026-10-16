@@ -1,5 +1,6 @@
 import Foundation
 import os
+import PassKit
 @_spi(STP) @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import SwiftUI
 import UIKit
@@ -16,6 +17,8 @@ struct EngineSettings: Equatable {
   var radius: CGFloat
   var fontFamily: String?
   var applePay: VezmoCheckout.ApplePay?
+  /// A subscription in Apple Pay's sheet and the buyer's Wallet (iOS 16+); nil for a one-time payment.
+  var applePayRecurring: ApplePayRecurring?
   var billingName: String?
   var billingEmail: String?
   /// Bumped to rebuild the engine (Try again after a failed load).
@@ -23,38 +26,112 @@ struct EngineSettings: Equatable {
 }
 
 /// What is charged: a change updates the engine in place (the buyer switched currency). Cards go to the native card
-/// form (`card`), the sheet's own Card row; every other method to the element's rows.
+/// form (`card`), the sheet's own Card row; every other method to the element's rows. A subscription saves the card
+/// for its renewals: a setup (a free trial, nothing charged today) or a payment kept for later use.
 struct EngineIntent: Equatable {
   var amount: Int
   var currency: String
   var paymentMethodTypes: [String]
   var card: Bool
+  /// A free trial: the card is set up, nothing is charged.
+  var setup: Bool
+  /// A subscription: the card is kept for the renewals.
+  var saveForLater: Bool
 
-  init(charge: Charge, methods: SheetMethods) {
+  init(charge: Charge, methods: SheetMethods, plan: SubscriptionPlan? = nil) {
     amount = charge.amountMinor
     currency = charge.currency.lowercased()
     paymentMethodTypes = methods.elementTypes.filter { $0 != "card" }
     card = methods.elementTypes.contains("card")
+    setup = plan?.trial == true
+    saveForLater = plan != nil
+  }
+
+  var mode: PaymentSheet.IntentConfiguration.Mode {
+    if setup { return .setup(currency: currency, setupFutureUsage: .offSession) }
+    // Our server makes every intent with automatic_async capture; the engine must say the same.
+    return .payment(
+      amount: amount,
+      currency: currency,
+      setupFutureUsage: saveForLater ? .offSession : nil,
+      captureMethod: .automaticAsync,
+      paymentMethodOptions: nil
+    )
   }
 
   /// What is charged, for the element or the card flow: a confirmation token goes to `secret`, which answers with the
   /// intent's client secret from Vezmo's server.
   func configuration(types: [String], secret: @escaping (String) async throws -> String) -> PaymentSheet.IntentConfiguration {
     PaymentSheet.IntentConfiguration(
-      // Our server makes every intent with automatic_async capture; the engine must say the same.
-      mode: .payment(
-        amount: amount,
-        currency: currency,
-        setupFutureUsage: nil,
-        captureMethod: .automaticAsync,
-        paymentMethodOptions: nil
-      ),
+      mode: mode,
       paymentMethodTypes: types,
       onBehalfOf: nil,
       confirmationTokenConfirmHandler: { confirmationToken in
         try await secret(confirmationToken.stripeId)
       }
     )
+  }
+}
+
+/// Apple Pay's recurring payment (iOS 16+): the plan in Apple's sheet and the buyer's Wallet, with the free trial and
+/// the page to manage it.
+struct ApplePayRecurring: Equatable {
+  var label: String
+  var amount: String
+  /// `day`, `week`, `month` or `year`.
+  var intervalUnit: String
+  var intervalCount: Int
+  /// A trial's plan starts when the trial ends; nil: today, with this first payment.
+  var startDate: Date?
+  var trialEndDate: Date?
+  var managementURL: URL
+  var billingAgreement: String
+  var merchant: String
+  var dueToday: String
+
+  /// Nil for a one-time payment, or without a manage page (Apple requires one).
+  init?(config: CheckoutConfig, charge: Charge, merchant: String) {
+    guard let plan = config.subscription, let manage = plan.manageUrl.flatMap(URL.init(string:)) else { return nil }
+    let units = ["DAY": "day", "WEEK": "week", "MONTH": "month", "YEAR": "year"]
+    label = plan.planName
+    amount = String(format: "%.2f", Double(recurringMinorIn(config, charge)) / 100)
+    intervalUnit = units[plan.interval.uppercased()] ?? "month"
+    intervalCount = plan.intervalCount
+    startDate = plan.trial ? isoDate(plan.nextChargeAt) : nil
+    trialEndDate = plan.trial ? isoDate(plan.nextChargeAt) : nil
+    managementURL = manage
+    billingAgreement = plan.consentText
+    self.merchant = merchant
+    dueToday = String(format: "%.2f", Double(charge.amountMinor) / 100)
+  }
+
+  /// Apple's sheet shows the plan, any free trial and when billing starts; the last line is the total due today,
+  /// under the business's name.
+  @available(iOS 16.0, *)
+  func add(to request: PKPaymentRequest) -> PKPaymentRequest {
+    let regular = PKRecurringPaymentSummaryItem(label: label, amount: NSDecimalNumber(string: amount))
+    switch intervalUnit {
+    case "day": regular.intervalUnit = .day
+    case "week": regular.intervalUnit = .weekOfMonth
+    case "year": regular.intervalUnit = .year
+    default: regular.intervalUnit = .month
+    }
+    regular.intervalCount = intervalCount
+    regular.startDate = startDate ?? Date()
+    let recurring = PKRecurringPaymentRequest(paymentDescription: label, regularBilling: regular, managementURL: managementURL)
+    var lines: [PKPaymentSummaryItem] = []
+    if let trialEndDate {
+      let trial = PKRecurringPaymentSummaryItem(label: "Free trial", amount: .zero)
+      trial.endDate = trialEndDate
+      recurring.trialBilling = trial
+      lines.append(trial)
+    }
+    recurring.billingAgreement = billingAgreement
+    request.recurringPaymentRequest = recurring
+    lines.append(regular)
+    lines.append(PKPaymentSummaryItem(label: merchant, amount: NSDecimalNumber(string: dueToday)))
+    request.paymentSummaryItems = lines
+    return request
   }
 }
 
@@ -235,9 +312,14 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     configuration.paymentMethodLayout = .vertical
     configuration.style = settings.dark ? .alwaysDark : .alwaysLight
     if wallets, let applePay = settings.applePay, !applePay.merchantId.isEmpty {
+      var handlers: PaymentSheet.ApplePayConfiguration.Handlers?
+      if #available(iOS 16.0, *), let plan = settings.applePayRecurring {
+        handlers = PaymentSheet.ApplePayConfiguration.Handlers(paymentRequestHandler: { request in plan.add(to: request) })
+      }
       configuration.applePay = PaymentSheet.ApplePayConfiguration(
         merchantId: applePay.merchantId,
-        merchantCountryCode: applePay.merchantCountryCode
+        merchantCountryCode: applePay.merchantCountryCode,
+        customHandlers: handlers
       )
     }
     configuration.defaultBillingDetails.name = settings.billingName

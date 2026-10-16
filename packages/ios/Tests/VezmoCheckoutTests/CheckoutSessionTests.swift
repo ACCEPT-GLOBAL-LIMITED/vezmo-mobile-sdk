@@ -58,6 +58,29 @@ final class FakeAPI: CheckoutAPI {
   func status(token: String) async throws -> SessionStatus {
     statusOnce.isEmpty ? statusAnswer : statusOnce.removeFirst()
   }
+
+  // Subscriptions
+  var view: SubscriptionView?
+  var subscriptionError: VezmoAPIError?
+  var subscriptionPayAnswer: () throws -> SubscriptionPayResponse = { throw VezmoAPIError(.unknown, "no answer") }
+  var subscriptionConfirmAnswer = SubscriptionConfirm(status: "active", subscriptionRef: "SUB-1", paymentId: "pay_9", transactionId: "VT9")
+  var subscriptionPayCalls: [PayCall] = []
+  var subscriptionConfirmCalls: [[String]] = []
+
+  func subscription(token: String) async throws -> SubscriptionView {
+    if let subscriptionError { throw subscriptionError }
+    return view!
+  }
+
+  func subscriptionPay(token: String, confirmationToken: String, localOffer: String?, returnURL: String?) async throws -> SubscriptionPayResponse {
+    subscriptionPayCalls.append(PayCall(token: token, confirmationToken: confirmationToken, localOffer: localOffer, returnURL: returnURL))
+    return try subscriptionPayAnswer()
+  }
+
+  func subscriptionConfirm(token: String, intentId: String) async throws -> SubscriptionConfirm {
+    subscriptionConfirmCalls.append([token, intentId])
+    return subscriptionConfirmAnswer
+  }
 }
 
 @MainActor
@@ -131,7 +154,7 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(api.payCalls, [.init(token: "tok", confirmationToken: "ctoken_1", localOffer: nil, returnURL: "acme://vezmo/return")])
     XCTAssertEqual(element.resolutions, [["pi_1_secret_a", nil]])
     await session.onConfirmResult(.completed, message: "")
-    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1")))
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
     XCTAssertTrue(api.confirmCalls.isEmpty)
   }
 
@@ -143,7 +166,7 @@ final class CheckoutSessionTests: XCTestCase {
     await session.onConfirmationToken("ctoken_1")
     await session.onConfirmResult(.completed, message: "")
     XCTAssertEqual(api.confirmCalls, [["tok", "pi_9"]])
-    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1")))
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
   }
 
   func testADeclineGoesBackToTheElementInOurWordsAndLeavesTheSheetReadyToRetry() async {
@@ -269,7 +292,7 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertTrue(snap.phase.isWaiting)
     await session.checkNow() // paid
     XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
-    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1")))
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
     session.dispose()
   }
 

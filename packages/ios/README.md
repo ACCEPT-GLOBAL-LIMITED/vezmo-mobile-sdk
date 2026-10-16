@@ -94,7 +94,7 @@ func pay(orderId: String) async {
 
   // Opens the sheet and returns when the buyer is done. Never throws.
   switch await vezmo.present(from: self) {
-  case .succeeded(let paymentId, _):
+  case .succeeded(let paymentId, _, _):
     showPaid(paymentId)
   case .processing:
     showPaymentReceived() // a bank debit, UPI or Pix still settling
@@ -134,8 +134,8 @@ show.
 
 | Result | Meaning |
 | --- | --- |
-| `.succeeded(paymentId, transactionId)` | Paid. Both ids match the dashboard and the webhook. |
-| `.processing(paymentId)` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `.succeeded(paymentId, transactionId, subscription)` | Paid. Both ids match the dashboard and the webhook. `subscription` is set for a subscription checkout; `paymentId` is nil only when a free trial started (nothing charged today). |
+| `.processing(paymentId, subscription)` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
 | `.canceled` | The buyer closed the sheet. Not an error. |
 | `.failed(error)` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
@@ -148,6 +148,46 @@ show.
 | `.network` | No connection. Let the buyer try again. |
 | `.config` | A setup mistake in the app (for example `present` before `prepare`). |
 | `.unknown` | Anything else. Let the buyer try again. |
+
+## Subscriptions
+
+Start a subscription in the app: the first payment, or a free trial with the card saved for the renewals. Your server
+creates the subscription with your API key and sends its `checkoutToken` to the app:
+
+```http
+POST /v1/merchant/subscription
+{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
+→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+```
+
+In the app, prepare with `subscriptionToken`; everything else is the same:
+
+```swift
+if let error = await vezmo.prepare(subscriptionToken: checkoutToken) { return showError(error.message) }
+switch await vezmo.present(from: self) {
+case .succeeded(let paymentId, _, let subscription?):
+  // subscription.ref is "SUB-7Q2K9WX"; subscription.status is .trialing or .active.
+  // paymentId is the first payment, or nil for a free trial (nothing charged today).
+  showSubscribed(subscription)
+case .processing(_, let subscription):
+  showStarting(subscription) // .incomplete until it settles; the webhook tells your server
+case .canceled:
+  break
+case .failed(let error):
+  showError(error.message)
+default:
+  break
+}
+```
+
+The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
+authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards and Apple Pay; Apple Pay shows the plan
+as a recurring payment (iOS 16+) and lists it in the buyer's Wallet with their page to manage it. Renewals are charged
+by Vezmo; your server hears about each one from the subscription webhooks.
+
+Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
+to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
+classes, rentals, services.
 
 ## What the buyer sees
 
@@ -178,6 +218,8 @@ let vezmo = VezmoCheckout(configuration: .init(
 The main color keys: `accent`, `onAccent`, `surface`, `surface2`, `field`, `fieldLine`, `line`, `ink`, `ink2`, `ink3`,
 `good`, `bad`. A dynamic `UIColor` (or one from your asset catalog) can differ between light and dark. Setting your
 own `accent` replaces the Vezmo gradient on the Pay button.
+
+The sheet's text follows the buyer's text size (Dynamic Type), up to the first accessibility size.
 
 ## Apple Pay
 

@@ -1,7 +1,8 @@
 name: iOS SDK
 
 # The Swift package (VezmoCheckout): builds it and runs its unit tests on an iPhone simulator, then pays on the dev
-# sandbox from the native example app with Maestro (card with 3D Secure, decline, cancel, bad token, dark mode).
+# sandbox from the native example app with Maestro (card with 3D Secure, decline, cancel, bad token, merchant of
+# record, Cash App, subscriptions; dark mode and a large text size).
 # Sessions come from dev's demo endpoint (TEST mode only), so this repo holds no key.
 on:
   workflow_dispatch:
@@ -103,6 +104,10 @@ jobs:
           maestro --device "$UDID" test packages/ios/e2e/maestro --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure.png; exit 1)
           xcrun simctl ui "$UDID" appearance dark
           maestro --device "$UDID" test packages/ios/e2e/maestro/look --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure-dark.png; exit 1)
+          # Dynamic Type: the first accessibility text size, light.
+          xcrun simctl ui "$UDID" appearance light
+          xcrun simctl ui "$UDID" content_size accessibility-medium
+          maestro --device "$UDID" test packages/ios/e2e/maestro/large --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure-large.png; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

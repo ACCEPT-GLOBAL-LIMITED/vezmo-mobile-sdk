@@ -90,7 +90,7 @@ struct QrFormView: View {
         .keyboardType(keyboard)
         .disabled(busy)
         .padding(.horizontal, 14)
-        .frame(height: 50)
+        .frame(minHeight: 50)
         .background(shape.fill(look.c(p.field)))
         .overlay(shape.strokeBorder(look.c(p.fieldLine), lineWidth: 1))
         .accessibilityLabel(label)
@@ -175,7 +175,7 @@ struct QrWaiting: View {
         Button { Task { await session.checkNow() } } label: {
           Text("Check status").font(look.font(15, .semibold)).foregroundColor(look.c(p.ink))
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
+            .frame(minHeight: 50)
             .background(Capsule(style: .circular).fill(look.c(p.surface2)))
             .contentShape(Capsule(style: .circular))
         }
@@ -207,7 +207,7 @@ struct QrWaiting: View {
       Text(text).font(look.font(13.5, .semibold).monospacedDigit()).foregroundColor(ink)
     }
     .padding(.horizontal, 12)
-    .frame(height: 30)
+    .frame(minHeight: 30)
     .background(Capsule(style: .circular).fill(look.c(hurry ? p.warnSoft : p.accentSoft)))
     .accessibilityElement(children: .combine)
   }
