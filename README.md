@@ -11,7 +11,7 @@ Take payments in your iPhone and Android apps with Vezmo, in a native payment sh
 Google Pay, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency. Start
 subscriptions too, with a free trial or a first payment, and the card saved for the renewals.
 
-![The Vezmo payment sheet: card and Apple Pay on iPhone, pay later and Cash App on Android, a subscription with a 7-day free trial, dark mode, and the receipt](docs/images/sheet-hero.jpg)
+![The Vezmo payment sheet: card and Apple Pay on iPhone, pay later and Cash App on Android, a $9.99 monthly subscription, dark mode, and the receipt](docs/images/sheet-hero.jpg)
 
 <sub>Screens from the example apps against Vezmo's sandbox, as the end-to-end tests capture them.</sub>
 
