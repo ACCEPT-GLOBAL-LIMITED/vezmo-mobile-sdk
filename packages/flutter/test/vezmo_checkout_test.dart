@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vezmo_checkout/vezmo_checkout.dart';
@@ -149,11 +151,17 @@ void main() {
             'fontFamily': 'inter',
           },
           'apiBase': 'https://api.example.test/api/v1',
+          'sdk': 'flutter/0.1.0',
         },
         'clientToken': 'tok_1',
         'subscriptionToken': null,
         'merchantDisplayName': 'Acme',
       });
+    });
+
+    test('payments record this package and its version as the SDK', () {
+      final pubspec = File('pubspec.yaml').readAsStringSync();
+      expect(RegExp(r'^version: (\S+)', multiLine: true).firstMatch(pubspec)!.group(1), VezmoCheckout.version);
     });
 
     test('a subscription token goes as subscriptionToken', () async {

@@ -46,7 +46,7 @@ public final class VezmoCheckout {
   private func load(_ rawToken: String, kind: CheckoutKind, merchantDisplayName: String?, missing: String) async -> VezmoError? {
     let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else { return VezmoError(code: .config, message: missing) }
-    let api = VezmoAPI(base: configuration.apiBase)
+    let api = VezmoAPI(base: configuration.apiBase, sdk: configuration.sdk)
     let session = CheckoutSession(api: api, token: token, returnURL: configuration.returnURL?.absoluteString, kind: kind)
     await session.load()
     if case .closed(.failed(let error)) = session.snapshot.phase {
@@ -103,6 +103,9 @@ extension VezmoCheckout {
     public var appearance: Appearance?
     /// Vezmo's API. Leave as is; for Vezmo's own testing only.
     public var apiBase: URL
+    /// For Vezmo's own wrappers (the Flutter plugin), not for apps: the wrapper's `<name>/<version>` (for example
+    /// `flutter/0.1.0`), sent in place of `ios/<version>` so a payment records which SDK took it.
+    public var sdk: String?
 
     public init(
       returnURL: URL? = nil,

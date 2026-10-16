@@ -1,8 +1,8 @@
 name: Flutter plugin
 
 # The Flutter plugin (packages/flutter): analysis and Dart tests; then its example app, built on the native Android and
-# iOS SDKs from this checkout, pays end to end on an Android emulator and an iPhone simulator. Sessions come from dev's
-# demo endpoint (TEST mode only), so this repo holds no key.
+# iOS SDKs from this checkout, pays end to end on an Android emulator (plus the sheet in dark mode) and an iPhone
+# simulator. Sessions come from dev's demo endpoint (TEST mode only), so this repo holds no key.
 on:
   workflow_dispatch:
   push:
@@ -108,6 +108,10 @@ jobs:
             adb install example/build/app/outputs/flutter-apk/app-release.apk
             mkdir -p e2e/out
             maestro test e2e/maestro/android --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            # The sheet in dark mode: screenshots only.
+            adb shell "cmd uimode night yes"
+            maestro test e2e/maestro/look/android --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-dark.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            adb shell "cmd uimode night no"
             adb logcat -d > e2e/out/logcat.txt
       - name: Keep screenshots
         if: always()

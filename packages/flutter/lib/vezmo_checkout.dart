@@ -131,6 +131,8 @@ class VezmoConfiguration {
       'fontFamily': appearance.fontFamily,
     },
     'apiBase': apiBase,
+    // How a payment records the SDK that took it (the native SDKs' Vezmo-SDK header).
+    'sdk': 'flutter/${VezmoCheckout.version}',
   };
 }
 

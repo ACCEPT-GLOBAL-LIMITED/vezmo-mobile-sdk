@@ -49,7 +49,7 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
         val session = holder.session
             ?: PreparedSessions.take(request.token)
             ?: CheckoutSession(
-                VezmoApi(request.configuration.apiBase ?: DEFAULT_API_BASE),
+                VezmoApi(request.configuration.apiBase ?: DEFAULT_API_BASE, sdk = request.configuration.sdk ?: DEFAULT_SDK),
                 request.token,
                 request.configuration.returnUrl,
                 subscription = request.subscription,

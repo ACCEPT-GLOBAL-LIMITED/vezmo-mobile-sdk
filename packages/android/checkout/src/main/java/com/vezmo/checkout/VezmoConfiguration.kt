@@ -24,6 +24,11 @@ data class VezmoConfiguration(
     val appearance: VezmoAppearance = VezmoAppearance(),
     /** Vezmo's API. Leave as is; for Vezmo's own testing only. */
     val apiBase: String? = null,
+    /**
+     * For Vezmo's own wrappers (the Flutter plugin), not for apps: the wrapper's `<name>/<version>` (for example
+     * `flutter/0.1.0`), sent in place of `android/<version>` so a payment records which SDK took it.
+     */
+    val sdk: String? = null,
 ) : Parcelable
 
 @Parcelize

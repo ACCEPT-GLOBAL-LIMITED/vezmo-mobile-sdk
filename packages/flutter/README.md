@@ -295,9 +295,9 @@ ios --simulator`.
 
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
 Maestro (`e2e/maestro`). On an Android emulator: a card with 3D Secure, a decline, cancel, a bad token, Cash App on
-the merchant-of-record track, and a subscription's free trial and its first payment. On an iPhone simulator: a card
-with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, and a subscription's free trial and
-its first payment.
+the merchant-of-record track, a subscription's free trial and its first payment, and the sheet in dark mode. On an
+iPhone simulator: a card with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, and a
+subscription's free trial and its first payment.
 
 To release, set `version` in `pubspec.yaml` and the `CHANGELOG.md` entry, then push a tag `flutter-v<version>`.
 `release-flutter.yml` publishes to pub.dev from GitHub Actions, with no stored secret.
