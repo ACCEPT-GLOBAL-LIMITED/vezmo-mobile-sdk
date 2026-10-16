@@ -8,7 +8,7 @@ trial or a first payment, with the card saved for the renewals.
 |---|---|
 | [`@vezmopay/react-native`](packages/react-native) (React Native and Expo) | 0.1.0, release candidate (payments and subscriptions) |
 | [Android, `com.vezmo:vezmo-checkout`](packages/android) (Kotlin, Compose or Views) | 0.1.0, release candidate (payments and subscriptions) |
-| iOS (Swift Package) | In progress |
+| [iOS, Swift Package `VezmoCheckout`](packages/ios) (SwiftUI or UIKit) | 0.1.0, release candidate (payments; subscriptions coming) |
 | Flutter | Planned, on the native SDKs |
 
 Apps without the SDK can use [Checkout for apps](https://user.vezmo.com/docs/v1/mobile/checkout-for-apps): open
@@ -39,8 +39,8 @@ node .yarn/releases/yarn-4.11.0.cjs prepare # builds lib/
 - **CI** (`.github/workflows`): `react-native.yml` checks types, tests and both native builds on every push;
   `react-native-e2e.yml` pays end to end with Maestro on an Android emulator (Pixel 7) and an iPhone simulator: cards
   with 3D Secure, a decline, cancel, a bad token, both business models, a Cash App redirect back into the app,
-  subscriptions with and without a free trial, and dark mode. `android.yml` runs the Android SDK's unit, screenshot
-  and Maestro tests.
+  subscriptions with and without a free trial, and dark mode. `android.yml` and `ios.yml` run the native SDKs' unit
+  and Maestro tests (Android also screenshot tests).
 - **TestFlight**: `testflight-example.yml` (run by hand) signs the example app with a temporary distribution
   certificate made through the App Store Connect API key and uploads it; `testflight-status.yml` shows where builds
   are and adds a ready build to the internal testers.
@@ -49,6 +49,8 @@ node .yarn/releases/yarn-4.11.0.cjs prepare # builds lib/
 
 - **React Native**: bump `version` in `packages/react-native/package.json`, then push a tag `react-native-v<version>`.
   `release-react-native.yml` publishes to npm with provenance (the `NPM_TOKEN` secret of the `vezmopay` npm org).
+- **iOS**: Swift Package Manager reads plain semver tags at the repository root: push `<version>` (for example `0.1.0`)
+  after bumping `VezmoCheckout.version` in `packages/ios/Sources/VezmoCheckout`.
 - **Android**: bump the version in `packages/android/gradle.properties`, then push a tag `android-v<version>`.
   `release-android.yml` publishes to Maven Central; it needs `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
   `SIGNING_KEY` and `SIGNING_KEY_PASSWORD` (a Central Portal account with the `com.vezmo` namespace verified).
