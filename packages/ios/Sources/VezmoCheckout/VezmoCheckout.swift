@@ -16,7 +16,8 @@ public final class VezmoCheckout {
 
   public let configuration: Configuration
   private var prepared: (session: CheckoutSession, merchantDisplayName: String?)?
-  private var presenting = false
+  /// A sheet is open (read by the SwiftUI modifier).
+  private(set) var presenting = false
 
   public init(configuration: Configuration = Configuration()) {
     self.configuration = configuration
@@ -60,14 +61,20 @@ public final class VezmoCheckout {
   /// Opens the sheet over `viewController` (or whatever it presents) and returns when the buyer is done.
   @MainActor
   public func present(from viewController: UIViewController) async -> CheckoutResult {
-    guard let next = prepared else {
-      return .failed(VezmoError(code: .config, message: "Call prepare(clientToken:) before present(from:)."))
-    }
     guard !presenting else {
       return .failed(VezmoError(code: .config, message: "The checkout is already open."))
     }
+    guard let next = prepared else {
+      return .failed(VezmoError(code: .config, message: "Call prepare(clientToken:) before present(from:)."))
+    }
     var top = viewController
     while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+    // UIKit ignores a present from a screen that isn't showing: the sheet would never open, nor this return.
+    guard top.viewIfLoaded?.window != nil else {
+      return .failed(VezmoError(code: .config, message: "Present the checkout from a view controller on screen."))
+    }
+    // Each prepared session is presented once; a prepare meanwhile is for the next present.
+    prepared = nil
     presenting = true
     let result = await withCheckedContinuation { (done: CheckedContinuation<CheckoutResult, Never>) in
       let sheet = SheetController(
@@ -79,7 +86,6 @@ public final class VezmoCheckout {
       top.present(sheet, animated: false)
     }
     presenting = false
-    prepared = nil
     return result
   }
 
@@ -188,6 +194,8 @@ private struct VezmoCheckoutPresenter: ViewModifier {
 
   private func open() {
     Task { @MainActor in
+      // Already open (this view appeared again meanwhile): that sheet's result is on its way.
+      guard !checkout.presenting else { return }
       guard let root = UIApplication.shared.connectedScenes
         .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
         .first?.rootViewController else {

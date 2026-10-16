@@ -89,6 +89,14 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build the example app and the sheet's screenshot tests
         run: gradle :example:assembleRelease :checkout:assembleDebugAndroidTest
+      # The example as an installable APK, to try on a real phone (Google Pay needs a Google account and a Wallet card,
+      # which the emulator has not): the dev sandbox, signed with this run's debug key (uninstall an older one first).
+      - name: Keep the example APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: example-apk
+          path: packages/android/example/build/outputs/apk/release/example-release.apk
+          if-no-files-found: error
       - name: Install Maestro
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash

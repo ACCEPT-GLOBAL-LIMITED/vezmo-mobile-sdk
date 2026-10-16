@@ -267,7 +267,8 @@ against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open
 - **The buyer doesn't come back to the app after 3D Secure or a bank app**: the `returnURL` in your configuration
   must be a link registered under Developers → Mobile apps, your app must declare that URL scheme, and it must pass
   the link to `VezmoCheckout.handleURL`.
-- **`.config` from `present`**: call `prepare(clientToken:)` first, and present each prepared session once.
+- **`.config` from `present`**: call `prepare(clientToken:)` first, present each prepared session once, and present
+  from a view controller that is on screen.
 - **"Couldn't load payment options" in the sheet**: the reason is in the app's console (Xcode or Console.app,
   subsystem `com.vezmo.checkout`). The buyer can tap **Try again**.
 
