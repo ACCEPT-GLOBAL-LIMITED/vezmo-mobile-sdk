@@ -68,6 +68,7 @@ appId: com.vezmo.example.flutter
 - assertVisible: "Payment successful"
 - tapOn:
     id: "vezmo-done"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "result"
     text: ".*succeeded.*"

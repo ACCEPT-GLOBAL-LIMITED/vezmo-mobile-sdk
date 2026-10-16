@@ -66,6 +66,7 @@ appId: com.vezmo.example
 - assertVisible: "Payment successful"
 - tapOn:
     id: "vezmo-done"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "result"
     text: ".*succeeded.*"

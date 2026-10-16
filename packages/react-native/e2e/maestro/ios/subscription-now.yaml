@@ -62,6 +62,7 @@ appId: com.vezmo.example
 - assertVisible: "You’re subscribed"
 - tapOn:
     id: "vezmo-done"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "result"
     text: ".*active.*"

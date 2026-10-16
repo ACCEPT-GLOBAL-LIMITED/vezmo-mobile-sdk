@@ -68,6 +68,7 @@ appId: com.vezmo.example
 - assertVisible: "Your free trial has started"
 - tapOn:
     id: "vezmo-done"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "result"
     text: ".*trialing.*"

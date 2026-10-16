@@ -64,6 +64,7 @@ appId: com.vezmo.example.flutter
 - assertVisible: "You’re subscribed"
 - tapOn:
     id: "vezmo-done"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "result"
     text: ".*active.*"
