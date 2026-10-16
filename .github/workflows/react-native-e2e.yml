@@ -63,6 +63,9 @@ jobs:
           api-level: 34
           arch: x86_64
           target: google_apis
+          # A real phone's size and density (1080x2400, 420 dpi), so screenshots show what buyers see.
+          profile: pixel_7
+          ram-size: 4096M
           working-directory: packages/react-native
           script: |
             adb install example/android/app/build/outputs/apk/release/app-release.apk
