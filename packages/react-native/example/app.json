@@ -22,6 +22,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "vezmoexample"
+    "scheme": "vezmoexample",
+    "plugins": [
+      [
+        "../app.plugin.js",
+        {
+          "merchantIdentifier": "merchant.com.vezmo.example"
+        }
+      ]
+    ]
   }
 }

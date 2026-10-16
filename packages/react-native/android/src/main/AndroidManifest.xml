@@ -1,2 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Google Pay in the Vezmo payment sheet. Merged into the app's manifest automatically. -->
+    <meta-data
+      android:name="com.google.android.gms.wallet.api.enabled"
+      android:value="true" />
+  </application>
 </manifest>

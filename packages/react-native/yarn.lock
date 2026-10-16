@@ -2895,8 +2895,12 @@ __metadata:
     turbo: "npm:^2.10.8"
     typescript: "npm:^6.0.3"
   peerDependencies:
+    expo: ">=52.0.0"
     react: ">=19.0.0"
     react-native: ">=0.79.0"
+  peerDependenciesMeta:
+    expo:
+      optional: true
   languageName: unknown
   linkType: soft
 

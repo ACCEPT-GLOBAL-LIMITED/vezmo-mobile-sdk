@@ -1,14 +1,9 @@
-export { VezmoApi, VezmoApiError, DEFAULT_API_BASE } from './api';
-export { PaymentElement } from './PaymentElement';
-export type { PaymentElementHandle, PaymentElementProps } from './PaymentElement';
+export { VezmoProvider, useVezmoCheckout } from './VezmoProvider';
+export type { PrepareOptions, VezmoProviderProps } from './VezmoProvider';
+export type { VezmoAppearance } from './theme';
+export type { WalletOptions } from './elementConfig';
 export type {
-  CheckoutConfig,
   CheckoutResult,
-  LocalOffer,
-  MethodKey,
-  PayResponse,
-  SessionState,
-  SessionStatus,
   VezmoEnvironment,
   VezmoError,
 } from './types';

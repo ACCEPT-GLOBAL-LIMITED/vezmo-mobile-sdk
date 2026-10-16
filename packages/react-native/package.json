@@ -20,7 +20,6 @@
     "*.podspec",
     "react-native.config.js",
     "app.plugin.js",
-    "plugin/build",
     "!ios/build",
     "!android/build",
     "!android/gradle",
@@ -75,6 +74,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
+    "expo": ">=52.0.0",
     "react": ">=19.0.0",
     "react-native": ">=0.79.0"
   },
@@ -139,5 +139,10 @@
       "jest"
     ],
     "version": "0.63.1"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    }
   }
 }
