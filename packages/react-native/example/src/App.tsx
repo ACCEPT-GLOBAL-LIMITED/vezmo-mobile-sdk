@@ -12,7 +12,12 @@ const API_BASE = process.env.EXPO_PUBLIC_VEZMO_API_BASE;
 
 export default function App() {
   return (
-    <VezmoProvider returnUrl="vezmoexample://vezmo" apiBase={API_BASE || undefined}>
+    <VezmoProvider
+      returnUrl="vezmoexample://vezmo"
+      apiBase={API_BASE || undefined}
+      // The app's own Apple Merchant ID (Apple Developer → Identifiers → Merchant IDs): Apple Pay shows only with it.
+      applePay={{ merchantId: 'merchant.com.vezmo.example' }}
+    >
       <Shop />
     </VezmoProvider>
   );
