@@ -207,6 +207,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                 accessibilityRole="button"
                 accessibilityState={{ disabled: !snap.canPay || paying, busy: paying }}
                 disabled={!snap.canPay || paying}
+                testID="vezmo-pay"
                 onPress={() => session.pay()}
                 style={[s.pay, (!snap.canPay || paying) && s.payDisabled]}
               >
@@ -248,11 +249,11 @@ function ResultView(props: { result: CheckoutResult; amount: string; s: ReturnTy
           : { title: 'Payment canceled', body: '', tone: s.bad };
   return (
     <View style={s.center}>
-      <Text style={[s.resultTitle, copy.tone]} accessibilityRole="header">
+      <Text testID="vezmo-result-title" style={[s.resultTitle, copy.tone]} accessibilityRole="header">
         {copy.title}
       </Text>
       {!!copy.body && <Text style={s.resultBody}>{copy.body}</Text>}
-      <Pressable accessibilityRole="button" onPress={props.onDone} style={s.pay}>
+      <Pressable testID="vezmo-done" accessibilityRole="button" onPress={props.onDone} style={s.pay}>
         <Text style={s.payText}>Done</Text>
       </Pressable>
     </View>

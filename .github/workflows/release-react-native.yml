@@ -1,0 +1,38 @@
+name: Release React Native SDK
+
+# Publishes @vezmo/react-native when a tag like `react-native-v1.2.3` is pushed. The tag's version must match
+# packages/react-native/package.json. Needs the NPM_TOKEN secret (an automation token of the `vezmo` npm org).
+on:
+  push:
+    tags: ['react-native-v*']
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+defaults:
+  run:
+    working-directory: packages/react-native
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup
+      - name: Tag matches the package version
+        run: |
+          VERSION="${GITHUB_REF_NAME#react-native-v}"
+          PKG="$(node -p "require('./package.json').version")"
+          [ "$VERSION" = "$PKG" ] || { echo "Tag $VERSION does not match package.json $PKG"; exit 1; }
+      - run: yarn typecheck
+      - run: yarn test --maxWorkers=2
+      - run: yarn prepare
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: packages/react-native/.nvmrc
+          registry-url: https://registry.npmjs.org
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
