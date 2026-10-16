@@ -1,4 +1,5 @@
 # The sheet in dark mode (the phone is switched to dark before this runs): screenshots only, no payment.
+# On the merchant-of-record demo, which shows every way to pay in the list (Cash App, Klarna, Amazon Pay).
 appId: com.vezmo.example
 ---
 # A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
@@ -13,10 +14,10 @@ appId: com.vezmo.example
           optional: true
       - extendedWaitUntil:
           visible:
-            id: "new-session"
+            id: "new-session-mor"
           timeout: 30000
 - tapOn:
-    id: "new-session"
+    id: "new-session-mor"
 - extendedWaitUntil:
     visible: "Session ready."
     timeout: 30000
