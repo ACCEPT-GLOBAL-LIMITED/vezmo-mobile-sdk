@@ -4,6 +4,10 @@ import type {
   MethodKey,
   PayResponse,
   SessionStatus,
+  SubscriptionPayResponse,
+  SubscriptionPlan,
+  SubscriptionResult,
+  SubscriptionView,
   VezmoError,
 } from './types';
 
@@ -27,13 +31,144 @@ export interface Charge {
   localOffer: string | null;
 }
 
-/** What the buyer is charged: the session's price, or the offer in their own currency when they chose it. */
+/**
+ * What the buyer is charged: the session's price, or the offer in their own currency when they chose it. A free
+ * trial charges nothing today, whichever currency the plan will renew in.
+ */
 export function chargeOf(config: CheckoutConfig, payLocal: boolean): Charge {
   const offer = config.localOffer;
+  const trial = config.subscription?.mode === 'setup';
   if (payLocal && offer) {
-    return { amountMinor: offer.amountMinor, currency: offer.currency.toUpperCase(), localOffer: offer.token };
+    return { amountMinor: trial ? 0 : offer.amountMinor, currency: offer.currency.toUpperCase(), localOffer: offer.token };
   }
-  return { amountMinor: config.amountMinor, currency: config.currency.toUpperCase(), localOffer: null };
+  return { amountMinor: trial ? 0 : config.amountMinor, currency: config.currency.toUpperCase(), localOffer: null };
+}
+
+// ── subscriptions ─────────────────────────────────────────────────────────
+
+/** The subscription checkout as the sheet's config: cards and wallets only, the plan beside the price. */
+export function configFromSubscription(v: SubscriptionView): CheckoutConfig {
+  const minor = (major: number) => Math.round(major * 100);
+  return {
+    publishableKey: v.publishableKey ?? '',
+    connectedAccountId: v.connectedAccountId,
+    livemode: v.livemode,
+    amount: v.amount,
+    amountMinor: minor(v.amount),
+    currency: v.currency,
+    title: v.planName,
+    merchantName: v.merchant?.name ?? null,
+    enabledMethods: { card: true, applePay: true, googlePay: true },
+    bankSupported: false,
+    customerName: v.customer?.name ?? null,
+    customerEmail: v.customer?.email ?? null,
+    theme: null,
+    paymentId: '',
+    localOffer: v.localOffer,
+    appReturnUrl: null,
+    subscription: {
+      ref: v.subscriptionRef,
+      mode: v.mode,
+      planName: v.planName,
+      recurringAmount: v.recurringAmount,
+      currency: v.currency,
+      interval: v.interval,
+      intervalCount: v.intervalCount,
+      trialDays: v.trialDays,
+      nextChargeAt: v.nextChargeAt,
+      manageUrl: v.manageUrl,
+      consentText: v.consentText,
+    },
+  };
+}
+
+function subscriptionOf(ref: string, status: string): SubscriptionResult {
+  const s = status.toLowerCase();
+  return { ref, status: s === 'active' || s === 'trialing' ? s : 'incomplete' };
+}
+
+/** A subscription /pay answer in the shape the session handles for every payment. */
+export function payFromSubscription(r: SubscriptionPayResponse): PayResponse {
+  const base = { method: r.method };
+  if (r.state === 'succeeded') {
+    return {
+      ...base,
+      state: 'succeeded',
+      paymentId: r.paymentId,
+      transactionId: r.transactionId,
+      clientSecret: r.clientSecret,
+      subscription: subscriptionOf(r.subscriptionRef, r.subscriptionStatus),
+    };
+  }
+  if (r.state === 'processing') {
+    return {
+      ...base,
+      state: 'processing',
+      paymentId: r.paymentId,
+      clientSecret: r.clientSecret,
+      subscription: subscriptionOf(r.subscriptionRef, 'incomplete'),
+    };
+  }
+  return { ...base, state: 'requires_action', paymentId: null, clientSecret: r.clientSecret };
+}
+
+/** The result after a subscription start finished on the device (3D Secure), from /confirm. */
+export function resultFromSubscriptionConfirm(r: {
+  status: string;
+  subscriptionRef: string;
+  paymentId?: string;
+  transactionId?: string | null;
+}): CheckoutResult {
+  const subscription = subscriptionOf(r.subscriptionRef, r.status);
+  if (r.status === 'processing') return { status: 'processing', paymentId: r.paymentId ?? null, subscription };
+  return { status: 'succeeded', paymentId: r.paymentId ?? null, transactionId: r.transactionId ?? null, subscription };
+}
+
+/**
+ * The plan's price in the currency the buyer pays in, in minor units: the plan's own, or about what it is in their
+ * currency at today's offer (each renewal is converted at the rate of its billing day).
+ */
+export function recurringMinorIn(config: CheckoutConfig, charge: Charge): number {
+  const plan = config.subscription;
+  if (!plan) return 0;
+  const own = Math.round(plan.recurringAmount * 100);
+  const offer = config.localOffer;
+  if (!charge.localOffer || !offer) return own;
+  // The offer was priced on what is due today (the plan's price on a free trial).
+  const basis = plan.mode === 'setup' ? own : config.amountMinor;
+  return basis > 0 ? Math.round((own * offer.amountMinor) / basis) : own;
+}
+
+const UNIT: Record<string, [string, string]> = {
+  HOUR: ['hour', 'hours'],
+  DAY: ['day', 'days'],
+  WEEK: ['week', 'weeks'],
+  MONTH: ['month', 'months'],
+  YEAR: ['year', 'years'],
+};
+
+/** "month", "3 months": one period of the plan. */
+export function periodText(interval: string, count: number): string {
+  const [one, many] = UNIT[interval.toUpperCase()] ?? [interval.toLowerCase(), `${interval.toLowerCase()}s`];
+  return count > 1 ? `${count} ${many}` : one;
+}
+
+/** "$9.99 / month", "$30.00 every 3 months": the plan's price, as the buyer reads it. */
+export function planPriceText(plan: SubscriptionPlan, locale?: string): string {
+  const price = formatAmount(Math.round(plan.recurringAmount * 100), plan.currency.toUpperCase(), locale);
+  return plan.intervalCount > 1 ? `${price} every ${periodText(plan.interval, plan.intervalCount)}` : `${price} / ${periodText(plan.interval, 1)}`;
+}
+
+/** "23 Oct 2026" (the buyer's own date format). */
+export function dateText(iso: string | null | undefined, locale?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
 }
 
 export interface SheetMethods {
@@ -69,10 +204,11 @@ export function sheetMethods(config: CheckoutConfig, charge: Charge): SheetMetho
 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */
 export function resultFromPay(res: PayResponse): CheckoutResult | null {
+  const sub = res.subscription ? { subscription: res.subscription } : {};
   if (res.state === 'succeeded') {
-    return { status: 'succeeded', paymentId: res.paymentId, transactionId: res.transactionId };
+    return { status: 'succeeded', paymentId: res.paymentId, transactionId: res.transactionId, ...sub };
   }
-  if (res.state === 'processing') return { status: 'processing', paymentId: res.paymentId };
+  if (res.state === 'processing') return { status: 'processing', paymentId: res.paymentId, ...sub };
   return null; // requires_action: the element finishes it first
 }
 
@@ -101,9 +237,9 @@ export const EXPIRED: VezmoError = {
   message: 'This checkout has expired. Please start again.',
 };
 
-/** `pi_123_secret_abc` → `pi_123`: the intent the device finished, for /confirm. Null for anything else. */
+/** `pi_123_secret_abc` → `pi_123` (or a free trial's `seti_…`): the intent the device finished, for /confirm. */
 export function intentIdOf(clientSecret: string | null | undefined): string | null {
-  const m = clientSecret ? /^(pi_[A-Za-z0-9]+)_secret_[A-Za-z0-9_-]+$/.exec(clientSecret) : null;
+  const m = clientSecret ? /^((?:pi|seti)_[A-Za-z0-9]+)_secret_[A-Za-z0-9_-]+$/.exec(clientSecret) : null;
   return m ? m[1]! : null;
 }
 

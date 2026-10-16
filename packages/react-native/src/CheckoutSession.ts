@@ -1,11 +1,14 @@
 import { VezmoApi, VezmoApiError } from './api';
 import {
   chargeOf,
+  configFromSubscription,
   DECLINED,
   EXPIRED,
   intentIdOf,
+  payFromSubscription,
   resultFromPay,
   resultFromStatus,
+  resultFromSubscriptionConfirm,
   sheetMethods,
   type Charge,
   type SheetMethods,
@@ -75,8 +78,8 @@ export interface SessionSnapshot {
 const PRICE_CHANGED = 'The price in your currency just changed. Check the new amount and pay again.';
 
 /**
- * One checkout, from the session's client token to a result. The money decisions are the server's: this only
- * moves the buyer's confirmation token to Vezmo and the answer back to the element.
+ * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
+ * are the server's: this only moves the buyer's confirmation token to Vezmo and the answer back to the element.
  */
 export class CheckoutSession {
   private snapshot: SessionSnapshot = {
@@ -110,7 +113,15 @@ export class CheckoutSession {
     private readonly api: VezmoApi,
     private readonly token: string,
     private readonly returnUrl: string | null,
+    /** `subscription`: the token is a subscription checkout's (cards and wallets; a first payment or a free trial). */
+    private readonly kind: 'payment' | 'subscription' = 'payment',
   ) {}
+
+  private async fetchConfig(): Promise<CheckoutConfig> {
+    return this.kind === 'subscription'
+      ? configFromSubscription(await this.api.subscription(this.token))
+      : this.api.checkout(this.token);
+  }
 
   // ── store ──────────────────────────────────────────────────────────────
   subscribe = (listener: () => void) => {
@@ -134,7 +145,7 @@ export class CheckoutSession {
   // ── loading and currency ───────────────────────────────────────────────
   async load(): Promise<void> {
     try {
-      const config = await this.api.checkout(this.token);
+      const config = await this.fetchConfig();
       // The buyer's own currency is offered first when there is an offer (as on the web checkout).
       this.apply(config, !!config.localOffer);
       this.set({ phase: { name: 'ready', error: null } });
@@ -315,11 +326,11 @@ export class CheckoutSession {
   async onConfirmationToken(id: string) {
     const charge = this.snapshot.charge;
     try {
-      const res = await this.api.pay(this.token, {
-        confirmationToken: id,
-        localOffer: charge?.localOffer ?? null,
-        returnUrl: this.returnUrl,
-      });
+      const body = { confirmationToken: id, localOffer: charge?.localOffer ?? null, returnUrl: this.returnUrl };
+      const res =
+        this.kind === 'subscription'
+          ? payFromSubscription(await this.api.subscriptionPay(this.token, body))
+          : await this.api.pay(this.token, body);
       this.lastPay = res;
       if (res.method) this.set({ paidMethod: res.method });
       this.confirmer()?.resolveConfirmation(res.clientSecret ?? null, res.clientSecret ? undefined : DECLINED.message);
@@ -328,8 +339,7 @@ export class CheckoutSession {
       if (err?.reason === 'local_price_changed') {
         this.lastError = { code: 'unknown', message: PRICE_CHANGED };
         // Fetch the new offer; the buyer sees the new amount before paying again.
-        this.api
-          .checkout(this.token)
+        this.fetchConfig()
           .then((config) => this.apply(config, this.snapshot.payLocal))
           .catch(() => undefined);
       } else {
@@ -359,12 +369,27 @@ export class CheckoutSession {
       return;
     }
     const intentId = intentIdOf(this.lastPay?.clientSecret);
+    if (this.kind === 'subscription') {
+      this.set({ phase: { name: 'done', result: await this.startedSubscription(intentId) } });
+      return;
+    }
     try {
       if (intentId) await this.api.confirm(this.token, intentId);
     } catch {
       /* the webhook records it either way; the status below is the answer */
     }
     this.set({ phase: { name: 'done', result: await this.settledResult() } });
+  }
+
+  /** A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands. */
+  private async startedSubscription(intentId: string | null): Promise<CheckoutResult> {
+    const ref = this.snapshot.config?.subscription?.ref ?? '';
+    try {
+      if (intentId) return resultFromSubscriptionConfirm(await this.api.subscriptionConfirm(this.token, intentId));
+    } catch {
+      /* recorded from the processor's notice instead; the merchant's webhook tells them */
+    }
+    return { status: 'processing', paymentId: null, subscription: { ref, status: 'incomplete' } };
   }
 
   /** The session's state, polled briefly while the server catches up with a payment just made. */

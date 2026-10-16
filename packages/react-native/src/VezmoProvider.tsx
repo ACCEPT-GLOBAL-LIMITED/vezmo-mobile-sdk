@@ -30,8 +30,13 @@ export interface VezmoProviderProps extends WalletOptions {
 }
 
 export interface PrepareOptions {
-  /** From your server: the API checkout session's `clientToken`. */
-  clientToken: string;
+  /** From your server: the API checkout session's `clientToken` (a one-time payment). */
+  clientToken?: string;
+  /**
+   * From your server: a subscription's `checkoutToken` (`POST /merchant/subscription`), to start it in the app: the
+   * first payment, or a free trial with the card saved. Pass this or `clientToken`.
+   */
+  subscriptionToken?: string;
   /** Shown at the top of the sheet. Defaults to the business name on the session. */
   merchantDisplayName?: string;
 }
@@ -57,9 +62,16 @@ export function VezmoProvider(props: VezmoProviderProps) {
   );
 
   const prepareCheckout = useCallback(
-    async ({ clientToken, merchantDisplayName }: PrepareOptions) => {
-      if (!clientToken) return { error: { code: 'config' as const, message: 'clientToken is required.' } };
-      const session = new CheckoutSession(api, clientToken, props.returnUrl ?? null);
+    async ({ clientToken, subscriptionToken, merchantDisplayName }: PrepareOptions) => {
+      if (!clientToken === !subscriptionToken) {
+        return { error: { code: 'config' as const, message: 'Pass a clientToken or a subscriptionToken.' } };
+      }
+      const session = new CheckoutSession(
+        api,
+        (clientToken || subscriptionToken)!,
+        props.returnUrl ?? null,
+        subscriptionToken ? 'subscription' : 'payment',
+      );
       await session.load();
       const phase = session.getSnapshot().phase;
       if (phase.name === 'closed' && phase.result.status === 'failed') {

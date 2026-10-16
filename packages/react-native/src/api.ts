@@ -1,5 +1,14 @@
 import { SDK_VERSION } from './version';
-import type { CheckoutConfig, PayResponse, QrBilling, QrPayment, SessionStatus, VezmoError } from './types';
+import type {
+  CheckoutConfig,
+  PayResponse,
+  QrBilling,
+  QrPayment,
+  SessionStatus,
+  SubscriptionPayResponse,
+  SubscriptionView,
+  VezmoError,
+} from './types';
 
 export const DEFAULT_API_BASE = 'https://api.vezmo.com/api/v1';
 
@@ -131,6 +140,42 @@ export class VezmoApi {
 
   status(token: string) {
     return this.call<SessionStatus>('GET', `/secure-payments/${encodeURIComponent(token)}/status`);
+  }
+
+  // ── subscriptions (a subscription checkout's token) ─────────────────────
+  /** The subscription checkout: plan, first charge or free trial, keys. A used or unknown link reads as expired. */
+  async subscription(token: string, opts: { currency?: string } = {}) {
+    const q = opts.currency ? `?currency=${encodeURIComponent(opts.currency)}` : '';
+    try {
+      return await this.call<SubscriptionView>('GET', `/subscription-checkout/${encodeURIComponent(token)}${q}`);
+    } catch (e) {
+      if (e instanceof VezmoApiError && e.httpStatus === 404) {
+        throw new VezmoApiError('expired', 'This subscription link is no longer valid.', 404);
+      }
+      if (e instanceof VezmoApiError && e.httpStatus === 400 && /already set up/i.test(e.message)) {
+        throw new VezmoApiError('already_paid', 'This subscription is already set up.', 400);
+      }
+      throw e;
+    }
+  }
+
+  /** Subscribe: our server confirms the first payment, or a free trial's card, with the confirmation token. */
+  subscriptionPay(token: string, body: { confirmationToken: string; localOffer?: string | null; returnUrl?: string | null }) {
+    return this.call<SubscriptionPayResponse>('POST', `/subscription-checkout/${encodeURIComponent(token)}/pay`, {
+      confirmationToken: body.confirmationToken,
+      integration: this.integration,
+      ...(body.localOffer ? { localOffer: body.localOffer } : {}),
+      ...(body.returnUrl ? { returnUrl: body.returnUrl } : {}),
+    });
+  }
+
+  /** Records a subscription start finished on the device (after 3D Secure). */
+  subscriptionConfirm(token: string, intentId: string) {
+    return this.call<{ status: string; subscriptionRef: string; paymentId?: string; transactionId?: string | null }>(
+      'POST',
+      `/subscription-checkout/${encodeURIComponent(token)}/confirm`,
+      { paymentIntentId: intentId },
+    );
   }
 }
 

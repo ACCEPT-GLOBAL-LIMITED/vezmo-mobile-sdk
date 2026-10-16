@@ -1,4 +1,5 @@
 import Foundation
+import PassKit
 import React
 @_spi(STP) @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import StripeCore
@@ -153,6 +154,52 @@ public final class VezmoCardFlowHost: UIView {
     }
   }
 
+  /// A subscription in Apple Pay (iOS 16+): Apple's sheet shows the plan, any free trial and when billing starts, and
+  /// the buyer's Wallet lists it with the page to manage it.
+  static func addRecurring(_ plan: [String: Any], to request: PKPaymentRequest) -> PKPaymentRequest {
+    guard #available(iOS 16.0, *),
+          let amount = plan["amount"] as? String,
+          let link = URL(string: plan["managementUrl"] as? String ?? "")
+    else { return request }
+    let dates = ISO8601DateFormatter()
+    dates.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    func date(_ key: String) -> Date? { (plan[key] as? String).flatMap { dates.date(from: $0) } }
+
+    let label = plan["label"] as? String ?? ""
+    let regular = PKRecurringPaymentSummaryItem(label: label, amount: NSDecimalNumber(string: amount))
+    switch plan["intervalUnit"] as? String {
+    case "day": regular.intervalUnit = .day
+    case "week": regular.intervalUnit = .weekOfMonth
+    case "year": regular.intervalUnit = .year
+    default: regular.intervalUnit = .month
+    }
+    regular.intervalCount = (plan["intervalCount"] as? NSNumber)?.intValue ?? 1
+    if let start = date("startDate") { regular.startDate = start }
+
+    let recurring = PKRecurringPaymentRequest(
+      paymentDescription: plan["description"] as? String ?? label,
+      regularBilling: regular,
+      managementURL: link
+    )
+    var lines: [PKPaymentSummaryItem] = []
+    if let trialEnd = date("trialEndDate") {
+      let trial = PKRecurringPaymentSummaryItem(label: "Free trial", amount: .zero)
+      trial.endDate = trialEnd
+      recurring.trialBilling = trial
+      lines.append(trial)
+    }
+    recurring.billingAgreement = plan["billingAgreement"] as? String
+    request.recurringPaymentRequest = recurring
+    lines.append(regular)
+    // Apple's last line is the total due today, under the business's name.
+    lines.append(PKPaymentSummaryItem(
+      label: plan["merchant"] as? String ?? label,
+      amount: NSDecimalNumber(string: plan["dueToday"] as? String ?? "0")
+    ))
+    request.paymentSummaryItems = lines
+    return request
+  }
+
   /// The same business, look and billing details as the element; Apple Pay only for the wallet flow.
   private func sheetConfiguration(from config: [String: Any], wallets: Bool) -> PaymentSheet.Configuration {
     var configuration = PaymentSheet.Configuration()
@@ -170,9 +217,15 @@ public final class VezmoCardFlowHost: UIView {
     }
     if wallets, let applePay = config["applePay"] as? [String: Any],
        let merchantId = applePay["merchantId"] as? String, !merchantId.isEmpty {
+      let recurring = applePay["recurring"] as? [String: Any]
       configuration.applePay = PaymentSheet.ApplePayConfiguration(
         merchantId: merchantId,
-        merchantCountryCode: applePay["merchantCountryCode"] as? String ?? "US"
+        merchantCountryCode: applePay["merchantCountryCode"] as? String ?? "US",
+        customHandlers: recurring.map { plan in
+          PaymentSheet.ApplePayConfiguration.Handlers(paymentRequestHandler: { request in
+            Self.addRecurring(plan, to: request)
+          })
+        }
       )
     }
     if let billing = config["billing"] as? [String: Any] {

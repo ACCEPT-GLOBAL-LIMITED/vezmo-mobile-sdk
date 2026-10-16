@@ -121,7 +121,7 @@ show.
 
 | `result.status` | Meaning |
 | --- | --- |
-| `succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. |
+| `succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
 | `processing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
 | `canceled` | The buyer closed the sheet. Not an error. |
 | `failed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
@@ -135,6 +135,38 @@ show.
 | `network` | No connection. Let the buyer try again. |
 | `config` | A setup mistake in the app (for example `presentCheckout()` before `prepareCheckout()`). |
 | `unknown` | Anything else. Let the buyer try again. |
+
+## Subscriptions
+
+Start a subscription in the app: the first payment, or a free trial with the card saved for the renewals. Your server
+creates the subscription with your API key and sends its `checkoutToken` to the app:
+
+```http
+POST /v1/merchant/subscription
+{ "planId": "plan_…", "customerEmail": "ana@example.com", "trialDays": 7 }
+→ { "subscriptionRef": "SUB-7Q2K9WX", "status": "TRIALING", "checkoutToken": "…" }
+```
+
+In the app, pass it as `subscriptionToken`; everything else is the same:
+
+```tsx
+const prep = await prepareCheckout({ subscriptionToken: checkoutToken });
+if (prep.error) return showError(prep.error.message);
+const result = await presentCheckout();
+if (result.status === 'succeeded') {
+  // result.subscription: { ref: 'SUB-7Q2K9WX', status: 'trialing' | 'active' }
+  // result.paymentId is the first payment, or null for a free trial (nothing charged today)
+}
+```
+
+The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from 23 Oct 2026"), the
+authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards, Apple Pay and Google Pay; on iPhone,
+Apple Pay shows the plan as a recurring payment and lists it in the buyer's Wallet with their page to manage it.
+Renewals are charged by Vezmo; your server hears about each one from the subscription webhooks.
+
+Apple and Google require their own in-app purchase for digital goods and services used inside the app (subscriptions
+to app features or content). Use Vezmo subscriptions for real-world goods and services: deliveries, memberships,
+classes, rentals, services.
 
 ## What the buyer sees
 

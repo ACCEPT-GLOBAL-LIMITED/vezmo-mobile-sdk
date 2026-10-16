@@ -3,12 +3,26 @@ export type VezmoEnvironment = 'live' | 'sandbox';
 
 /** The outcome `presentCheckout()` resolves with. It never throws. */
 export type CheckoutResult =
-  | { status: 'succeeded'; paymentId: string; transactionId: string | null }
+  | {
+      status: 'succeeded';
+      /** The payment. Null only when a subscription's free trial started: nothing was charged today. */
+      paymentId: string | null;
+      transactionId: string | null;
+      /** For a subscription checkout: the subscription, now `active` (first payment made) or `trialing`. */
+      subscription?: SubscriptionResult;
+    }
   /** Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook. */
-  | { status: 'processing'; paymentId: string }
+  | { status: 'processing'; paymentId: string | null; subscription?: SubscriptionResult }
   /** The buyer closed the sheet. Not an error. */
   | { status: 'canceled' }
   | { status: 'failed'; error: VezmoError };
+
+export interface SubscriptionResult {
+  /** The subscription's reference, as in the dashboard and the webhooks. */
+  ref: string;
+  /** `active` (the first payment went through), `trialing` (a free trial started), or `incomplete` while settling. */
+  status: 'active' | 'trialing' | 'incomplete';
+}
 
 export interface VezmoError {
   /**
@@ -65,6 +79,52 @@ export interface CheckoutConfig {
   paymentId: string;
   localOffer: LocalOffer | null;
   appReturnUrl: string | null;
+  /** A subscription checkout: the plan, and what starting it means. Absent for a one-time payment. */
+  subscription?: SubscriptionPlan | null;
+}
+
+/** What the buyer subscribes to (from the subscription checkout). */
+export interface SubscriptionPlan {
+  ref: string;
+  /** `payment`: the first period is charged now. `setup`: a free trial; the card is saved, nothing is charged today. */
+  mode: 'payment' | 'setup';
+  planName: string;
+  /** The price of each period, in the plan's currency (major units). */
+  recurringAmount: number;
+  currency: string;
+  /** `HOUR`, `DAY`, `WEEK`, `MONTH` or `YEAR`. */
+  interval: string;
+  intervalCount: number;
+  trialDays: number | null;
+  /** When the plan's price is next charged: the trial's end, or the end of the first period. */
+  nextChargeAt: string | null;
+  /** The buyer's page to view or cancel the subscription. */
+  manageUrl: string | null;
+  /** The recurring authorization the buyer agrees to by subscribing. */
+  consentText: string;
+}
+
+/** GET /subscription-checkout/:token — the subscription checkout as the API returns it. */
+export interface SubscriptionView {
+  subscriptionRef: string;
+  status: string;
+  mode: 'payment' | 'setup';
+  publishableKey: string | null;
+  connectedAccountId: string | null;
+  amount: number;
+  recurringAmount: number;
+  currency: string;
+  planName: string;
+  interval: string;
+  intervalCount: number;
+  trialDays: number | null;
+  merchant: { name: string; logo: string | null; color: string | null };
+  customer: { email: string; name: string | null };
+  consentText: string;
+  localOffer: LocalOffer | null;
+  livemode: boolean;
+  nextChargeAt: string | null;
+  manageUrl: string | null;
 }
 
 export type MethodKey =
@@ -82,13 +142,26 @@ export type MethodKey =
 
 /** POST …/pay — what the server did with the buyer's confirmation token. */
 export type PayResponse = (
-  | { state: 'succeeded'; paymentId: string; transactionId: string | null; clientSecret: string | null }
-  | { state: 'processing'; paymentId: string; clientSecret: string | null }
-  | { state: 'requires_action'; paymentId: string; clientSecret: string }
+  | { state: 'succeeded'; paymentId: string | null; transactionId: string | null; clientSecret: string | null }
+  | { state: 'processing'; paymentId: string | null; clientSecret: string | null }
+  | { state: 'requires_action'; paymentId: string | null; clientSecret: string }
 ) & {
   /** What the buyer paid with (for the receipt): the card's network and last four, or the method. */
   method?: PaidMethod | null;
+  /** A subscription checkout's subscription. */
+  subscription?: SubscriptionResult;
 };
+
+/** POST /subscription-checkout/:token/pay — the subscription twin of `PayResponse`. */
+export type SubscriptionPayResponse = {
+  subscriptionRef: string;
+  method: PaidMethod | null;
+  clientSecret: string | null;
+} & (
+  | { state: 'succeeded'; subscriptionStatus: string; paymentId: string | null; transactionId: string | null }
+  | { state: 'processing'; paymentId: string | null }
+  | { state: 'requires_action'; intentId: string; clientSecret: string }
+);
 
 export interface PaidMethod {
   type: string;

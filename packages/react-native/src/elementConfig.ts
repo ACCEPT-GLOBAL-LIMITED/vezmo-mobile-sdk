@@ -1,4 +1,4 @@
-import type { Charge, SheetMethods } from './flow';
+import { recurringMinorIn, type Charge, type SheetMethods } from './flow';
 import { elementAppearance, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutConfig } from './types';
 
@@ -40,6 +40,7 @@ export function elementConfigJson(args: {
         ? {
             merchantId: wallets.applePay.merchantId,
             merchantCountryCode: wallets.applePay.merchantCountryCode ?? 'US',
+            recurring: applePayRecurring(config, args.charge, args.merchantDisplayName),
           }
         : null,
     googlePay:
@@ -60,14 +61,43 @@ export function elementConfigJson(args: {
 }
 
 /**
- * What is charged: a change updates it in place (the buyer switched currency). Cards go to the native card form
- * (`card`), the sheet's own Card row; every other method to the element's rows.
+ * Apple Pay's recurring payment (iOS 16+): the plan in Apple's sheet and the buyer's Wallet, with the free trial and
+ * the page to manage it. Null for a one-time payment, or without a manage page (Apple requires one).
  */
-export function elementIntentJson(charge: Charge, methods: SheetMethods): string {
+function applePayRecurring(config: CheckoutConfig, charge: Charge, merchant: string) {
+  const plan = config.subscription;
+  if (!plan?.manageUrl) return null;
+  const trial = plan.mode === 'setup';
+  const units: Record<string, string> = { DAY: 'day', WEEK: 'week', MONTH: 'month', YEAR: 'year' };
+  return {
+    description: plan.planName,
+    label: plan.planName,
+    amount: (recurringMinorIn(config, charge) / 100).toFixed(2),
+    intervalUnit: units[plan.interval.toUpperCase()] ?? 'month',
+    intervalCount: plan.intervalCount,
+    // A trial's plan starts when the trial ends; otherwise it starts today, with this first payment.
+    startDate: trial ? plan.nextChargeAt : new Date().toISOString(),
+    trialEndDate: trial ? plan.nextChargeAt : null,
+    managementUrl: plan.manageUrl,
+    billingAgreement: plan.consentText,
+    merchant,
+    dueToday: (charge.amountMinor / 100).toFixed(2),
+  };
+}
+
+/**
+ * What is charged: a change updates it in place (the buyer switched currency). Cards go to the native card form
+ * (`card`), the sheet's own Card row; every other method to the element's rows. A subscription saves the card for
+ * its renewals: `setup` (a free trial, nothing charged today) or a payment kept for later use.
+ */
+export function elementIntentJson(charge: Charge, methods: SheetMethods, config?: CheckoutConfig | null): string {
+  const plan = config?.subscription;
   return JSON.stringify({
     amount: charge.amountMinor,
     currency: charge.currency.toLowerCase(),
     paymentMethodTypes: methods.elementTypes.filter((t) => t !== 'card'),
     card: methods.elementTypes.includes('card'),
+    mode: plan?.mode === 'setup' ? 'setup' : 'payment',
+    setupFutureUsage: plan ? 'off_session' : null,
   });
 }

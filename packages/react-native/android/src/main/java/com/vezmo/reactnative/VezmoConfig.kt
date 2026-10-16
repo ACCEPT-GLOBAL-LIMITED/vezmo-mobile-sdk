@@ -23,17 +23,34 @@ internal fun parseJson(json: String): JSONObject? =
 internal fun intentConfiguration(
   intent: JSONObject,
   types: List<String>,
-): PaymentSheet.IntentConfiguration =
-  PaymentSheet.IntentConfiguration(
+): PaymentSheet.IntentConfiguration {
+  val currency = intent.optString("currency", "usd").lowercase()
+  // A subscription saves the card for its renewals: a free trial only sets it up; a first payment keeps it.
+  val saveForLater =
+    if (intent.optString("setupFutureUsage") == "off_session") {
+      PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession
+    } else {
+      null
+    }
+  return PaymentSheet.IntentConfiguration(
     mode =
-      PaymentSheet.IntentConfiguration.Mode.Payment(
-        amount = intent.optLong("amount"),
-        currency = intent.optString("currency", "usd").lowercase(),
-        // Our server makes every intent with automatic_async capture; the element must say the same.
-        captureMethod = PaymentSheet.IntentConfiguration.CaptureMethod.AutomaticAsync,
-      ),
+      if (intent.optString("mode") == "setup") {
+        PaymentSheet.IntentConfiguration.Mode.Setup(
+          currency = currency,
+          setupFutureUse = PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession,
+        )
+      } else {
+        PaymentSheet.IntentConfiguration.Mode.Payment(
+          amount = intent.optLong("amount"),
+          currency = currency,
+          setupFutureUse = saveForLater,
+          // Our server makes every intent with automatic_async capture; the element must say the same.
+          captureMethod = PaymentSheet.IntentConfiguration.CaptureMethod.AutomaticAsync,
+        )
+      },
     paymentMethodTypes = types,
   )
+}
 
 @SuppressLint("RestrictedApi")
 internal fun appearance(params: JSONObject): PaymentSheet.Appearance {

@@ -96,6 +96,14 @@ export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string)
       letterSpacing: -0.9,
       fontVariant: ['tabular-nums'],
     },
+    // A subscription's plan under the total: the free trial, then the price and when it starts (as Apple's own
+    // subscription sheet reads).
+    plan: { borderRadius: radius, backgroundColor: p.surface2, paddingHorizontal: 14 },
+    planRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 11 },
+    planTitle: { ...font, color: p.ink, fontSize: 15, fontWeight: '600', flexShrink: 1, fontVariant: ['tabular-nums'] },
+    planSub: { ...font, color: p.ink3, fontSize: 13, fontVariant: ['tabular-nums'] },
+    // The recurring authorization, small, right above the button that gives it.
+    consent: { ...font, color: p.ink3, fontSize: 12, lineHeight: 16, textAlign: 'center' },
     body: { paddingHorizontal: 20, paddingTop: 22, paddingBottom: 16, gap: 24 },
     // The pinned bottom: the main button and "Secured by", always in reach however long the content above.
     dock: { paddingHorizontal: 20, paddingTop: 12, gap: 14, backgroundColor: p.surface },

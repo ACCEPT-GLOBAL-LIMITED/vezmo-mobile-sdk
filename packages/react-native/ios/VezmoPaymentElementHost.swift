@@ -162,15 +162,22 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
   ) -> PaymentSheet.IntentConfiguration {
     let amount = (intent["amount"] as? NSNumber)?.intValue ?? 0
     let currency = (intent["currency"] as? String ?? "usd").lowercased()
+    // A subscription saves the card for its renewals: a free trial only sets it up; a first payment keeps it.
+    let saveForLater: PaymentSheet.IntentConfiguration.SetupFutureUsage? =
+      (intent["setupFutureUsage"] as? String) == "off_session" ? .offSession : nil
+    let mode: PaymentSheet.IntentConfiguration.Mode =
+      (intent["mode"] as? String) == "setup"
+        ? .setup(currency: currency, setupFutureUsage: .offSession)
+        // Our server makes every intent with automatic_async capture; the element must say the same.
+        : .payment(
+          amount: amount,
+          currency: currency,
+          setupFutureUsage: saveForLater,
+          captureMethod: .automaticAsync,
+          paymentMethodOptions: nil
+        )
     return PaymentSheet.IntentConfiguration(
-      // Our server makes every intent with automatic_async capture; the element must say the same.
-      mode: .payment(
-        amount: amount,
-        currency: currency,
-        setupFutureUsage: nil,
-        captureMethod: .automaticAsync,
-        paymentMethodOptions: nil
-      ),
+      mode: mode,
       paymentMethodTypes: types,
       onBehalfOf: nil,
       confirmationTokenConfirmHandler: { confirmationToken in

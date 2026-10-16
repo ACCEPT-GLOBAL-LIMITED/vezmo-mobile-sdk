@@ -8,6 +8,8 @@ import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } fro
  * (EXPO_PUBLIC_VEZMO_DEMO_URL) or is pasted in under Sandbox.
  */
 const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL;
+// The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription.
+const SUBSCRIPTION_URL = DEMO_URL?.replace(/mobile-session$/, 'mobile-subscription');
 const API_BASE = process.env.EXPO_PUBLIC_VEZMO_API_BASE;
 
 export default function App() {
@@ -50,6 +52,23 @@ function Shop() {
     if (prep.error) return setStatus(`Could not load: ${prep.error.message}`);
     setStatus('');
     setResult(await presentCheckout());
+  };
+
+  // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
+  const subscribe = async (query: string) => {
+    if (!SUBSCRIPTION_URL) return setStatus('Set EXPO_PUBLIC_VEZMO_DEMO_URL.');
+    setResult(null);
+    setStatus('Loading checkout…');
+    try {
+      const res = await fetch(`${SUBSCRIPTION_URL}${query}`, { method: 'POST' });
+      const subscriptionToken = (await res.json())?.data?.subscriptionToken ?? '';
+      const prep = await prepareCheckout({ subscriptionToken });
+      if (prep.error) return setStatus(`Could not load: ${prep.error.message}`);
+      setStatus('');
+      setResult(await presentCheckout());
+    } catch {
+      setStatus('Could not reach the demo endpoint.');
+    }
   };
 
   const ready = !!token.trim();
@@ -103,6 +122,24 @@ function Shop() {
           <Pressable testID="new-session-mor" onPress={() => newSession('mor')} style={styles.secondary}>
             <Text style={styles.secondaryText}>New session · merchant of record</Text>
           </Pressable>
+          <Pressable testID="subscribe-now" onPress={() => subscribe('?track=mor')} style={styles.secondary}>
+            <Text style={styles.secondaryText}>Subscribe, no trial · merchant of record</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.product}>
+          <View style={styles.clubRow}>
+            <View style={styles.clubMark}>
+              <View style={styles.clubDisc} />
+            </View>
+            <View style={styles.details}>
+              <Text style={styles.name}>Northwind Audio Club</Text>
+              <Text style={styles.price}>$9.99 / month · first 7 days free</Text>
+            </View>
+          </View>
+          <Pressable testID="subscribe" onPress={() => subscribe('?trial=1')} style={styles.buy}>
+            <Text style={styles.buyText}>Try 7 days free</Text>
+          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -114,12 +151,15 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: Platform.OS === 'android' ? 44 : 12, gap: 16 },
   store: { fontSize: 28, fontWeight: '700', letterSpacing: -0.5, color: '#0B0C14' },
   product: { backgroundColor: '#FFFFFF', borderRadius: 22, padding: 14, gap: 14, boxShadow: '0 1px 2px rgba(16,24,64,0.06)' },
-  photo: { height: 210, borderRadius: 14, backgroundColor: '#E9E7F7', alignItems: 'center', justifyContent: 'center' },
+  photo: { height: 150, borderRadius: 14, backgroundColor: '#E9E7F7', alignItems: 'center', justifyContent: 'center' },
   // A pair of headphones, drawn: the band and two cups.
   band: { width: 112, height: 70, borderTopLeftRadius: 60, borderTopRightRadius: 60, borderWidth: 9, borderBottomWidth: 0, borderColor: '#2B2D3A' },
   cups: { flexDirection: 'row', gap: 74, marginTop: -16 },
   cup: { width: 28, height: 48, borderRadius: 12, backgroundColor: '#2B2D3A' },
-  details: { gap: 4, paddingHorizontal: 4 },
+  details: { gap: 4, paddingHorizontal: 4, flexShrink: 1 },
+  clubRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  clubMark: { width: 56, height: 56, borderRadius: 14, backgroundColor: '#E9E7F7', alignItems: 'center', justifyContent: 'center' },
+  clubDisc: { width: 26, height: 26, borderRadius: 13, borderWidth: 7, borderColor: '#2B2D3A' },
   name: { fontSize: 17, fontWeight: '600', color: '#0B0C14' },
   price: { fontSize: 15, color: '#5A5F70' },
   buy: { height: 52, borderRadius: 999, backgroundColor: '#0B0C14', alignItems: 'center', justifyContent: 'center' },

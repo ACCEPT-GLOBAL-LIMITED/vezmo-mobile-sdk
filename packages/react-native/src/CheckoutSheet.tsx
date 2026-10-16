@@ -14,13 +14,13 @@ import {
 } from 'react-native';
 import { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
-import { formatAmount } from './flow';
+import { dateText, formatAmount, planPriceText } from './flow';
 import { CardFlow, type CardFlowHandle } from './CardFlow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
 import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
 import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } from './theme';
 import { markForBrand } from './marks';
-import type { CheckoutResult, PaidMethod } from './types';
+import type { CheckoutResult, PaidMethod, SubscriptionPlan } from './types';
 import {
   Banner,
   BrandTile,
@@ -129,7 +129,10 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   // The element draws the other methods' rows; the card flow the card form and the express wallet buttons.
   const configJson = useMemo(() => (settings ? elementConfigJson(settings) : ''), [settings]);
   const cardConfigJson = useMemo(() => (settings ? elementConfigJson({ ...settings, withWallets: true }) : ''), [settings]);
-  const intentJson = useMemo(() => (charge && methods ? elementIntentJson(charge, methods) : ''), [charge, methods]);
+  const intentJson = useMemo(
+    () => (charge && methods ? elementIntentJson(charge, methods, config) : ''),
+    [charge, methods, config],
+  );
   // The native views take a moment to load: placeholder rows hold their place until both report in.
   const [loadedConfig, setLoadedConfig] = useState('');
   const [loadedCardConfig, setLoadedCardConfig] = useState('');
@@ -138,6 +141,9 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
 
   const close = (result: CheckoutResult) => props.onClose(result);
   const amount = charge ? formatAmount(charge.amountMinor, charge.currency) : '';
+  // A subscription checkout: what is due today, the plan after it, and a button that says what it starts.
+  const plan = config?.subscription ?? null;
+  const payLabel = plan ? (plan.mode === 'setup' ? 'Start free trial' : `Subscribe · ${amount}`) : `Pay ${amount}`;
   const paying = phase.name === 'paying';
   const finished = phase.name === 'done' || phase.name === 'closed';
   const own = methods?.upi ? ('upi' as const) : methods?.pix ? ('pix' as const) : null;
@@ -184,6 +190,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               result={phase.result}
               amount={amount}
               merchant={merchant}
+              plan={plan}
               paidWith={snap.paidWith}
               paidMethod={snap.paidMethod}
               s={s}
@@ -228,9 +235,10 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                   </View>
                 </View>
                 <View style={{ gap: 2 }}>
-                  <Text style={s.label}>Total</Text>
+                  <Text style={s.label}>{plan ? 'Due today' : 'Total'}</Text>
                   <Text style={s.amount}>{amount}</Text>
                 </View>
+                {plan && <PlanSummary plan={plan} s={s} />}
               </View>
 
               <View style={s.body}>
@@ -385,7 +393,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               ) : (
                 <PrimaryButton
                   testID="vezmo-pay"
-                  label={`Pay ${amount}`}
+                  label={payLabel}
                   lock
                   disabled={!CheckoutSession.canPay(snap)}
                   busy={paying}
@@ -394,6 +402,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                   p={p}
                 />
               )}
+              {plan && phase.name !== 'waiting' && <Text style={s.consent}>{plan.consentText}</Text>}
               <SecuredBy s={s} dark={scheme === 'dark'} />
             </View>
             </>
@@ -404,23 +413,58 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   );
 }
 
+/** The plan under the total: "7-day free trial · Today", then "$9.99 / month · From 23 Oct 2026". */
+function PlanSummary({ plan, s }: { plan: SubscriptionPlan; s: Styles }) {
+  const trial = plan.mode === 'setup';
+  const next = dateText(plan.nextChargeAt);
+  const price = planPriceText(plan);
+  const trialText = plan.trialDays ? `${plan.trialDays}-day free trial` : 'Free trial';
+  const when = next ? (trial ? `From ${next}` : `Renews ${next}`) : '';
+  return (
+    <View
+      style={s.plan}
+      accessible
+      accessibilityLabel={[trial ? `${trialText}, starting today` : '', `${price}`, when].filter(Boolean).join('. ')}
+    >
+      {trial && (
+        <View style={s.planRow}>
+          <Text style={s.planTitle}>{trialText}</Text>
+          <Text style={s.planSub}>Today</Text>
+        </View>
+      )}
+      <View style={[s.planRow, trial && s.rowLine]}>
+        <Text style={s.planTitle}>{price}</Text>
+        {!!when && <Text style={s.planSub}>{when}</Text>}
+      </View>
+    </View>
+  );
+}
+
 function ResultView(props: {
   result: CheckoutResult;
   amount: string;
   merchant: string;
+  plan: SubscriptionPlan | null;
   paidWith: string | null;
   paidMethod: PaidMethod | null;
   s: Styles;
   p: SheetPalette;
   onDone(): void;
 }) {
-  const { result, s, p } = props;
+  const { result, s, p, plan } = props;
   const expired = result.status === 'failed' && result.error.code === 'expired';
+  const sub = result.status === 'succeeded' || result.status === 'processing' ? result.subscription : undefined;
+  const trialing = sub?.status === 'trialing';
+  const next = dateText(plan?.nextChargeAt);
   const copy: { title: string; body: string; kind: MarkKind; action: string } =
-    result.status === 'succeeded'
+    result.status === 'succeeded' && sub
+      ? trialing
+        ? { title: 'Your free trial has started', body: next ? `Nothing is charged until ${next}.` : '', kind: 'good', action: 'Done' }
+        : { title: 'You’re subscribed', body: '', kind: 'good', action: 'Done' }
+      : result.status === 'succeeded'
       ? { title: 'Payment successful', body: '', kind: 'good', action: 'Done' }
       : result.status === 'processing'
-        ? { title: 'Payment received', body: 'Your payment is on its way. You’ll get a confirmation when it clears.', kind: 'wait', action: 'Done' }
+        ? { title: sub ? 'Subscription received' : 'Payment received', body: 'Your payment is on its way. You’ll get a confirmation when it clears.', kind: 'wait', action: 'Done' }
         : expired
           ? { title: 'Checkout expired', body: `Return to ${props.merchant || 'the app'} to start again.`, kind: 'neutral', action: 'Close' }
           : result.status === 'failed' && result.error.code === 'already_paid'
@@ -428,18 +472,25 @@ function ResultView(props: {
             : result.status === 'failed'
               ? { title: 'Payment not completed', body: result.error.message, kind: 'bad', action: 'Close' }
               : { title: 'Payment canceled', body: '', kind: 'neutral', action: 'Close' };
-  const paymentId = result.status === 'succeeded' || result.status === 'processing' ? result.paymentId : '';
-  // The short transaction reference the buyer can quote; the payment's own id until there is one.
-  const reference = (result.status === 'succeeded' && result.transactionId) || paymentId;
+  const paymentId = (result.status === 'succeeded' || result.status === 'processing' ? result.paymentId : '') ?? '';
+  // The short reference the buyer can quote: the subscription's, else the transaction's, else the payment's own id.
+  const reference = sub?.ref || (result.status === 'succeeded' && result.transactionId) || paymentId;
   // Paid with: the network's mark and last four from Vezmo's server, else the element's own label (or UPI / Pix).
   const mark = markForBrand(props.paidMethod?.brand) ?? (props.paidWith === 'UPI' ? 'upi' : props.paidWith === 'Pix' ? 'pix' : null);
   const last4 = props.paidMethod?.last4;
   const paidText = last4 ? `•••• ${last4}` : mark === 'upi' || mark === 'pix' ? '' : (props.paidWith ?? '');
-  const rows: [string, string, ReactNode?][] = [
-    ['Paid to', props.merchant],
-    ['Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
-    ['Reference', reference],
-  ];
+  const rows: [string, string, ReactNode?][] = sub
+    ? [
+        ['Plan', plan ? `${plan.planName} · ${planPriceText(plan)}` : ''],
+        [trialing ? 'First charge' : 'Next charge', next],
+        [trialing ? 'Card' : 'Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
+        ['Reference', reference],
+      ]
+    : [
+        ['Paid to', props.merchant],
+        ['Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
+        ['Reference', reference],
+      ];
   const shown = rows.filter(([, v]) => !!v);
   return (
     <View style={s.result}>
@@ -447,9 +498,9 @@ function ResultView(props: {
       <Text testID="vezmo-result-title" style={s.resultTitle} accessibilityRole="header">
         {copy.title}
       </Text>
-      {result.status === 'succeeded' && !!props.amount && <Text style={s.amount}>{props.amount}</Text>}
+      {result.status === 'succeeded' && !!props.amount && !trialing && <Text style={s.amount}>{props.amount}</Text>}
       {!!copy.body && <Text style={s.resultBody}>{copy.body}</Text>}
-      {!!paymentId && (
+      {(!!paymentId || !!sub) && (
         <View style={s.receipt}>
           {shown.map(([k, v, logo], i) => (
             <View key={k} style={[s.receiptRow, i > 0 && s.rowLine]}>
