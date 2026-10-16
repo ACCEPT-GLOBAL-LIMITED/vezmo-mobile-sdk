@@ -1,8 +1,13 @@
 package com.vezmo.checkout
 
+import java.text.DateFormat
 import java.text.NumberFormat
+import java.text.ParseException
+import java.text.SimpleDateFormat
 import java.util.Currency
 import java.util.Locale
+import java.util.TimeZone
+import kotlin.math.roundToLong
 
 /** The engine's payment-method types the sheet shows, by our method key, in this order. */
 private val ELEMENT_TYPES = linkedMapOf(
@@ -24,11 +29,15 @@ internal data class Charge(
     val localOffer: String?,
 )
 
-/** What the buyer is charged: the session's price, or the offer in their own currency when they chose it. */
+/**
+ * What the buyer is charged: the session's price, or the offer in their own currency when they chose it. A free
+ * trial charges nothing today, whichever currency the plan will renew in.
+ */
 internal fun chargeOf(config: CheckoutConfig, payLocal: Boolean): Charge {
     val offer = config.localOffer
-    if (payLocal && offer != null) return Charge(offer.amountMinor, offer.currency.uppercase(), offer.token)
-    return Charge(config.amountMinor, config.currency.uppercase(), null)
+    val trial = config.subscription?.trial == true
+    if (payLocal && offer != null) return Charge(if (trial) 0 else offer.amountMinor, offer.currency.uppercase(), offer.token)
+    return Charge(if (trial) 0 else config.amountMinor, config.currency.uppercase(), null)
 }
 
 internal data class SheetMethods(
@@ -64,8 +73,8 @@ internal fun sheetMethods(config: CheckoutConfig, charge: Charge): SheetMethods 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */
 internal fun resultFromPay(res: PayResponse): CheckoutResult? =
     when (res.state) {
-        "succeeded" -> CheckoutResult.Succeeded(res.paymentId, res.transactionId)
-        "processing" -> CheckoutResult.Processing(res.paymentId)
+        "succeeded" -> CheckoutResult.Succeeded(res.paymentId, res.transactionId, res.subscription)
+        "processing" -> CheckoutResult.Processing(res.paymentId, res.subscription)
         else -> null // requires_action: the engine finishes it first
     }
 
@@ -82,9 +91,9 @@ internal fun resultFromStatus(s: SessionStatus): CheckoutResult? =
 internal val DECLINED = VezmoError(VezmoError.Code.Declined, "Your payment didn’t go through. Try another card or way to pay.")
 internal val EXPIRED = VezmoError(VezmoError.Code.Expired, "This checkout has expired. Please start again.")
 
-private val INTENT_SECRET = Regex("^(pi_[A-Za-z0-9]+)_secret_[A-Za-z0-9_-]+$")
+private val INTENT_SECRET = Regex("^((?:pi|seti)_[A-Za-z0-9]+)_secret_[A-Za-z0-9_-]+$")
 
-/** `pi_123_secret_abc` → `pi_123`: the intent the device finished, for /confirm. Null for anything else. */
+/** `pi_123_secret_abc` → `pi_123` (or a free trial's `seti_…`): the intent the device finished, for /confirm. */
 internal fun intentIdOf(clientSecret: String?): String? = clientSecret?.let { INTENT_SECRET.matchEntire(it)?.groupValues?.get(1) }
 
 /** Amount for display, e.g. 4900 USD → "$49.00", 420000 INR → "₹4,200.00". */
@@ -94,3 +103,60 @@ internal fun formatAmount(amountMinor: Long, currency: String, locale: Locale = 
     } catch (_: IllegalArgumentException) {
         String.format(Locale.US, "%.2f %s", amountMinor / 100.0, currency)
     }
+
+// ── subscriptions ─────────────────────────────────────────────────────────
+
+internal fun subscriptionOf(ref: String, status: String): SubscriptionResult =
+    SubscriptionResult(
+        ref,
+        when (status.lowercase()) {
+            "active" -> SubscriptionResult.Status.Active
+            "trialing" -> SubscriptionResult.Status.Trialing
+            else -> SubscriptionResult.Status.Incomplete
+        },
+    )
+
+/** The result after a subscription start finished on the device (3D Secure), from /confirm. */
+internal fun resultFromSubscriptionConfirm(status: String, ref: String, paymentId: String?, transactionId: String?): CheckoutResult {
+    val subscription = subscriptionOf(ref, status)
+    return if (status == "processing") {
+        CheckoutResult.Processing(paymentId, subscription)
+    } else {
+        CheckoutResult.Succeeded(paymentId, transactionId, subscription)
+    }
+}
+
+private val UNITS = mapOf(
+    "HOUR" to ("hour" to "hours"),
+    "DAY" to ("day" to "days"),
+    "WEEK" to ("week" to "weeks"),
+    "MONTH" to ("month" to "months"),
+    "YEAR" to ("year" to "years"),
+)
+
+/** "month", "3 months": one period of the plan. */
+internal fun periodText(interval: String, count: Int): String {
+    val (one, many) = UNITS[interval.uppercase()] ?: (interval.lowercase() to "${interval.lowercase()}s")
+    return if (count > 1) "$count $many" else one
+}
+
+/** "$9.99 / month", "$30.00 every 3 months": the plan's price, as the buyer reads it. */
+internal fun planPriceText(plan: SubscriptionPlan, locale: Locale = Locale.getDefault()): String {
+    val price = formatAmount((plan.recurringAmount * 100).roundToLong(), plan.currency.uppercase(), locale)
+    return if (plan.intervalCount > 1) "$price every ${periodText(plan.interval, plan.intervalCount)}" else "$price / ${periodText(plan.interval, 1)}"
+}
+
+/** "Oct 23, 2026" or "23 Oct 2026": the buyer's own date format. Empty for a missing or unreadable date. */
+internal fun dateText(iso: String?, locale: Locale = Locale.getDefault(), zone: TimeZone = TimeZone.getDefault()): String {
+    if (iso.isNullOrEmpty()) return ""
+    for (pattern in listOf("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", "yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd")) {
+        val parser = SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        val date = try {
+            parser.parse(iso)
+        } catch (_: ParseException) {
+            null
+        } ?: continue
+        return DateFormat.getDateInstance(DateFormat.MEDIUM, locale).apply { timeZone = zone }.format(date)
+    }
+    return ""
+}

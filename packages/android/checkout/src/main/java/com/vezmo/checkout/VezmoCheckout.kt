@@ -27,6 +27,9 @@ import kotlinx.coroutines.withContext
  *     vezmo.prepare(clientToken)?.let { return@launch showError(it.message) }
  *     vezmo.present()
  * }
+ *
+ * // A subscription: its checkout token instead.
+ * vezmo.prepare(subscriptionToken = checkoutToken)
  * ```
  *
  * In Compose, use [rememberVezmoCheckout].
@@ -50,26 +53,34 @@ class VezmoCheckout internal constructor(
     private var prepared: CheckoutRequest? = null
 
     /**
-     * Loads the session. Call it as soon as you have the client token, then [present].
+     * Loads the checkout. Call it as soon as you have the token, then [present]. Pass exactly one token.
      *
-     * @param clientToken from your server: the API checkout session's `clientToken`.
+     * @param clientToken from your server: the API checkout session's `clientToken` (a one-time payment).
+     * @param subscriptionToken from your server: a subscription's `checkoutToken`, to start it in the app (the first
+     *   payment, or a free trial with the card saved for the renewals).
      * @param merchantDisplayName shown at the top of the sheet. Defaults to the business name on the session.
-     * @return null when the session is ready to pay, or why it can't be paid (expired, already paid, no connection…).
+     * @return null when the checkout is ready to pay, or why it can't be (expired, already paid, no connection…).
      */
     suspend fun prepare(
-        clientToken: String,
+        clientToken: String? = null,
+        subscriptionToken: String? = null,
         merchantDisplayName: String? = null,
     ): VezmoError? = withContext(Dispatchers.Main.immediate) {
-        prepareOnMain(clientToken, merchantDisplayName)
+        prepareOnMain(clientToken, subscriptionToken, merchantDisplayName)
     }
 
     private suspend fun prepareOnMain(
-        clientToken: String,
+        clientToken: String?,
+        subscriptionToken: String?,
         merchantDisplayName: String?,
     ): VezmoError? {
         prepared = null
-        if (clientToken.isBlank()) return VezmoError(VezmoError.Code.Config, "clientToken is required.")
-        val session = CheckoutSession(api, clientToken.trim(), configuration.returnUrl)
+        if (clientToken.isNullOrBlank() == subscriptionToken.isNullOrBlank()) {
+            return VezmoError(VezmoError.Code.Config, "Pass a clientToken or a subscriptionToken.")
+        }
+        val subscription = !subscriptionToken.isNullOrBlank()
+        val token = (if (subscription) subscriptionToken else clientToken)!!.trim()
+        val session = CheckoutSession(api, token, configuration.returnUrl, subscription = subscription)
         session.load()
         val phase = session.state.value.phase
         if (phase is SessionPhase.Closed && phase.result is CheckoutResult.Failed) {
@@ -77,7 +88,7 @@ class VezmoCheckout internal constructor(
             return phase.result.error
         }
         PreparedSessions.put(session)
-        prepared = CheckoutRequest(clientToken.trim(), merchantDisplayName, configuration)
+        prepared = CheckoutRequest(token, merchantDisplayName, configuration, subscription)
         return null
     }
 
@@ -115,9 +126,11 @@ fun rememberVezmoCheckout(
 /** What the sheet's activity needs: the session's token and how to show it. */
 @kotlinx.parcelize.Parcelize
 internal data class CheckoutRequest(
-    val clientToken: String,
+    /** A client token, or a subscription checkout's token when [subscription]. */
+    val token: String,
     val merchantDisplayName: String?,
     val configuration: VezmoConfiguration,
+    val subscription: Boolean = false,
 ) : android.os.Parcelable
 
 internal class CheckoutContract : ActivityResultContract<CheckoutRequest, CheckoutResult>() {

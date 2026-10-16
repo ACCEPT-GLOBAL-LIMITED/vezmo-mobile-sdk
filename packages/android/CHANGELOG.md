@@ -18,5 +18,8 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
   Compose; `prepare(clientToken)` and `present()`.
 - **Back from bank apps and pay-later providers**: the buyer returns to the open sheet by themselves; nothing to add to
   your manifest.
+- **Subscriptions**: `prepare(subscriptionToken = …)` starts a subscription in the app (the first payment, or a free
+  trial with the card saved); the result carries `subscription` (`ref`, `status`), and `paymentId` is null for a free
+  trial. The sheet shows what is due today, the plan and the authorization the buyer gives.
 - Both business models: sessions of a merchant-of-record business (no connected account) load and pay the same way.
 - Android 7.0+ (API 24), compiled against SDK 36.

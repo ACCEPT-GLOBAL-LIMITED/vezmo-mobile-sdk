@@ -53,6 +53,12 @@ private class FakeApi : CheckoutApi {
         calls += "status"
         return statuses.removeFirstOrNull() ?: status
     }
+
+    override suspend fun subscription(token: String, currency: String?): CheckoutConfig = error("not a subscription")
+
+    override suspend fun subscriptionPay(token: String, confirmationToken: String, localOffer: String?): PayResponse = error("not a subscription")
+
+    override suspend fun subscriptionConfirm(token: String, intentId: String): CheckoutResult = error("not a subscription")
 }
 
 private class FakeElement : ElementPort {

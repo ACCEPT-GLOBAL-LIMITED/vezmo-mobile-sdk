@@ -51,17 +51,27 @@ internal data class EngineSettings(
 
 /**
  * What is charged: a change updates the engine in place (the buyer switched currency). Cards go to the card form, the
- * sheet's own Card row; every other method to the element's rows.
+ * sheet's own Card row; every other method to the element's rows. A subscription saves the card for its renewals: a
+ * free trial only sets it up ([setup]); a first payment keeps it ([saveForLater]).
  */
 internal data class EngineIntent(
     val amount: Long,
     val currency: String,
     val elementTypes: List<String>,
     val card: Boolean,
+    val setup: Boolean = false,
+    val saveForLater: Boolean = false,
 )
 
-internal fun engineIntent(charge: Charge, methods: SheetMethods) =
-    EngineIntent(charge.amountMinor, charge.currency.lowercase(), methods.elementTypes.filter { it != "card" }, "card" in methods.elementTypes)
+internal fun engineIntent(charge: Charge, methods: SheetMethods, config: CheckoutConfig? = null) =
+    EngineIntent(
+        amount = charge.amountMinor,
+        currency = charge.currency.lowercase(),
+        elementTypes = methods.elementTypes.filter { it != "card" },
+        card = "card" in methods.elementTypes,
+        setup = config?.subscription?.trial == true,
+        saveForLater = config?.subscription != null,
+    )
 
 /**
  * The native payment engine, confirmed through Vezmo's server:
@@ -227,12 +237,20 @@ internal class Engine(private val session: CheckoutSession) {
     /** What is charged, with the method types each part of the engine shows. */
     private fun intentConfiguration(intent: EngineIntent, types: List<String>) =
         PaymentSheet.IntentConfiguration(
-            mode = PaymentSheet.IntentConfiguration.Mode.Payment(
-                amount = intent.amount,
-                currency = intent.currency,
-                // Vezmo's server makes every intent with automatic_async capture; the engine must say the same.
-                captureMethod = PaymentSheet.IntentConfiguration.CaptureMethod.AutomaticAsync,
-            ),
+            mode = if (intent.setup) {
+                PaymentSheet.IntentConfiguration.Mode.Setup(
+                    currency = intent.currency,
+                    setupFutureUse = PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession,
+                )
+            } else {
+                PaymentSheet.IntentConfiguration.Mode.Payment(
+                    amount = intent.amount,
+                    currency = intent.currency,
+                    setupFutureUse = if (intent.saveForLater) PaymentSheet.IntentConfiguration.SetupFutureUse.OffSession else null,
+                    // Vezmo's server makes every intent with automatic_async capture; the engine must say the same.
+                    captureMethod = PaymentSheet.IntentConfiguration.CaptureMethod.AutomaticAsync,
+                )
+            },
             paymentMethodTypes = types,
         )
 

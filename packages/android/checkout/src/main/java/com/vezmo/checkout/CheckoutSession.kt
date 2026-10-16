@@ -87,14 +87,16 @@ internal data class SessionSnapshot(
 private const val PRICE_CHANGED = "The price in your currency just changed. Check the new amount and pay again."
 
 /**
- * One checkout, from the session's client token to a result. The money decisions are the server's: this only
- * moves the buyer's confirmation token to Vezmo and the answer back to the engine.
+ * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
+ * are the server's: this only moves the buyer's confirmation token to Vezmo and the answer back to the engine.
  */
 internal class CheckoutSession(
     private val api: CheckoutApi,
     val token: String,
     private val returnUrl: String?,
     dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
+    /** The token is a subscription checkout's: cards and Google Pay; a first payment or a free trial. */
+    val subscription: Boolean = false,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val _state = MutableStateFlow(SessionSnapshot())
@@ -132,7 +134,7 @@ internal class CheckoutSession(
     // ── loading and currency ───────────────────────────────────────────────
     suspend fun load() {
         try {
-            val config = api.checkout(token)
+            val config = fetchConfig()
             // The buyer's own currency is offered first when there is an offer (as on the web checkout).
             apply(config, config.localOffer != null)
             set { copy(phase = SessionPhase.Ready(null)) }
@@ -321,7 +323,11 @@ internal class CheckoutSession(
     suspend fun onConfirmationToken(id: String) {
         val charge = snapshot.charge
         try {
-            val res = api.pay(token, id, charge?.localOffer, returnUrl)
+            val res = if (subscription) {
+                api.subscriptionPay(token, id, charge?.localOffer)
+            } else {
+                api.pay(token, id, charge?.localOffer, returnUrl)
+            }
             lastPay = res
             res.method?.let { m -> set { copy(paidMethod = m) } }
             resolve(res.clientSecret, if (res.clientSecret != null) null else DECLINED.message)
@@ -329,7 +335,7 @@ internal class CheckoutSession(
             val error = if (e.reason == "local_price_changed") {
                 // Fetch the new offer; the buyer sees the new amount before paying again.
                 post {
-                    runCatching { api.checkout(token) }.getOrNull()?.let { apply(it, snapshot.payLocal) }
+                    runCatching { fetchConfig() }.getOrNull()?.let { apply(it, snapshot.payLocal) }
                 }
                 VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED)
             } else {
@@ -349,7 +355,7 @@ internal class CheckoutSession(
             ConfirmStatus.Failed -> {
                 // The engine lost a step it was finishing on the device (a browser or 3D Secure): Vezmo's server
                 // knows whether the money moved.
-                if (lastError == null && lastPay?.state == "requires_action") {
+                if (!subscription && lastError == null && lastPay?.state == "requires_action") {
                     val result = runCatching { resultFromStatus(api.status(token)) }.getOrNull()
                     if (result != null && result !is CheckoutResult.Failed) {
                         set { copy(phase = SessionPhase.Done(result)) }
@@ -368,6 +374,11 @@ internal class CheckoutSession(
                     set { copy(phase = SessionPhase.Done(fromPay)) }
                     return
                 }
+                if (subscription) {
+                    val result = startedSubscription(intentIdOf(lastPay?.clientSecret))
+                    set { copy(phase = SessionPhase.Done(result)) }
+                    return
+                }
                 intentIdOf(lastPay?.clientSecret)?.let { id ->
                     // The webhook records it either way; the status below is the answer.
                     runCatching { api.confirm(token, id) }
@@ -376,6 +387,21 @@ internal class CheckoutSession(
                 set { copy(phase = SessionPhase.Done(result)) }
             }
         }
+    }
+
+    private suspend fun fetchConfig(): CheckoutConfig = if (subscription) api.subscription(token) else api.checkout(token)
+
+    /** A subscription started on the device (after 3D Secure): Vezmo records it and says how it stands. */
+    private suspend fun startedSubscription(intentId: String?): CheckoutResult {
+        if (intentId != null) {
+            try {
+                return api.subscriptionConfirm(token, intentId)
+            } catch (_: VezmoApiError) {
+                // Recorded from the processor's notice instead; the merchant's webhook tells them.
+            }
+        }
+        val ref = snapshot.config?.subscription?.ref ?: ""
+        return CheckoutResult.Processing(null, SubscriptionResult(ref, SubscriptionResult.Status.Incomplete))
     }
 
     /** The session's state, polled briefly while the server catches up with a payment just made. */

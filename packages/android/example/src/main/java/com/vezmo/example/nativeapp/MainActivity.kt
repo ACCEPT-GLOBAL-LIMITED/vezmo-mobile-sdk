@@ -8,6 +8,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +52,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.PlatformTextStyle
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vezmo.checkout.CheckoutResult
+import com.vezmo.checkout.SubscriptionResult
 import com.vezmo.checkout.VezmoCheckout
 import com.vezmo.checkout.VezmoConfiguration
 import com.vezmo.checkout.rememberVezmoCheckout
@@ -119,7 +122,8 @@ private fun Shop() {
     val newSession: (String?) -> Unit = { track ->
         scope.launch {
             status = "Creating a sandbox session…"
-            val created = withContext(Dispatchers.IO) { runCatching { createDemoSession(track) }.getOrNull() }
+            val url = BuildConfig.VEZMO_DEMO_URL + (track?.let { "?track=$it" } ?: "")
+            val created = withContext(Dispatchers.IO) { runCatching { demoToken(url, "clientToken") }.getOrNull() }
             if (created == null) {
                 status = "Could not reach the demo endpoint."
             } else {
@@ -142,6 +146,26 @@ private fun Shop() {
             }
         }
     }
+    // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
+    val subscribe: (String) -> Unit = { query ->
+        focus.clearFocus()
+        scope.launch {
+            result = null
+            status = "Loading checkout…"
+            val subscriptionToken = withContext(Dispatchers.IO) { runCatching { demoToken(SUBSCRIPTION_URL + query, "subscriptionToken") }.getOrNull() }
+            if (subscriptionToken == null) {
+                status = "Could not reach the demo endpoint."
+                return@launch
+            }
+            val error = vezmo.prepare(subscriptionToken = subscriptionToken)
+            if (error != null) {
+                status = "Could not load: ${error.message}"
+            } else {
+                status = ""
+                vezmo.present()
+            }
+        }
+    }
     val ready = token.isNotBlank()
 
     Column(
@@ -156,21 +180,21 @@ private fun Shop() {
             .padding(start = 20.dp, end = 20.dp, top = 44.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        BasicText("Northwind Audio", style = style(28f, weight = FontWeight.Bold, spacing = -0.5f))
-
-        Column(
+        // A focusable heading first: when focus comes back without a touch (keyboard navigation, the e2e tests), it
+        // lands here, not in the token field with its keyboard.
+        BasicText(
+            "Northwind Audio",
             Modifier
-                .fillMaxWidth()
-                .shadow(1.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x0F101840), spotColor = Color(0x0F101840))
-                .clip(RoundedCornerShape(22.dp))
-                .background(Color.White)
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
+                .semantics { heading() }
+                .focusable(),
+            style = style(28f, weight = FontWeight.Bold, spacing = -0.5f),
+        )
+
+        ProductCard {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(210.dp)
+                    .height(150.dp)
                     .clip(RoundedCornerShape(14.dp))
                     .background(Color(0xFFE9E7F7)),
                 contentAlignment = Alignment.Center,
@@ -252,9 +276,64 @@ private fun Shop() {
                     .clickable { newSession("mor") },
                 contentAlignment = Alignment.Center,
             ) { BasicText("New session · merchant of record", style = style(14f, weight = FontWeight.SemiBold)) }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, LINE, CircleShape)
+                    .testTag("subscribe-now")
+                    .clickable { subscribe("?track=mor") },
+                contentAlignment = Alignment.Center,
+            ) { BasicText("Subscribe, no trial · merchant of record", style = style(14f, weight = FontWeight.SemiBold)) }
+        }
+
+        // A subscription with a free trial (the demo business's Club plan).
+        ProductCard {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFFE9E7F7)),
+                    contentAlignment = Alignment.Center,
+                ) { Box(Modifier.size(26.dp).border(7.dp, DARK, CircleShape)) }
+                Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BasicText("Northwind Audio Club", style = style(17f, weight = FontWeight.SemiBold))
+                    BasicText("$9.99 / month · first 7 days free", style = style(15f, GREY))
+                }
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .clip(CircleShape)
+                    .background(INK)
+                    .testTag("subscribe")
+                    .clickable { subscribe("?trial=1") },
+                contentAlignment = Alignment.Center,
+            ) { BasicText("Try 7 days free", style = style(16f, Color.White, FontWeight.SemiBold)) }
         }
     }
 }
+
+/** A white card on the page, as the React Native example's products. */
+@Composable
+private fun ProductCard(content: @Composable () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .shadow(1.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x0F101840), spotColor = Color(0x0F101840))
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color.White)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) { content() }
+}
+
+/** The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription. */
+private val SUBSCRIPTION_URL = BuildConfig.VEZMO_DEMO_URL.replace(Regex("mobile-session$"), "mobile-subscription")
 
 /** A pair of headphones, drawn: the band and two cups. */
 @Composable
@@ -299,9 +378,9 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp) =
         )
     }
 
-/** The sandbox demo endpoint makes a TEST-mode session and returns its client token. */
-private fun createDemoSession(track: String?): String? {
-    val conn = URL(BuildConfig.VEZMO_DEMO_URL + (track?.let { "?track=$it" } ?: "")).openConnection() as HttpURLConnection
+/** The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token. */
+private fun demoToken(url: String, field: String): String? {
+    val conn = URL(url).openConnection() as HttpURLConnection
     return try {
         conn.requestMethod = "POST"
         conn.connectTimeout = 15_000
@@ -310,7 +389,7 @@ private fun createDemoSession(track: String?): String? {
         conn.setFixedLengthStreamingMode(0)
         conn.outputStream.close()
         val body = conn.inputStream.bufferedReader().use { it.readText() }
-        JSONObject(body).optJSONObject("data")?.optString("clientToken")?.ifEmpty { null }
+        JSONObject(body).optJSONObject("data")?.optString(field)?.ifEmpty { null }
     } finally {
         conn.disconnect()
     }
@@ -319,8 +398,15 @@ private fun createDemoSession(track: String?): String? {
 /** The result as JSON, as the React Native example shows it. */
 private fun CheckoutResult.toJson(): String =
     when (this) {
-        is CheckoutResult.Succeeded -> JSONObject().put("status", "succeeded").put("paymentId", paymentId).put("transactionId", transactionId ?: JSONObject.NULL)
-        is CheckoutResult.Processing -> JSONObject().put("status", "processing").put("paymentId", paymentId)
+        is CheckoutResult.Succeeded -> JSONObject()
+            .put("status", "succeeded")
+            .put("paymentId", paymentId ?: JSONObject.NULL)
+            .put("transactionId", transactionId ?: JSONObject.NULL)
+            .apply { subscription?.let { put("subscription", it.toJson()) } }
+        is CheckoutResult.Processing -> JSONObject()
+            .put("status", "processing")
+            .put("paymentId", paymentId ?: JSONObject.NULL)
+            .apply { subscription?.let { put("subscription", it.toJson()) } }
         CheckoutResult.Canceled -> JSONObject().put("status", "canceled")
         is CheckoutResult.Failed -> JSONObject().put("status", "failed").put(
             "error",
@@ -329,3 +415,5 @@ private fun CheckoutResult.toJson(): String =
                 .put("message", error.message),
         )
     }.toString()
+
+private fun SubscriptionResult.toJson() = JSONObject().put("ref", ref).put("status", status.name.lowercase())
