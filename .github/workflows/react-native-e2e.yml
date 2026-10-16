@@ -1,0 +1,79 @@
+name: React Native SDK e2e
+
+# Pays on the dev sandbox from the example app, on a real Android emulator. Sessions come from dev's demo endpoint
+# (TEST mode only), so this repo holds no key.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['packages/react-native/**', '.github/workflows/react-native-e2e.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: packages/react-native
+
+env:
+  EXPO_PUBLIC_VEZMO_DEMO_URL: https://api.dev.vezmo.com/api/v1/demo/mobile-session
+  EXPO_PUBLIC_VEZMO_API_BASE: https://api.dev.vezmo.com/api/v1
+
+jobs:
+  android:
+    name: Android emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Accept Android SDK licences
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prebuild the example app
+        run: yarn example expo prebuild --platform android --no-install
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.gradle/wrapper
+            ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-e2e-${{ hashFiles('packages/react-native/android/build.gradle', 'packages/react-native/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-gradle-
+      - name: Build the release app (JS bundled in)
+        working-directory: packages/react-native/example/android
+        env:
+          JAVA_OPTS: '-XX:MaxHeapSize=6g'
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 -Dorg.gradle.jvmargs=-Xmx4g
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Run the flows on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          working-directory: packages/react-native
+          script: |
+            adb install example/android/app/build/outputs/apk/release/app-release.apk
+            mkdir -p e2e/out
+            maestro test e2e/maestro --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; exit 1)
+      - name: Keep screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-e2e
+          path: |
+            packages/react-native/e2e/out
+            packages/react-native/*.png
+            packages/react-native/e2e/**/*.png
