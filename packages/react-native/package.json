@@ -21,6 +21,7 @@
     "*.podspec",
     "react-native.config.js",
     "app.plugin.js",
+    "CHANGELOG.md",
     "!ios/build",
     "!android/build",
     "!android/gradle",
