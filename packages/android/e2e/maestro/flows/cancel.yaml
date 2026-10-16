@@ -1,15 +1,20 @@
 # The buyer closes the sheet: the app gets "canceled".
 appId: com.vezmo.example.nativeapp
 ---
-- launchApp:
-    clearState: true
-- tapOn:
-    text: "Wait"
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: "new-session"
-    timeout: 30000
+# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          clearState: true
+      # A just-booted emulator can show a system "isn't responding" dialog over the app.
+      - tapOn:
+          text: "Wait"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "new-session"
+          timeout: 30000
 - tapOn:
     id: "new-session"
 - extendedWaitUntil:
