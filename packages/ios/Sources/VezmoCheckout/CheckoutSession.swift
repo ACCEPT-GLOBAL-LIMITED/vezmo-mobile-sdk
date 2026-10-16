@@ -387,18 +387,15 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .ready(error: nil) }
       return
     case .failed:
-      // A step the engine finished on the device (3D Secure, a redirect) failed or was lost: Vezmo's server knows
-      // whether the money moved, and why not.
       var error = lastError
-      if error == nil, kind == .payment, lastPay?.state == "requires_action" {
-        let session = try? await api.status(token: token)
-        if let result = session.flatMap(resultFromStatus) {
-          if case .failed = result {} else {
-            set { $0.phase = .done(result) }
-            return
-          }
+      if error == nil {
+        switch await deviceFailure() {
+        case .failed(let verdict)?: error = verdict
+        case let paid?:
+          set { $0.phase = .done(paid) }
+          return
+        case nil: break
         }
-        if session?.state == "failed" { error = await declineReason() }
       }
       let shown = error ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
       set { $0.phase = .ready(error: shown) }
@@ -426,16 +423,25 @@ final class CheckoutSession: ObservableObject {
     set { $0.phase = .done(result) }
   }
 
-  /// Why a payment was declined after a step on the device (3D Secure passed, then the bank said no), in Vezmo's
-  /// words: the same on every phone, where the engine's own text differs between iPhone and Android. Vezmo's confirm
-  /// step records the decline and says why.
-  private func declineReason() async -> VezmoError? {
-    guard let intentId = intentIdOf(lastPay?.clientSecret) else { return nil }
+  /// A payment Vezmo handed to the device (3D Secure, a redirect) that failed or was lost there: Vezmo's verdict.
+  /// Paid after all; or why not, in Vezmo's words (the same on every phone, where the engine words a decline
+  /// differently), its confirm step recording the decline at once. Nil when Vezmo has no answer.
+  private func deviceFailure() async -> CheckoutResult? {
+    guard lastPay?.state == "requires_action", let intentId = intentIdOf(lastPay?.clientSecret) else { return nil }
     do {
+      if kind == .subscription {
+        return resultFromSubscriptionConfirm(try await api.subscriptionConfirm(token: token, intentId: intentId))
+      }
+      // The session's state first: a step only lost (the payment still waiting on it) has no verdict to confirm.
+      guard let status = try? await api.status(token: token) else { return nil }
+      if let result = resultFromStatus(status) {
+        if case .failed = result {} else { return result }
+      }
+      guard status.state == "failed" else { return nil }
       try await api.confirm(token: token, paymentIntentId: intentId)
       return nil
     } catch let error as VezmoAPIError where error.code == .declined {
-      return error.vezmoError
+      return .failed(error.vezmoError)
     } catch {
       return nil
     }

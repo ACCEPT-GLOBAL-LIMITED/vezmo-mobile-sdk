@@ -354,17 +354,13 @@ internal class CheckoutSession(
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
             ConfirmStatus.Failed -> {
-                // A step the engine finished on the device (3D Secure, a browser, a bank app) failed or was lost:
-                // Vezmo's server knows whether the money moved, and why not.
-                var error = lastError
-                if (!subscription && error == null && lastPay?.state == "requires_action") {
-                    val status = runCatching { api.status(token) }.getOrNull()
-                    val result = status?.let(::resultFromStatus)
-                    if (result != null && result !is CheckoutResult.Failed) {
-                        set { copy(phase = SessionPhase.Done(result)) }
+                val error = lastError ?: when (val verdict = deviceFailure()) {
+                    null -> null
+                    is CheckoutResult.Failed -> verdict.error
+                    else -> {
+                        set { copy(phase = SessionPhase.Done(verdict)) }
                         return
                     }
-                    if (status?.state == "failed") error = declineReason()
                 }
                 set {
                     copy(phase = SessionPhase.Ready(error ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
@@ -394,17 +390,31 @@ internal class CheckoutSession(
     }
 
     /**
-     * Why a payment was declined after a step on the device (3D Secure passed, then the bank said no), in Vezmo's
-     * words: the same on every phone, where the engine's own text differs between iPhone and Android. Vezmo's confirm
-     * step records the decline and says why.
+     * A payment Vezmo handed to the device (3D Secure, a browser, a bank app) that failed or was lost there: Vezmo's
+     * verdict. Paid after all; or why not, in Vezmo's words (the same on every phone, where the engine words a decline
+     * differently), its confirm step recording the decline at once. Null when Vezmo has no answer.
      */
-    private suspend fun declineReason(): VezmoError? {
-        val id = intentIdOf(lastPay?.clientSecret) ?: return null
+    private suspend fun deviceFailure(): CheckoutResult? {
+        val id = intentIdOf(lastPay?.clientSecret)?.takeIf { lastPay?.state == "requires_action" } ?: return null
+        if (!subscription) {
+            // The session's state first: a step only lost (the payment still waiting on it) has no verdict to confirm.
+            val status = try {
+                api.status(token)
+            } catch (_: VezmoApiError) {
+                return null
+            }
+            resultFromStatus(status)?.let { if (it !is CheckoutResult.Failed) return it }
+            if (status.state != "failed") return null
+        }
         return try {
-            api.confirm(token, id)
-            null
+            if (subscription) {
+                api.subscriptionConfirm(token, id)
+            } else {
+                api.confirm(token, id)
+                null
+            }
         } catch (e: VezmoApiError) {
-            e.toVezmoError().takeIf { e.code == VezmoError.Code.Declined }
+            if (e.code == VezmoError.Code.Declined) CheckoutResult.Failed(e.toVezmoError()) else null
         }
     }
 

@@ -71,6 +71,7 @@ final class FakeAPI: CheckoutAPI {
   var subscriptionConfirmAnswer = SubscriptionConfirm(status: "active", subscriptionRef: "SUB-1", paymentId: "pay_9", transactionId: "VT9")
   var subscriptionPayCalls: [PayCall] = []
   var subscriptionConfirmCalls: [[String]] = []
+  var subscriptionConfirmError: VezmoAPIError?
 
   func subscription(token: String) async throws -> SubscriptionView {
     if let subscriptionError { throw subscriptionError }
@@ -84,6 +85,7 @@ final class FakeAPI: CheckoutAPI {
 
   func subscriptionConfirm(token: String, intentId: String) async throws -> SubscriptionConfirm {
     subscriptionConfirmCalls.append([token, intentId])
+    if let subscriptionConfirmError { throw subscriptionConfirmError }
     return subscriptionConfirmAnswer
   }
 }
