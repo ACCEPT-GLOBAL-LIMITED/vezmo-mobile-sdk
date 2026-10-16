@@ -56,7 +56,8 @@ public final class VezmoCheckout {
       let sheet = SheetController(
         session: next.session,
         merchantDisplayName: next.merchantDisplayName,
-        configuration: configuration
+        configuration: configuration,
+        dark: top.traitCollection.userInterfaceStyle == .dark
       ) { result in done.resume(returning: result) }
       top.present(sheet, animated: false)
     }

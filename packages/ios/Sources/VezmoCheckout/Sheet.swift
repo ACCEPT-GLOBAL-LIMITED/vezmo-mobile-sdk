@@ -10,6 +10,14 @@ struct SheetProps {
   var applePay: VezmoCheckout.ApplePay?
 }
 
+/// The phone's light or dark setting, from UIKit: known before the sheet is on screen (SwiftUI's own reading can start
+/// as light and turn dark a moment later, which would build the engine twice).
+@MainActor
+final class SystemStyle: ObservableObject {
+  @Published var dark: Bool
+  init(dark: Bool) { self.dark = dark }
+}
+
 /// The sheet's own full-screen layer: our dimmed backdrop and the bottom card, drawn in SwiftUI, with the engine's
 /// views hosted inside. Presented over the app's screen (works on iOS 15, no detents needed).
 @MainActor
@@ -18,6 +26,7 @@ final class SheetController: UIViewController {
   private let cardFlow = CardFlowHost()
   private let element = PaymentElementHost()
   private let qrForm = QrFormModel()
+  private let system: SystemStyle
   private let props: SheetProps
   private var onClose: ((CheckoutResult) -> Void)?
 
@@ -25,9 +34,11 @@ final class SheetController: UIViewController {
     session: CheckoutSession,
     merchantDisplayName: String?,
     configuration: VezmoCheckout.Configuration,
+    dark: Bool,
     onClose: @escaping (CheckoutResult) -> Void
   ) {
     self.session = session
+    self.system = SystemStyle(dark: dark)
     self.props = SheetProps(
       merchantDisplayName: merchantDisplayName,
       returnURL: configuration.returnURL?.absoluteString,
@@ -57,7 +68,7 @@ final class SheetController: UIViewController {
     session.attachElement(element)
     session.attachCardFlow(cardFlow)
 
-    let root = SheetView(session: session, cardFlow: cardFlow, element: element, qrForm: qrForm, props: props) { [weak self] result in
+    let root = SheetView(session: session, cardFlow: cardFlow, element: element, qrForm: qrForm, system: system, props: props) { [weak self] result in
       self?.finish(result)
     }
     let host = UIHostingController(rootView: root)
@@ -67,6 +78,14 @@ final class SheetController: UIViewController {
     host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     view.addSubview(host.view)
     host.didMove(toParent: self)
+  }
+
+  override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+    super.traitCollectionDidChange(previous)
+    // The phone switched between light and dark while the sheet is open.
+    guard view.window != nil, traitCollection.userInterfaceStyle != .unspecified else { return }
+    let dark = traitCollection.userInterfaceStyle == .dark
+    if system.dark != dark { system.dark = dark }
   }
 
   /// The sheet is finished: the buyer closed it, or tapped Done on the result.
@@ -117,10 +136,10 @@ struct SheetView: View {
   @ObservedObject var cardFlow: CardFlowHost
   @ObservedObject var element: PaymentElementHost
   @ObservedObject var qrForm: QrFormModel
+  @ObservedObject var system: SystemStyle
   let props: SheetProps
   let close: (CheckoutResult) -> Void
 
-  @Environment(\.colorScheme) private var systemScheme
   @Environment(\.pixelLength) private var pixel
   @State private var entered = false
   @State private var walletsHeight: CGFloat = 0
@@ -141,7 +160,7 @@ struct SheetView: View {
       switch snap.config?.theme {
       case "light": return false
       case "dark": return true
-      default: return systemScheme == .dark
+      default: return system.dark
       }
     }
   }
