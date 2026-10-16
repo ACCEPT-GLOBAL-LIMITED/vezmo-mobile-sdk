@@ -479,10 +479,10 @@ private fun ResultView(
     val copy = when {
         result is CheckoutResult.Succeeded -> Copy("Payment successful", "", MarkKind.Good, "Done")
         result is CheckoutResult.Processing -> Copy("Payment received", "Your payment is on its way. You’ll get a confirmation when it clears.", MarkKind.Wait, "Done")
-        failed?.error?.code == VezmoError.Code.Expired -> Copy("Checkout expired", "Return to ${merchant.ifEmpty { "the app" }} to start again.", MarkKind.Neutral, "Close")
-        failed?.error?.code == VezmoError.Code.AlreadyPaid -> Copy("Already paid", failed.error.message, MarkKind.Good, "Done")
-        failed != null -> Copy("Payment not completed", failed.error.message, MarkKind.Bad, "Close")
-        else -> Copy("Payment canceled", "", MarkKind.Neutral, "Close")
+        failed == null -> Copy("Payment canceled", "", MarkKind.Neutral, "Close")
+        failed.error.code == VezmoError.Code.Expired -> Copy("Checkout expired", "Return to ${merchant.ifEmpty { "the app" }} to start again.", MarkKind.Neutral, "Close")
+        failed.error.code == VezmoError.Code.AlreadyPaid -> Copy("Already paid", failed.error.message, MarkKind.Good, "Done")
+        else -> Copy("Payment not completed", failed.error.message, MarkKind.Bad, "Close")
     }
     val paymentId = when (result) {
         is CheckoutResult.Succeeded -> result.paymentId

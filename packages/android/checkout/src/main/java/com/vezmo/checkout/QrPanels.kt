@@ -129,7 +129,7 @@ private fun Field(
     val look = LocalLook.current
     val p = look.p
     @Suppress("DEPRECATION")
-    val style = TextStyle(color = p.ink, fontSize = 16.sp, fontFamily = look.font, platformStyle = PlatformTextStyle(includeFontPadding = true))
+    val style = TextStyle(color = p.ink, fontSize = rnSp(16f), fontFamily = look.font, platformStyle = PlatformTextStyle(includeFontPadding = true))
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Label(label)
         BasicTextField(

@@ -86,6 +86,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -118,9 +120,24 @@ internal fun ProvideLook(
     CompositionLocalProvider(LocalLook provides look, content = content)
 }
 
-/** The Android default text metrics (font padding included), so line boxes measure as in the React Native sheet. */
+/**
+ * Text measured as React Native measures it on Android, so line boxes and widths match the React Native sheet: font
+ * sizes and line heights rounded up to whole pixels, the font's padding included unless a line height is set (React
+ * Native's line height span replaces it).
+ */
 @Suppress("DEPRECATION")
-private val PLATFORM_STYLE = PlatformTextStyle(includeFontPadding = true)
+private val WITH_PADDING = PlatformTextStyle(includeFontPadding = true)
+
+@Suppress("DEPRECATION")
+private val WITHOUT_PADDING = PlatformTextStyle(includeFontPadding = false)
+
+/** [sp] rounded up to whole pixels, as React Native sizes text. */
+@Composable
+internal fun rnSp(sp: Float): TextUnit {
+    val d = LocalDensity.current
+    val scale = d.density * d.fontScale
+    return (ceil(sp * scale) / scale).sp
+}
 
 /** One line of the sheet's text. */
 @Composable
@@ -146,14 +163,14 @@ internal fun Txt(
         overflow = overflow,
         style = TextStyle(
             color = color,
-            fontSize = size.sp,
+            fontSize = rnSp(size),
             fontWeight = weight,
             fontFamily = if (monospace) FontFamily.Monospace else look.font,
             letterSpacing = letterSpacing.sp,
             textAlign = align,
             fontFeatureSettings = if (tabular) "tnum" else null,
-            platformStyle = PLATFORM_STYLE,
-            lineHeight = lineHeight?.sp ?: TextStyle.Default.lineHeight,
+            platformStyle = if (lineHeight != null) WITHOUT_PADDING else WITH_PADDING,
+            lineHeight = lineHeight?.let { rnSp(it) } ?: TextStyle.Default.lineHeight,
             lineHeightStyle = if (lineHeight != null) LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None) else null,
         ),
     )

@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -153,8 +152,8 @@ private fun Shop() {
             // Tapping outside the field closes the keyboard.
             .pointerInput(Unit) { detectTapGestures { focus.clearFocus() } }
             .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .padding(20.dp),
+            // Below the status bar, as the React Native example lays it out.
+            .padding(start = 20.dp, end = 20.dp, top = 44.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         BasicText("Northwind Audio", style = style(28f, weight = FontWeight.Bold, spacing = -0.5f))
