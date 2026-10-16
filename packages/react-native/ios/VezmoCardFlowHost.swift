@@ -17,6 +17,8 @@ public final class VezmoCardFlowHost: UIView {
 
   private var flow: PaymentSheet.FlowController?
   private var wallets: UIViewController?
+  /// The wallet buttons' height for a width (SwiftUI's own measure).
+  private var measureWallets: ((CGFloat) -> CGFloat)?
   private var configJson = ""
   private var intentJson = ""
   private var building = false
@@ -184,12 +186,16 @@ public final class VezmoCardFlowHost: UIView {
       host.view.trailingAnchor.constraint(equalTo: trailingAnchor),
     ])
     wallets = host
+    measureWallets = { [weak host] width in
+      host?.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height ?? 0
+    }
     reportHeight()
   }
 
   private func removeWallets() {
     wallets?.view.removeFromSuperview()
     wallets = nil
+    measureWallets = nil
     reportHeight()
   }
 
@@ -201,9 +207,8 @@ public final class VezmoCardFlowHost: UIView {
   /// The wallet buttons' height (0 when there are none on this phone).
   private func reportHeight() {
     var height: CGFloat = 0
-    if let wallets {
-      let width = bounds.width > 0 ? bounds.width : UIScreen.main.bounds.width - 40
-      height = wallets.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+    if let measureWallets {
+      height = measureWallets(bounds.width > 0 ? bounds.width : UIScreen.main.bounds.width - 40)
     }
     guard abs(height - lastHeight) > 0.5 else { return }
     lastHeight = height

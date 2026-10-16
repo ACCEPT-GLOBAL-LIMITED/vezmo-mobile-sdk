@@ -132,6 +132,27 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     emit("height", ["height": 0])
   }
 
+  @MainActor
+  private func attach(_ created: EmbeddedPaymentElement) {
+    elementView?.removeFromSuperview()
+    element = created
+    created.delegate = self
+    created.presentingViewController = RCTPresentedViewController()
+
+    let view = created.view
+    view.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(view)
+    NSLayoutConstraint.activate([
+      view.topAnchor.constraint(equalTo: topAnchor),
+      view.leadingAnchor.constraint(equalTo: leadingAnchor),
+      view.trailingAnchor.constraint(equalTo: trailingAnchor),
+    ])
+    elementView = view
+
+    embeddedPaymentElementDidUpdateHeight(embeddedPaymentElement: created)
+    embeddedPaymentElementDidUpdatePaymentOption(embeddedPaymentElement: created)
+  }
+
   /// What is charged, for the element or the card flow: a confirmation token goes to `secret`, which answers with the
   /// intent's client secret from Vezmo's server.
   static func intentConfiguration(
