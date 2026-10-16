@@ -12,8 +12,7 @@ The sheet is drawn by Vezmo's native SDKs, so it looks and behaves exactly like 
 - Flutter 3.41 or later (Dart 3.11).
 - **Android**: Android 7.0 (API 24) or later, `compileSdk` 36, Kotlin 2.1 or later, Java 17. Your `MainActivity`
   extends `FlutterFragmentActivity` (below).
-- **iPhone**: iOS 15.1 or later, Xcode 16 or later, with Swift Package Manager (Flutter's default). Subscriptions
-  on iPhone are coming soon: until then `prepare(subscriptionToken: …)` answers with a `config` error there.
+- **iPhone**: iOS 15.1 or later, Xcode 16 or later, with Swift Package Manager (Flutter's default).
 - Your app added in the Vezmo dashboard under **Developers → Mobile apps**, with its return link (for example
   `acme://vezmo`).
 
@@ -183,8 +182,9 @@ if (result case CheckoutSucceeded(:final paymentId, :final subscription?)) {
 ```
 
 The sheet shows what is due today, the plan after it ("7-day free trial, then $9.99 / month from Oct 23, 2026"), the
-authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards and Google Pay. Renewals are charged
-by Vezmo; your server hears about each one from the subscription webhooks.
+authorization the buyer gives, and **Start free trial** or **Subscribe**. Cards, Google Pay and Apple Pay (on iPhone,
+Apple Pay shows the plan as a recurring payment). Renewals are charged by Vezmo; your server hears about each one from
+the subscription webhooks.
 
 ## What the buyer sees
 
@@ -296,7 +296,8 @@ ios --simulator`.
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
 Maestro (`e2e/maestro`). On an Android emulator: a card with 3D Secure, a decline, cancel, a bad token, Cash App on
 the merchant-of-record track, and a subscription's free trial and its first payment. On an iPhone simulator: a card
-with 3D Secure on both business models, a decline, cancel, a bad token and Cash App.
+with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, and a subscription's free trial and
+its first payment.
 
 To release, set `version` in `pubspec.yaml` and the `CHANGELOG.md` entry, then push a tag `flutter-v<version>`.
 `release-flutter.yml` publishes to pub.dev from GitHub Actions, with no stored secret.

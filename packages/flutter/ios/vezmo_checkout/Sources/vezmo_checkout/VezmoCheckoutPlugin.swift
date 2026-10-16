@@ -34,17 +34,17 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
   }
 
   private func prepare(_ args: [String: Any], result: @escaping FlutterResult) {
-    // ponytail: the iOS SDK takes subscriptions next; until then a subscription token gets a clear answer.
-    if args["subscriptionToken"] is String {
-      return result(Self.error(.config, "Subscriptions on iPhone are coming soon."))
-    }
     let vezmo = VezmoCheckout(configuration: Self.configuration(args["configuration"] as? [String: Any] ?? [:]))
     checkout = vezmo
+    let merchantDisplayName = args["merchantDisplayName"] as? String
     Task { @MainActor in
-      let error = await vezmo.prepare(
-        clientToken: args["clientToken"] as? String ?? "",
-        merchantDisplayName: args["merchantDisplayName"] as? String
-      )
+      // Dart sends exactly one of the two tokens.
+      let error: VezmoError?
+      if let subscriptionToken = args["subscriptionToken"] as? String {
+        error = await vezmo.prepare(subscriptionToken: subscriptionToken, merchantDisplayName: merchantDisplayName)
+      } else {
+        error = await vezmo.prepare(clientToken: args["clientToken"] as? String ?? "", merchantDisplayName: merchantDisplayName)
+      }
       result(error.map { Self.error($0.code, $0.message) })
     }
   }
@@ -58,10 +58,15 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
     }
     Task { @MainActor in
       switch await vezmo.present(from: controller) {
-      case .succeeded(let paymentId, let transactionId):
-        result(["status": "succeeded", "paymentId": paymentId, "transactionId": transactionId as Any? ?? NSNull()])
-      case .processing(let paymentId):
-        result(["status": "processing", "paymentId": paymentId])
+      case .succeeded(let paymentId, let transactionId, let subscription):
+        result([
+          "status": "succeeded",
+          "paymentId": paymentId as Any? ?? NSNull(),
+          "transactionId": transactionId as Any? ?? NSNull(),
+          "subscription": Self.map(subscription),
+        ])
+      case .processing(let paymentId, let subscription):
+        result(["status": "processing", "paymentId": paymentId as Any? ?? NSNull(), "subscription": Self.map(subscription)])
       case .canceled:
         result(["status": "canceled"])
       case .failed(let error):
@@ -126,6 +131,11 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
       blue: CGFloat(value & 0xFF) / 255,
       alpha: CGFloat((value >> 24) & 0xFF) / 255
     )
+  }
+
+  /// The same shape as Dart's `SubscriptionResult.fromJson`.
+  private static func map(_ subscription: SubscriptionResult?) -> Any {
+    subscription.map { ["ref": $0.ref, "status": $0.status.rawValue] } ?? NSNull()
   }
 
   private static func error(_ code: VezmoError.Code, _ message: String) -> [String: Any] {

@@ -15,5 +15,5 @@ The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`)
 - **Appearance**: your colors (one, or light and dark), corner radius and a native font through `VezmoAppearance`.
 - **iPhone**: the native Vezmo iOS SDK's sheet (Swift package `VezmoCheckout` 0.1.0, through Swift Package Manager):
   cards with 3D Secure, Apple Pay, pay-later methods, Cash App, UPI and Pix. The plugin hands links back into the
-  app to the sheet by itself. Subscriptions on iPhone come next (a `config` error until then).
+  app to the sheet by itself. Subscriptions too.
 - Android 7.0+ (API 24), iOS 15.1+; Flutter 3.41+.
