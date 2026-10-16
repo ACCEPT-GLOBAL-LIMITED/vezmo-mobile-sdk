@@ -1,0 +1,27 @@
+# The buyer closes the sheet: the app gets "canceled".
+appId: com.vezmo.example.native
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "new-session"
+    timeout: 30000
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+- takeScreenshot: cancel-01-sheet
+# Closing the sheet is not an error: the app gets "canceled".
+- tapOn: "Close"
+- extendedWaitUntil:
+    visible:
+      id: "result"
+      text: ".*canceled.*"
+    timeout: 15000
