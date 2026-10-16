@@ -26,6 +26,13 @@ appId: com.vezmo.example
 - extendedWaitUntil:
     visible: "Card"
     timeout: 60000
+# Outside the US the sheet first offers the runner's own currency, which hides the USD-only methods: pay in USD.
+- tapOn:
+    text: "(.*[0-9][ ,]+)?USD"
+    optional: true
+- extendedWaitUntil:
+    visible: "Cash App Pay"
+    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: dark-01-sheet
