@@ -1,0 +1,211 @@
+# VezmoCheckout (iOS)
+
+The Vezmo payment sheet for native iPhone apps, in Swift. Cards with 3D Secure, Apple Pay, Klarna, Affirm, Afterpay,
+Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency, in a native sheet. UIKit and SwiftUI.
+
+Your server keeps your Vezmo API key. The app only ever receives a session's client token.
+
+## Requirements
+
+- iOS 15.1 or later, Xcode 16 or later, Swift 5.9 or later.
+- Your app added in the Vezmo dashboard under **Developers → Mobile apps**, with its return link (for example
+  `acme://vezmo`). The buyer comes back through it after 3D Secure, a bank app or a pay-later provider.
+
+## Install
+
+Swift Package Manager. In Xcode, **File → Add Package Dependencies…** and enter:
+
+```
+https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk
+```
+
+Choose the `VezmoCheckout` library. Or in your `Package.swift`:
+
+```swift
+dependencies: [
+  .package(url: "https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk", from: "0.1.0"),
+],
+targets: [
+  .target(name: "MyApp", dependencies: [.product(name: "VezmoCheckout", package: "vezmo-mobile-sdk")]),
+]
+```
+
+Add your return link's scheme (`acme`) under your target's **Info → URL Types**, and `NSCameraUsageDescription` to
+`Info.plist` so buyers can scan a card.
+
+## Set up
+
+Create one `VezmoCheckout` for the screens that take payments:
+
+```swift
+import VezmoCheckout
+
+let vezmo = VezmoCheckout(configuration: .init(
+  returnURL: URL(string: "acme://vezmo"),                    // registered under Developers → Mobile apps
+  applePay: .init(merchantId: "merchant.com.acme")           // Apple Pay shows only with your Merchant ID
+))
+```
+
+| Setting | What it does |
+| --- | --- |
+| `returnURL` | Your registered return link. Needed for 3D Secure in some banks, bank apps and pay-later methods. |
+| `applePay` | `.init(merchantId:merchantCountryCode:)`. Without it the sheet shows no Apple Pay. |
+| `style` | `.automatic` (follow the phone, default), `.light` or `.dark`. |
+| `appearance` | Colors, corner radius and font, below. |
+
+Hand the app the return link when it opens:
+
+```swift
+// SwiftUI
+WindowGroup { RootView().onOpenURL { VezmoCheckout.handleURL($0) } }
+
+// UIKit (scene delegate)
+func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+  contexts.forEach { VezmoCheckout.handleURL($0.url) }
+}
+```
+
+## Take a payment
+
+Your server creates the session with your API key (the same API checkout session as on the web) and sends its
+`clientToken` to the app:
+
+```http
+POST /v1/merchant/secure-payments
+{
+  "title": "Order #1042",
+  "amount": 49.00,
+  "currency": "USD",
+  "client": { "name": "Ana Silva", "email": "ana@example.com", "country": "US", "postalCode": "10001" },
+  "app": { "returnUrl": "acme://vezmo" }
+}
+```
+
+In the app (UIKit):
+
+```swift
+func pay(orderId: String) async {
+  let clientToken = try await myAPI.createVezmoSession(orderId)
+
+  // Loads the session; call it as soon as you have the token.
+  if let error = await vezmo.prepare(clientToken: clientToken) {
+    return showError(error.message)
+  }
+
+  // Opens the sheet and returns when the buyer is done. Never throws.
+  switch await vezmo.present(from: self) {
+  case .succeeded(let paymentId, _):
+    showPaid(paymentId)
+  case .processing:
+    showPaymentReceived() // a bank debit, UPI or Pix still settling
+  case .canceled:
+    break // the buyer closed the sheet
+  case .failed(let error):
+    showError(error.message)
+  }
+}
+```
+
+In SwiftUI, prepare the session, then present it with the modifier:
+
+```swift
+struct CheckoutButton: View {
+  let vezmo: VezmoCheckout
+  @State private var showing = false
+
+  var body: some View {
+    Button("Pay") {
+      Task {
+        let clientToken = try await myAPI.createVezmoSession()
+        if await vezmo.prepare(clientToken: clientToken) == nil { showing = true }
+      }
+    }
+    .vezmoCheckout(vezmo, isPresented: $showing) { result in
+      // .succeeded, .processing, .canceled or .failed
+    }
+  }
+}
+```
+
+Fulfil the order from the `payment.success` webhook, not from the result alone. The result tells your app what to
+show.
+
+### Results and errors
+
+| Result | Meaning |
+| --- | --- |
+| `.succeeded(paymentId, transactionId)` | Paid. Both ids match the dashboard and the webhook. |
+| `.processing(paymentId)` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `.canceled` | The buyer closed the sheet. Not an error. |
+| `.failed(error)` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
+
+| `error.code` | What to do |
+| --- | --- |
+| `.declined` | The bank said no. The buyer can try another card or method. |
+| `.expired` | The session ran out. Create a new one. |
+| `.alreadyPaid` | The session was already paid. Treat the order as paid. |
+| `.notAvailable` | This way to pay can't be used for this session. |
+| `.network` | No connection. Let the buyer try again. |
+| `.config` | A setup mistake in the app (for example `present` before `prepare`). |
+| `.unknown` | Anything else. Let the buyer try again. |
+
+## What the buyer sees
+
+- Your business, what they're paying for and the total, with a choice of their own currency where Vezmo offers one.
+- Apple Pay as one tap at the top, when the phone has it and you've set it up.
+- The other ways to pay as one list: **Card** (with the card's own logo once typed), pay-later methods, Cash App, and
+  UPI or Pix for buyers in India or Brazil.
+- One Pay button, 3D Secure when the bank asks for it, and a receipt: who was paid, with what, and a reference.
+
+## Appearance
+
+The sheet follows Vezmo's checkout design in light and dark. You can bring it closer to your app:
+
+```swift
+let vezmo = VezmoCheckout(configuration: .init(
+  returnURL: URL(string: "acme://vezmo"),
+  appearance: .init(
+    colors: [
+      .accent: .systemBlue,
+      .surface: UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.11, alpha: 1) : .white },
+    ],
+    cornerRadius: 12,
+    fontFamily: "Inter" // a font already in your app
+  )
+))
+```
+
+The main color keys: `accent`, `onAccent`, `surface`, `surface2`, `field`, `fieldLine`, `line`, `ink`, `ink2`, `ink3`,
+`good`, `bad`. A dynamic `UIColor` (or one from your asset catalog) can differ between light and dark. Setting your
+own `accent` replaces the Vezmo gradient on the Pay button.
+
+## Apple Pay
+
+1. In your Apple Developer account, create a **Merchant ID** and turn on **Apple Pay Payment Processing** for your
+   app's App ID with it. In Xcode, add the **Apple Pay** capability with that Merchant ID.
+2. Write to Vezmo support with your Merchant ID. We send you a certificate signing request; create the **Apple Pay
+   Payment Processing Certificate** with it and send us the certificate.
+3. Pass the Merchant ID as `applePay: .init(merchantId: "merchant.com.acme")`.
+
+## Testing
+
+Create the session with your sandbox API key. Pay with the test card `4242 4242 4242 4242`, any future expiry and any
+CVC; 3D Secure shows a test page where you can approve or fail the payment. `4000 0000 0000 0002` is declined. In the
+sandbox, Apple Pay uses the cards in the phone's wallet without charging them.
+
+The [example app](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/tree/main/packages/ios/Example) pays
+against Vezmo's sandbox: run `xcodegen generate` in `packages/ios/Example`, open `VezmoExample.xcodeproj`, and set the
+`VEZMO_DEMO_URL` and `VEZMO_API_BASE` build settings to the sandbox (or paste a client token in the app).
+
+## Troubleshooting
+
+- **No Apple Pay**: no `applePay` in the configuration, the Apple Pay capability is missing, no card in the phone's
+  Wallet, or the Apple Pay certificate isn't set up yet.
+- **The buyer doesn't come back to the app after 3D Secure or a bank app**: the session's `app.returnUrl` must be a
+  link registered under Developers → Mobile apps, your app must declare that URL scheme, and it must pass the link
+  to `VezmoCheckout.handleURL`.
+- **`.config` from `present`**: call `prepare(clientToken:)` first, and present each prepared session once.
+
+## License
+
+MIT
