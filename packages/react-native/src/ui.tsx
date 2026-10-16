@@ -24,9 +24,10 @@ export type Styles = ReturnType<typeof makeStyles>;
 const FILL = { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 } as const;
 /**
  * The native element's rows have their own leading margin inside our group; the sheet's own rows (UPI, Pix) copy it
- * so icons and titles line up. Measured on device: iOS icon at 28pt and title at 70pt from the group's edge.
+ * so icons and titles line up. Measured on device: iOS icon at 28pt, title at 70pt from the group's edge; Android
+ * icon centred at 30dp, title at 58dp.
  */
-const ROW_LEAD = Platform.OS === 'ios' ? 13 : 0;
+const ROW_LEAD = Platform.OS === 'ios' ? 13 : 1;
 const HAIRLINE = StyleSheet.hairlineWidth;
 
 export function makeStyles(p: SheetPalette, radius: number, fontFamily?: string) {

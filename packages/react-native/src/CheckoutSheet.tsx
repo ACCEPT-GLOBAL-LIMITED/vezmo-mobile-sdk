@@ -35,7 +35,7 @@ import {
 
 /** Room for the home indicator or the navigation bar under the sheet. */
 // ponytail: fixed inset; read the real one if a merchant app needs it to the point.
-const BOTTOM_INSET = Platform.OS === 'ios' ? 30 : 20;
+const BOTTOM_INSET = Platform.OS === 'ios' ? 30 : 28;
 
 export interface CheckoutSheetProps {
   session: CheckoutSession;
