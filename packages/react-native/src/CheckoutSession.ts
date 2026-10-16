@@ -17,6 +17,18 @@ export interface ElementPort {
   confirm(): void;
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
   clearSelection(): void;
+  /** Open the native card form. */
+  presentCard(): void;
+  /** Pay with the card from the card form. */
+  confirmCard(): void;
+}
+
+/** The card from the native card form, for the sheet's own Card row. */
+export interface CardChoice {
+  /** "•••• 4242". */
+  label: string;
+  /** The network's logo (PNG data URI) when the platform gives one. */
+  image: string | null;
 }
 
 export type SessionPhase =
@@ -48,8 +60,13 @@ export interface SessionSnapshot {
   elementError: string | null;
   /** Bumped by Try again: rebuilds the native element. */
   elementAttempt: number;
-  /** Which way to pay is showing: the element (cards, wallets, pay-later), or our UPI or Pix panel. */
-  method: 'element' | 'upi' | 'pix';
+  /**
+   * The selected way to pay: the sheet's Card row (`card`), one of the element's rows (`element`: wallets, pay-later),
+   * or our UPI or Pix row.
+   */
+  method: 'card' | 'element' | 'upi' | 'pix';
+  /** The card typed in the card form, kept when the buyer looks at another method and comes back. */
+  card: CardChoice | null;
 }
 
 const PRICE_CHANGED = 'The price in your currency just changed. Check the new amount and pay again.';
@@ -72,6 +89,7 @@ export class CheckoutSession {
     elementError: null,
     elementAttempt: 0,
     method: 'element',
+    card: null,
   };
   private listeners = new Set<() => void>();
   private element: ElementPort | null = null;
@@ -79,6 +97,8 @@ export class CheckoutSession {
   private lastError: VezmoError | null = null;
   private watching: ReturnType<typeof setInterval> | null = null;
   private qrIntentId: string | null = null;
+  /** The card form was opened by the buyer: the card it returns becomes the selection. */
+  private awaitingCard = false;
 
   constructor(
     private readonly api: VezmoApi,
@@ -119,10 +139,41 @@ export class CheckoutSession {
     this.apply(this.snapshot.config, payLocal);
   }
 
-  /** The element's selected method changed (null: nothing selected). Choosing one leaves UPI or Pix. */
+  /** The element's selected method changed (null: nothing selected). Choosing one leaves the card, UPI or Pix. */
   setOption(option: { label: string } | null) {
     const leave = !!option && this.snapshot.method !== 'element' && this.snapshot.phase.name === 'ready';
     this.set({ canPay: !!option, option: option?.label || null, ...(leave ? { method: 'element' as const } : {}) });
+  }
+
+  /** The buyer tapped the Card row: the card already typed, or the card form to type one. */
+  chooseCard() {
+    if (this.snapshot.phase.name !== 'ready') return;
+    if (this.snapshot.card) {
+      this.element?.clearSelection();
+      this.set({ method: 'card', phase: { name: 'ready', error: null } });
+    } else {
+      this.changeCard();
+    }
+  }
+
+  /** Change (or first type) the card. */
+  changeCard() {
+    if (this.snapshot.phase.name !== 'ready') return;
+    this.awaitingCard = true;
+    this.element?.presentCard();
+  }
+
+  /** The card form reported its card (or none). One the buyer just typed becomes the selection. */
+  setCard(card: CardChoice | null) {
+    const chosen = !!card && this.awaitingCard && this.snapshot.phase.name === 'ready';
+    if (card) this.awaitingCard = false;
+    if (chosen) this.element?.clearSelection();
+    this.set({ card, ...(chosen ? { method: 'card' as const, phase: { name: 'ready', error: null } } : {}) });
+  }
+
+  /** The Pay button can be pressed: a typed card on the Card row, or a method chosen in the element. */
+  static canPay(s: SessionSnapshot): boolean {
+    return s.method === 'card' ? !!s.card : s.method === 'element' ? s.canPay : false;
   }
 
   setElementError(message: string | null) {
@@ -143,7 +194,7 @@ export class CheckoutSession {
   }
 
   /** UPI or Pix (the sheet's own rows) or back to the element; one method is selected at a time. */
-  chooseMethod(method: 'element' | 'upi' | 'pix') {
+  chooseMethod(method: 'card' | 'element' | 'upi' | 'pix') {
     if (this.snapshot.phase.name !== 'ready') return;
     if (method !== 'element') this.element?.clearSelection();
     this.set({ method, phase: { name: 'ready', error: null } });
@@ -222,11 +273,13 @@ export class CheckoutSession {
 
   // ── paying ─────────────────────────────────────────────────────────────
   pay() {
-    if (this.snapshot.phase.name !== 'ready' || !this.element) return;
+    if (this.snapshot.phase.name !== 'ready' || !this.element || !CheckoutSession.canPay(this.snapshot)) return;
     this.lastPay = null;
     this.lastError = null;
-    this.set({ phase: { name: 'paying' }, paidWith: this.snapshot.option });
-    this.element.confirm();
+    const card = this.snapshot.method === 'card';
+    this.set({ phase: { name: 'paying' }, paidWith: card ? (this.snapshot.card?.label ?? null) : this.snapshot.option });
+    if (card) this.element.confirmCard();
+    else this.element.confirm();
   }
 
   /** The element made a confirmation token: Vezmo prices and confirms the payment with it. */

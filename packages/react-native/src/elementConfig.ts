@@ -56,11 +56,15 @@ export function elementConfigJson(args: {
   });
 }
 
-/** What is charged, for the element: a change updates it in place (the buyer switched currency). */
+/**
+ * What is charged: a change updates it in place (the buyer switched currency). Cards go to the native card form
+ * (`card`), the sheet's own Card row; every other method to the element's rows.
+ */
 export function elementIntentJson(charge: Charge, methods: SheetMethods): string {
   return JSON.stringify({
     amount: charge.amountMinor,
     currency: charge.currency.toLowerCase(),
-    paymentMethodTypes: methods.elementTypes,
+    paymentMethodTypes: methods.elementTypes.filter((t) => t !== 'card'),
+    card: methods.elementTypes.includes('card'),
   });
 }

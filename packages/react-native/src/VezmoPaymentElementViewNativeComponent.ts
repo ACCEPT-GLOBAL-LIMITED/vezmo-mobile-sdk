@@ -26,6 +26,11 @@ export interface NativeProps extends ViewProps {
   onConfirmationToken?: CodegenTypes.DirectEventHandler<Readonly<{ id: string }>>;
   /** `completed`, `canceled` or `failed` (with `message`). */
   onConfirmResult?: CodegenTypes.DirectEventHandler<Readonly<{ status: string; message: string }>>;
+  /**
+   * The card typed in the card form (the sheet draws the Card row itself): its label ("•••• 4242") and the network's
+   * logo as a PNG data URI; both empty when there is no card yet.
+   */
+  onCardOptionChange?: CodegenTypes.DirectEventHandler<Readonly<{ label: string; image: string }>>;
 }
 
 interface NativeCommands {
@@ -37,12 +42,16 @@ interface NativeCommands {
     clientSecret: string,
     errorMessage: string,
   ) => void;
-  /** Unselect the element's method (the buyer chose one of the sheet's own, UPI or Pix). */
+  /** Unselect the element's method (the buyer chose one of the sheet's own: the card, UPI or Pix). */
   clearSelection: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
+  /** Open the native card form (the Card row, or its Change). */
+  presentCard: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
+  /** Pay with the card from the card form. The outcome arrives in `onConfirmResult`. */
+  confirmCard: (viewRef: React.ElementRef<HostComponent<NativeProps>>) => void;
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ['confirm', 'resolveConfirmation', 'clearSelection'],
+  supportedCommands: ['confirm', 'resolveConfirmation', 'clearSelection', 'presentCard', 'confirmCard'],
 });
 
 export default codegenNativeComponent<NativeProps>(

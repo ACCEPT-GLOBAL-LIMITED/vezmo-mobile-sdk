@@ -1,7 +1,11 @@
 package com.vezmo.reactnative
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.drawable.Drawable
+import android.util.Base64
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
@@ -28,18 +32,23 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.stripe.android.PaymentConfiguration
+import com.stripe.android.paymentelement.CreateIntentWithConfirmationTokenCallback
 import com.stripe.android.paymentelement.EmbeddedPaymentElement
 import com.stripe.android.paymentelement.rememberEmbeddedPaymentElement
 import com.stripe.android.paymentsheet.CreateIntentResult
 import com.stripe.android.paymentsheet.PaymentSheet
+import com.stripe.android.paymentsheet.PaymentSheetResult
+import com.stripe.android.paymentsheet.model.PaymentOption
+import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
 import org.json.JSONObject
 
 /**
- * The Vezmo payment element on Android: the processor's native embedded element in Compose, configured from JSON
- * the JS layer builds, confirmed through Vezmo's server.
+ * The Vezmo payment element on Android: the processor's native embedded element in Compose (wallets, pay-later and
+ * other methods) and, for cards, its native card form behind a flow controller (the sheet draws the Card row itself,
+ * with the card's own logo), configured from JSON the JS layer builds and confirmed through Vezmo's server.
  *
  * Payment flow: the buyer picks a method and taps Pay → [confirm] → the element creates a confirmation token and
  * calls our callback → we hand its id to JS (`onConfirmationToken`) → JS sends it to Vezmo's API, which prices and
@@ -53,20 +62,31 @@ import org.json.JSONObject
 class VezmoPaymentElementView(
   private val reactContext: ThemedReactContext,
 ) : FrameLayout(reactContext) {
+  /** What the element and the card form are set up with. [card] is null when the session takes no cards. */
+  private data class Setup(
+    val configuration: EmbeddedPaymentElement.Configuration,
+    val intent: PaymentSheet.IntentConfiguration,
+    /** The element has rows to draw (other methods or Google Pay); without any it is left unconfigured. */
+    val rows: Boolean,
+    val card: Pair<PaymentSheet.IntentConfiguration, PaymentSheet.Configuration>?,
+  )
+
   private sealed interface Command {
     data class Configure(
-      val configuration: EmbeddedPaymentElement.Configuration,
-      val intent: PaymentSheet.IntentConfiguration,
+      val setup: Setup,
     ) : Command
 
     data class Update(
-      val configuration: EmbeddedPaymentElement.Configuration,
-      val intent: PaymentSheet.IntentConfiguration,
+      val setup: Setup,
     ) : Command
 
     data object Confirm : Command
 
     data object Clear : Command
+
+    data object PresentCard : Command
+
+    data object ConfirmCard : Command
   }
 
   private val commands = Channel<Command>(Channel.UNLIMITED)
@@ -75,6 +95,7 @@ class VezmoPaymentElementView(
   private var configDirty = false
   private var intentDirty = false
   private var elementConfiguration: EmbeddedPaymentElement.Configuration? = null
+  private var sheetConfiguration: PaymentSheet.Configuration? = null
   private var pendingSecret: CompletableDeferred<CreateIntentResult>? = null
   private var composeView: ComposeView? = null
   private var lastHeightDp = -1f
@@ -103,25 +124,39 @@ class VezmoPaymentElementView(
       emit("topLoadFailed", Arguments.createMap().apply { putString("message", "Missing checkout keys.") })
       return
     }
-    val intentConfiguration = intentConfiguration(intent)
-    if (configDirty || elementConfiguration == null) {
+    val types = intent.optJSONArray("paymentMethodTypes")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()
+    val rebuild = configDirty || elementConfiguration == null
+    if (rebuild) {
       PaymentConfiguration.init(
         reactContext.applicationContext,
         publishableKey,
         config.optString("stripeAccount").ifEmpty { null },
       )
-      val configuration = configuration(config)
-      elementConfiguration = configuration
-      commands.trySend(Command.Configure(configuration, intentConfiguration))
-    } else {
-      commands.trySend(Command.Update(elementConfiguration!!, intentConfiguration))
+      elementConfiguration = configuration(config)
+      sheetConfiguration = sheetConfiguration(config)
     }
+    val setup =
+      Setup(
+        configuration = elementConfiguration!!,
+        intent = intentConfiguration(intent, types),
+        rows = types.isNotEmpty() || config.optJSONObject("googlePay") != null,
+        card = if (intent.optBoolean("card")) intentConfiguration(intent, listOf("card")) to sheetConfiguration!! else null,
+      )
+    commands.trySend(if (rebuild) Command.Configure(setup) else Command.Update(setup))
     configDirty = false
     intentDirty = false
   }
 
   fun confirm() {
     commands.trySend(Command.Confirm)
+  }
+
+  fun presentCard() {
+    commands.trySend(Command.PresentCard)
+  }
+
+  fun confirmCard() {
+    commands.trySend(Command.ConfirmCard)
   }
 
   fun clearSelection() {
@@ -205,29 +240,35 @@ class VezmoPaymentElementView(
           resultCallback = { result -> emitResult(result) },
         )
       }
+    // Cards: the native card form and confirmation through the same Vezmo server step, without a row of its own.
+    val cardBuilder =
+      remember {
+        PaymentSheet.FlowController
+          .Builder(
+            resultCallback = { result -> emitSheetResult(result) },
+            paymentOptionResultCallback = { result -> emitCardOption(result.paymentOption) },
+          ).createIntentCallback(
+            CreateIntentWithConfirmationTokenCallback { confirmationToken -> awaitClientSecret(confirmationToken.id) },
+          )
+      }
     CompositionLocalProvider(
       LocalActivityResultRegistryOwner provides activity,
       LocalViewModelStoreOwner provides activity,
       LocalLifecycleOwner provides activity,
     ) {
       val embedded = rememberEmbeddedPaymentElement(builder)
+      val cardFlow = cardBuilder.build()
       val density = LocalDensity.current
 
-      LaunchedEffect(embedded) {
+      LaunchedEffect(embedded, cardFlow) {
         commands.consumeAsFlow().collect { command ->
           when (command) {
-            is Command.Configure ->
-              report(
-                embedded.configure(intentConfiguration = command.intent, configuration = command.configuration),
-                loaded = true,
-              )
-            is Command.Update ->
-              report(
-                embedded.configure(intentConfiguration = command.intent, configuration = command.configuration),
-                loaded = false,
-              )
+            is Command.Configure -> configure(embedded, cardFlow, command.setup, loaded = true)
+            is Command.Update -> configure(embedded, cardFlow, command.setup, loaded = false)
             is Command.Confirm -> embedded.confirm()
             is Command.Clear -> embedded.clearPaymentOption()
+            is Command.PresentCard -> cardFlow.presentPaymentOptions()
+            is Command.ConfirmCard -> cardFlow.confirm()
           }
         }
       }
@@ -257,6 +298,80 @@ class VezmoPaymentElementView(
         embedded.Content()
       }
     }
+  }
+
+  /** Sets up the element (when it has rows) and the card form (when cards are taken); reports loaded once. */
+  private suspend fun configure(
+    embedded: EmbeddedPaymentElement,
+    cardFlow: PaymentSheet.FlowController,
+    setup: Setup,
+    loaded: Boolean,
+  ) {
+    if (setup.rows) {
+      val result = embedded.configure(intentConfiguration = setup.intent, configuration = setup.configuration)
+      if (result is EmbeddedPaymentElement.ConfigureResult.Failed) return report(result, loaded)
+    }
+    val card = setup.card
+    if (card == null) {
+      if (loaded) emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
+      return
+    }
+    val done = CompletableDeferred<Throwable?>()
+    cardFlow.configureWithIntentConfiguration(card.first, card.second) { success, error ->
+      done.complete(if (success) null else error ?: Exception(DEFAULT_ERROR))
+    }
+    val error = done.await()
+    if (error != null) {
+      emit("topLoadFailed", Arguments.createMap().apply { putString("message", error.localizedMessage ?: DEFAULT_ERROR) })
+      return
+    }
+    emitCardOption(cardFlow.getPaymentOption())
+    if (loaded) emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
+  }
+
+  /** The card from the card form, for the sheet's own Card row: its label and the network's logo. */
+  private fun emitCardOption(option: PaymentOption?) {
+    emit(
+      "topCardOptionChange",
+      Arguments.createMap().apply {
+        putString("label", option?.label ?: "")
+        putString("image", option?.let { pngDataUri(it.icon()) } ?: "")
+      },
+    )
+  }
+
+  private fun pngDataUri(drawable: Drawable): String? =
+    try {
+      val density = resources.displayMetrics.density
+      val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else (32 * density).toInt()
+      val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else (20 * density).toInt()
+      val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+      drawable.setBounds(0, 0, width, height)
+      drawable.draw(Canvas(bitmap))
+      val out = ByteArrayOutputStream()
+      bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+      "data:image/png;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+    } catch (_: Throwable) {
+      null
+    }
+
+  private fun emitSheetResult(result: PaymentSheetResult) {
+    val map = Arguments.createMap()
+    when (result) {
+      is PaymentSheetResult.Completed -> {
+        map.putString("status", "completed")
+        map.putString("message", "")
+      }
+      is PaymentSheetResult.Canceled -> {
+        map.putString("status", "canceled")
+        map.putString("message", "")
+      }
+      is PaymentSheetResult.Failed -> {
+        map.putString("status", "failed")
+        map.putString("message", result.error.localizedMessage ?: DEFAULT_ERROR)
+      }
+    }
+    emit("topConfirmResult", map)
   }
 
   private fun report(
@@ -312,9 +427,11 @@ class VezmoPaymentElementView(
     dispatcher.dispatchEvent(VezmoElementEvent(UIManagerHelper.getSurfaceId(reactContext), id, name, payload))
   }
 
-  private fun intentConfiguration(intent: JSONObject): PaymentSheet.IntentConfiguration {
-    val types = intent.optJSONArray("paymentMethodTypes")
-    return PaymentSheet.IntentConfiguration(
+  private fun intentConfiguration(
+    intent: JSONObject,
+    types: List<String>,
+  ): PaymentSheet.IntentConfiguration =
+    PaymentSheet.IntentConfiguration(
       mode =
         PaymentSheet.IntentConfiguration.Mode.Payment(
           amount = intent.optLong("amount"),
@@ -322,9 +439,8 @@ class VezmoPaymentElementView(
           // Our server makes every intent with automatic_async capture; the element must say the same.
           captureMethod = PaymentSheet.IntentConfiguration.CaptureMethod.AutomaticAsync,
         ),
-      paymentMethodTypes = types?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList(),
+      paymentMethodTypes = types,
     )
-  }
 
   @SuppressLint("RestrictedApi")
   private fun configuration(config: JSONObject): EmbeddedPaymentElement.Configuration {
@@ -350,6 +466,26 @@ class VezmoPaymentElementView(
         ),
       )
     }
+    config.optJSONObject("billing")?.let { b ->
+      builder.defaultBillingDetails(
+        PaymentSheet.BillingDetails(
+          name = b.optString("name").ifEmpty { null },
+          email = b.optString("email").ifEmpty { null },
+        ),
+      )
+    }
+    config.optJSONObject("appearance")?.let { builder.appearance(appearance(it)) }
+    return builder.build()
+  }
+
+  /** The card form's settings: the same business, look and billing details as the element; cards only, no wallets. */
+  @SuppressLint("RestrictedApi")
+  private fun sheetConfiguration(config: JSONObject): PaymentSheet.Configuration {
+    val builder =
+      PaymentSheet.Configuration
+        .Builder(config.optString("merchantDisplayName"))
+        .link(PaymentSheet.LinkConfiguration(display = PaymentSheet.LinkConfiguration.Display.Never))
+        .paymentMethodLayout(PaymentSheet.PaymentMethodLayout.Vertical)
     config.optJSONObject("billing")?.let { b ->
       builder.defaultBillingDetails(
         PaymentSheet.BillingDetails(

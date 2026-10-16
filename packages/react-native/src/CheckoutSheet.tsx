@@ -11,7 +11,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import type { CheckoutSession } from './CheckoutSession';
+import { CheckoutSession } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
 import { formatAmount } from './flow';
 import { PaymentElement, type PaymentElementHandle } from './PaymentElement';
@@ -22,6 +22,7 @@ import type { CheckoutResult, PaidMethod } from './types';
 import {
   Banner,
   BrandTile,
+  CardRow,
   Cross,
   makeStyles,
   MethodRow,
@@ -83,6 +84,8 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
       confirm: () => element.current?.confirm(),
       resolveConfirmation: (secret, message) => element.current?.resolveConfirmation(secret, message),
       clearSelection: () => element.current?.clearSelection(),
+      presentCard: () => element.current?.presentCard(),
+      confirmCard: () => element.current?.confirmCard(),
     });
     return () => {
       session.attachElement(null);
@@ -123,10 +126,12 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const finished = phase.name === 'done' || phase.name === 'closed';
   const own = methods?.upi ? ('upi' as const) : methods?.pix ? ('pix' as const) : null;
   const qrForm = useRef<QrFormHandle>(null);
-  // Placeholders for the rows the element is about to draw: its methods, and this phone's wallet when offered.
-  const expectedRows = methods
-    ? Math.max(1, methods.elementTypes.length + (Platform.OS === 'ios' ? (methods.applePay && props.wallets?.applePay ? 1 : 0) : methods.googlePay ? 1 : 0))
-    : 3;
+  // The Card row is the sheet's own; the element draws the other methods and this phone's wallet when offered.
+  const cardOn = !!methods?.elementTypes.includes('card');
+  const walletRow = Platform.OS === 'ios' ? !!(methods?.applePay && props.wallets?.applePay) : !!methods?.googlePay;
+  const elementRows = !!methods && (methods.elementTypes.some((t) => t !== 'card') || walletRow);
+  // Placeholders for the rows about to load.
+  const expectedRows = methods ? Math.max(1, methods.elementTypes.length + (walletRow ? 1 : 0)) : 3;
   // A hairline over the pinned bottom only while content scrolls under it.
   const [scroll, setScroll] = useState({ content: 0, frame: 0 });
   const scrolls = scroll.content > scroll.frame + 1;
@@ -256,20 +261,34 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                         </View>
                       </View>
                       <View style={s.group} accessibilityRole="radiogroup" accessibilityLabel="Payment method">
-                        <PaymentElement
-                          ref={element}
-                          configJson={configJson}
-                          intentJson={intentJson}
-                          onPaymentOptionChange={(option) => session.setOption(option)}
-                          onLoaded={() => {
-                            setLoadedConfig(configJson);
-                            session.setElementError(null);
-                          }}
-                          onLoadFailed={(message) => session.setElementError(message || 'load failed')}
-                          onConfirmationToken={(id) => void session.onConfirmationToken(id)}
-                          onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
-                        />
                         {elementLoading && <RowsSkeleton s={s} rows={expectedRows} />}
+                        {cardOn && !elementLoading && !snap.elementError && (
+                          <CardRow
+                            card={snap.card}
+                            selected={snap.method === 'card'}
+                            disabled={paying}
+                            onPress={() => session.chooseCard()}
+                            onChange={() => session.changeCard()}
+                            s={s}
+                            p={p}
+                          />
+                        )}
+                        <View style={cardOn && elementRows && !elementLoading && !snap.elementError ? s.rowLine : undefined}>
+                          <PaymentElement
+                            ref={element}
+                            configJson={configJson}
+                            intentJson={intentJson}
+                            onPaymentOptionChange={(option) => session.setOption(option)}
+                            onCardOptionChange={(card) => session.setCard(card)}
+                            onLoaded={() => {
+                              setLoadedConfig(configJson);
+                              session.setElementError(null);
+                            }}
+                            onLoadFailed={(message) => session.setElementError(message || 'load failed')}
+                            onConfirmationToken={(id) => void session.onConfirmationToken(id)}
+                            onConfirmResult={(status, message) => void session.onConfirmResult(status, message)}
+                          />
+                        </View>
                         {!!snap.elementError && (
                           <View style={s.empty} accessibilityLiveRegion="polite">
                             <Text testID="vezmo-element-error" style={s.emptyTitle}>
@@ -293,7 +312,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                       </View>
                     </View>
 
-                    {snap.method !== 'element' ? (
+                    {snap.method === 'upi' || snap.method === 'pix' ? (
                       <QrForm
                         ref={qrForm}
                         method={snap.method}
@@ -314,7 +333,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
             </ScrollView>
 
             <View style={[s.dock, scrolls && s.dockLine]}>
-              {phase.name === 'waiting' ? null : snap.method !== 'element' ? (
+              {phase.name === 'waiting' ? null : snap.method === 'upi' || snap.method === 'pix' ? (
                 <PrimaryButton
                   lock
                   label={snap.method === 'upi' ? `Pay ${amount} with UPI` : `Get Pix code for ${amount}`}
@@ -330,7 +349,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                   testID="vezmo-pay"
                   label={`Pay ${amount}`}
                   lock
-                  disabled={!snap.canPay}
+                  disabled={!CheckoutSession.canPay(snap)}
                   busy={paying}
                   onPress={() => session.pay()}
                   s={s}

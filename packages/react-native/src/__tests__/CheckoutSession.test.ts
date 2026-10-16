@@ -32,7 +32,13 @@ function setup() {
     startQr: jest.fn<any>().mockResolvedValue({ status: 'requires_action', qr: null, link: 'upi://pay?pa=x', code: null }),
     checkoutPageUrl: jest.fn((t: string) => `https://api.test/v1/secure-payments/${t}`),
   };
-  const element = { confirm: jest.fn(), resolveConfirmation: jest.fn(), clearSelection: jest.fn() };
+  const element = {
+    confirm: jest.fn(),
+    resolveConfirmation: jest.fn(),
+    clearSelection: jest.fn(),
+    presentCard: jest.fn(),
+    confirmCard: jest.fn(),
+  };
   const session = new CheckoutSession(api as any, 'tok', 'acme://vezmo/return');
   session.attachElement(element);
   return { api, element, session };
@@ -55,6 +61,7 @@ describe('CheckoutSession', () => {
   it('a card paid by the server: hands the element the secret, the result is the server’s', async () => {
     const method = { type: 'card', brand: 'visa', last4: '4242', wallet: null };
     t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', clientSecret: 'pi_1_secret_a', method });
+    t.session.setOption({ label: '•••• 4242' });
     t.session.pay();
     expect(t.element.confirm).toHaveBeenCalled();
     await t.session.onConfirmationToken('ctoken_1');
@@ -141,6 +148,28 @@ describe('CheckoutSession', () => {
     t.session.pay();
     t.session.setOption(null);
     expect(t.session.getSnapshot().paidWith).toBe('Klarna');
+  });
+
+  it('the Card row: opens the card form, the typed card becomes the selection, and pays through the card form', () => {
+    t.session.chooseCard();
+    expect(t.element.presentCard).toHaveBeenCalled();
+    expect(CheckoutSession.canPay(t.session.getSnapshot())).toBe(false);
+    const card = { label: '•••• 4242', image: 'data:image/png;base64,AA==' };
+    t.session.setCard(card);
+    expect(t.session.getSnapshot()).toMatchObject({ method: 'card', card });
+    expect(t.element.clearSelection).toHaveBeenCalled();
+    // Another method in the element leaves the card row but keeps the card for later.
+    t.session.setOption({ label: 'Klarna' });
+    expect(t.session.getSnapshot()).toMatchObject({ method: 'element', card });
+    // A re-sent card (the amount changed) does not take the selection back.
+    t.session.setCard(card);
+    expect(t.session.getSnapshot().method).toBe('element');
+    t.session.chooseCard();
+    expect(t.session.getSnapshot().method).toBe('card');
+    t.session.pay();
+    expect(t.element.confirmCard).toHaveBeenCalled();
+    expect(t.element.confirm).not.toHaveBeenCalled();
+    expect(t.session.getSnapshot().paidWith).toBe('•••• 4242');
   });
 
   it('UPI: starts on the session intent, waits for the bank app, records it when paid', async () => {

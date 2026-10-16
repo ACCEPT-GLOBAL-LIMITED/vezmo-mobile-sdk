@@ -9,6 +9,10 @@ export interface PaymentElementHandle {
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
   /** Unselect the element's method. */
   clearSelection(): void;
+  /** Open the native card form. */
+  presentCard(): void;
+  /** Pay with the card from the card form. The outcome arrives in `onConfirmResult`. */
+  confirmCard(): void;
 }
 
 export interface PaymentElementProps {
@@ -18,6 +22,8 @@ export interface PaymentElementProps {
   onLoaded?: () => void;
   onLoadFailed?: (message: string) => void;
   onPaymentOptionChange?: (option: { paymentMethodType: string; label: string } | null) => void;
+  /** The card typed in the card form ("•••• 4242" and the network's logo as a data URI), or null. */
+  onCardOptionChange?: (card: { label: string; image: string | null } | null) => void;
   onConfirmationToken: (id: string) => void;
   onConfirmResult: (status: 'completed' | 'canceled' | 'failed', message: string) => void;
 }
@@ -38,6 +44,12 @@ export const PaymentElement = forwardRef<PaymentElementHandle, PaymentElementPro
       clearSelection() {
         if (native.current) Commands.clearSelection(native.current);
       },
+      presentCard() {
+        if (native.current) Commands.presentCard(native.current);
+      },
+      confirmCard() {
+        if (native.current) Commands.confirmCard(native.current);
+      },
     }));
 
     return (
@@ -51,6 +63,11 @@ export const PaymentElement = forwardRef<PaymentElementHandle, PaymentElementPro
         onHeightChange={(e) => setHeight(Math.max(1, Math.ceil(e.nativeEvent.height)))}
         onPaymentOptionChange={(e) =>
           props.onPaymentOptionChange?.(e.nativeEvent.paymentMethodType ? { ...e.nativeEvent } : null)
+        }
+        onCardOptionChange={(e) =>
+          props.onCardOptionChange?.(
+            e.nativeEvent.label ? { label: e.nativeEvent.label, image: e.nativeEvent.image || null } : null,
+          )
         }
         onConfirmationToken={(e) => props.onConfirmationToken(e.nativeEvent.id)}
         onConfirmResult={(e) =>

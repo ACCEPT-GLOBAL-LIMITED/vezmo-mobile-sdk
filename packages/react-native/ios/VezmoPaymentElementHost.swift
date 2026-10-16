@@ -3,8 +3,9 @@ import React
 @_spi(ConfirmationTokensPublicPreview) import StripePaymentSheet
 import UIKit
 
-/// The Vezmo payment element on iOS: the processor's native embedded element, configured from JSON that the JS
-/// layer builds, confirmed through Vezmo's server.
+/// The Vezmo payment element on iOS: the processor's native embedded element (wallets, pay-later and other methods)
+/// and, for cards, its native card form behind a flow controller (the sheet draws the Card row itself, with the card's
+/// own logo), both configured from JSON that the JS layer builds and confirmed through Vezmo's server.
 ///
 /// Payment flow: the buyer picks a method and taps Pay → `confirm()` → the element creates a confirmation token and
 /// calls our handler → we hand the token's id to JS (`confirmationToken`) → JS sends it to Vezmo's API, which prices
@@ -17,6 +18,8 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
 
   private var element: EmbeddedPaymentElement?
   private var elementView: UIView?
+  /// Cards: the native card form and confirmation, without a row of its own.
+  private var cardFlow: PaymentSheet.FlowController?
   private var configJson = ""
   private var intentJson = ""
   private var building = false
@@ -34,7 +37,7 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
   // MARK: Props
 
   @objc public func setConfigJson(_ config: String, intentJson intent: String) {
-    let rebuild = config != configJson || element == nil
+    let rebuild = config != configJson || (element == nil && cardFlow == nil)
     configJson = config
     intentJson = intent
     Task { @MainActor in
@@ -66,6 +69,30 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     element?.clearPaymentOption()
   }
 
+  @objc public func presentCard() {
+    guard let cardFlow, let presenter = RCTPresentedViewController() else { return }
+    cardFlow.presentPaymentOptions(from: presenter) { [weak self] _ in
+      self?.emitCardOption()
+    }
+  }
+
+  @objc public func confirmCard() {
+    guard let cardFlow, let presenter = RCTPresentedViewController() else {
+      emit("confirmResult", ["status": "failed", "message": "The payment form isn’t ready yet."])
+      return
+    }
+    cardFlow.confirm(from: presenter) { [weak self] result in
+      switch result {
+      case .completed:
+        self?.emit("confirmResult", ["status": "completed", "message": ""])
+      case .canceled:
+        self?.emit("confirmResult", ["status": "canceled", "message": ""])
+      case .failed(let error):
+        self?.emit("confirmResult", ["status": "failed", "message": error.localizedDescription])
+      }
+    }
+  }
+
   @objc public func resolveConfirmation(clientSecret: String, errorMessage: String) {
     guard let continuation = pendingSecret else { return }
     pendingSecret = nil
@@ -92,11 +119,30 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     STPAPIClient.shared.stripeAccount = config["stripeAccount"] as? String
 
     do {
-      let created = try await EmbeddedPaymentElement.create(
-        intentConfiguration: intentConfiguration(from: intent),
-        configuration: configuration(from: config)
-      )
-      attach(created)
+      let embeddedConfiguration = configuration(from: config)
+      let types = intent["paymentMethodTypes"] as? [String] ?? []
+      // The element draws the other ways to pay; with none (cards only), it is left out.
+      if !types.isEmpty || embeddedConfiguration.applePay != nil {
+        let created = try await EmbeddedPaymentElement.create(
+          intentConfiguration: intentConfiguration(from: intent, types: types),
+          configuration: embeddedConfiguration
+        )
+        attach(created)
+      } else {
+        detachElement()
+      }
+      if intent["card"] as? Bool == true {
+        cardFlow = try await withCheckedThrowingContinuation { continuation in
+          PaymentSheet.FlowController.create(
+            intentConfiguration: intentConfiguration(from: intent, types: ["card"]),
+            configuration: sheetConfiguration(from: config)
+          ) { continuation.resume(with: $0) }
+        }
+      } else {
+        cardFlow = nil
+      }
+      emitCardOption()
+      emit("loaded", [:])
     } catch {
       emit("loadFailed", ["message": error.localizedDescription])
     }
@@ -104,11 +150,38 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
 
   @MainActor
   private func update() async {
-    guard let element, let intent = Self.parse(intentJson) else { return }
-    let result = await element.update(intentConfiguration: intentConfiguration(from: intent))
-    if case .failed(let error) = result {
-      emit("loadFailed", ["message": error.localizedDescription])
+    guard let intent = Self.parse(intentJson) else { return }
+    if let element {
+      let types = intent["paymentMethodTypes"] as? [String] ?? []
+      let result = await element.update(intentConfiguration: intentConfiguration(from: intent, types: types))
+      if case .failed(let error) = result {
+        emit("loadFailed", ["message": error.localizedDescription])
+      }
     }
+    if let cardFlow {
+      cardFlow.update(intentConfiguration: intentConfiguration(from: intent, types: ["card"])) { [weak self] error in
+        if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
+        self?.emitCardOption()
+      }
+    }
+  }
+
+  @MainActor
+  private func detachElement() {
+    elementView?.removeFromSuperview()
+    elementView = nil
+    element = nil
+    emit("height", ["height": 0])
+  }
+
+  /// The card from the card form, for the sheet's own Card row: its label and the network's logo.
+  private func emitCardOption() {
+    let option = cardFlow?.paymentOption
+    var body: [String: Any] = ["label": option?.label ?? "", "image": ""]
+    if let option, let png = option.image.pngData() {
+      body["image"] = "data:image/png;base64," + png.base64EncodedString()
+    }
+    emit("cardOption", body)
   }
 
   @MainActor
@@ -128,15 +201,13 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
     ])
     elementView = view
 
-    emit("loaded", [:])
     embeddedPaymentElementDidUpdateHeight(embeddedPaymentElement: created)
     embeddedPaymentElementDidUpdatePaymentOption(embeddedPaymentElement: created)
   }
 
-  private func intentConfiguration(from intent: [String: Any]) -> PaymentSheet.IntentConfiguration {
+  private func intentConfiguration(from intent: [String: Any], types: [String]) -> PaymentSheet.IntentConfiguration {
     let amount = (intent["amount"] as? NSNumber)?.intValue ?? 0
     let currency = (intent["currency"] as? String ?? "usd").lowercased()
-    let types = intent["paymentMethodTypes"] as? [String]
     return PaymentSheet.IntentConfiguration(
       // Our server makes every intent with automatic_async capture; the element must say the same.
       mode: .payment(
@@ -177,6 +248,30 @@ public final class VezmoPaymentElementHost: UIView, EmbeddedPaymentElementDelega
         merchantId: merchantId,
         merchantCountryCode: applePay["merchantCountryCode"] as? String ?? "US"
       )
+    }
+    if let billing = config["billing"] as? [String: Any] {
+      configuration.defaultBillingDetails.name = billing["name"] as? String
+      configuration.defaultBillingDetails.email = billing["email"] as? String
+    }
+    if let appearance = config["appearance"] as? [String: Any] {
+      configuration.appearance = Self.appearance(from: appearance)
+    }
+    return configuration
+  }
+
+  /// The card form's settings: the same business, look and billing details as the element; cards only, no wallets.
+  private func sheetConfiguration(from config: [String: Any]) -> PaymentSheet.Configuration {
+    var configuration = PaymentSheet.Configuration()
+    configuration.merchantDisplayName = config["merchantDisplayName"] as? String ?? ""
+    if let returnURL = config["returnURL"] as? String, !returnURL.isEmpty {
+      configuration.returnURL = returnURL
+    }
+    configuration.link = PaymentSheet.LinkConfiguration(display: .never)
+    configuration.paymentMethodLayout = .vertical
+    switch config["style"] as? String {
+    case "dark": configuration.style = .alwaysDark
+    case "light": configuration.style = .alwaysLight
+    default: configuration.style = .automatic
     }
     if let billing = config["billing"] as? [String: Any] {
       configuration.defaultBillingDetails.name = billing["name"] as? String

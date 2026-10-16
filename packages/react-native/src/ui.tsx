@@ -362,6 +362,62 @@ export function SecuredBy({ s, dark }: { s: Styles; dark: boolean }) {
   );
 }
 
+/** A plain card, drawn: the Card row's icon before a card is typed. */
+function CardGlyph({ color }: { color: string }) {
+  return (
+    <View style={{ width: 22, height: 16, borderRadius: 3, borderWidth: 1.6, borderColor: color, justifyContent: 'flex-start' }} accessible={false}>
+      <View style={{ height: 3, backgroundColor: color, marginTop: 3 }} />
+    </View>
+  );
+}
+
+/**
+ * The Card row, drawn by the sheet (the native element would show a plain card for any card): the network's own logo
+ * once a card is typed, its last four, and Change. Tapping opens the native card form.
+ */
+export function CardRow(props: {
+  card: { label: string; image: string | null } | null;
+  selected: boolean;
+  disabled?: boolean;
+  onPress(): void;
+  onChange(): void;
+  s: Styles;
+  p: SheetPalette;
+}) {
+  const { s, p, card } = props;
+  return (
+    <Pressable
+      testID="vezmo-card-row"
+      accessibilityRole="radio"
+      accessibilityLabel={card ? `Card ${card.label}` : 'Card'}
+      accessibilityState={{ checked: props.selected, disabled: props.disabled }}
+      disabled={props.disabled}
+      onPress={props.onPress}
+      style={[s.row, s.ownRow]}
+    >
+      {card?.image ? (
+        <View style={s.rowIcon}>
+          <Image source={{ uri: card.image }} style={{ width: 24, height: 16 }} resizeMode="contain" />
+        </View>
+      ) : (
+        <View style={[s.rowIcon, { borderWidth: 0, backgroundColor: 'transparent' }]}>
+          <CardGlyph color={p.ink} />
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={s.rowTitle}>Card</Text>
+        {!!card && <Text style={s.rowSub}>{card.label}</Text>}
+      </View>
+      {props.selected && card && (
+        <Pressable accessibilityRole="button" accessibilityLabel="Change card" onPress={props.onChange} hitSlop={10} disabled={props.disabled}>
+          <Text style={[s.link, { fontSize: 14, fontWeight: '500' }]}>Change</Text>
+        </Pressable>
+      )}
+      {props.selected && card && <Tick color={p.accent} size={16} />}
+    </Pressable>
+  );
+}
+
 /** Something went wrong with the payment, said kindly. */
 export function Banner(props: { text: string; s: Styles; p: SheetPalette; testID?: string }) {
   const { s, p } = props;
