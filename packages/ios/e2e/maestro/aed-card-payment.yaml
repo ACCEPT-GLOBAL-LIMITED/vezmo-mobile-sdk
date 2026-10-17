@@ -1,0 +1,88 @@
+# A card payment in the buyer's own currency (AED, as a phone in the UAE is offered): the sheet opens in dirhams,
+# the card form opens after switching to dollars and back, and the payment goes through priced in dirhams.
+appId: com.vezmo.example.native
+---
+- launchApp:
+    clearState: true
+    # The sandbox offers dirhams, as to a buyer in the UAE (the runners are in the US).
+    arguments:
+      offerCurrency: AED
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 30000
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000
+# Dirhams first, the price's dollars beside them.
+- assertVisible: "Pay in"
+- assertVisible: ".*AED.*"
+- takeScreenshot: aed-01-sheet
+# Dollars, then dirhams again: the card flow is set up again for each, and the card form still opens.
+# Quickly, as a buyer might: back to dirhams before the dollars are set up, then straight to Card (a phone in the UAE
+# showed the engine's "not configured" here, its Card row up while the card flow was still being set up).
+- tapOn:
+    id: "vezmo-pay-in-price"
+    waitToSettleTimeoutMs: 100
+- tapOn:
+    id: "vezmo-pay-in-local"
+    waitToSettleTimeoutMs: 100
+- tapOn: "Card"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: aed-01a-after-card-tap
+# The card form opens as its own sheet; its fields are labelled differently across iOS versions, so wait for the form.
+- extendedWaitUntil:
+    visible: "(?i)(add card|card information|card number)"
+    timeout: 20000
+# Each field by its id (iOS reads the card field's label with the supported brands appended).
+- tapOn:
+    id: "Card number"
+- inputText: "4242424242424242"
+- tapOn:
+    id: "MM / YY"
+- inputText: "1234"
+- tapOn:
+    id: "CVC"
+- inputText: "123"
+- tapOn:
+    id: "ZIP"
+- inputText: "10001"
+- takeScreenshot: aed-01b-card-form
+# The number pad has no return key: its Done bar closes it.
+- tapOn:
+    text: "Done"
+    optional: true
+- takeScreenshot: aed-02-card-filled
+- tapOn: "Continue"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: aed-03-card-chosen
+- tapOn:
+    id: "vezmo-pay"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: aed-04-after-pay
+# 3D Secure (the platform asks for it on every card): the test challenge, if shown.
+- tapOn:
+    text: "(?i)complete.*"
+    optional: true
+- tapOn:
+    text: "(?i)submit"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-result-title"
+    timeout: 90000
+- takeScreenshot: aed-05-result
+- assertVisible: "Payment successful"
+- tapOn:
+    id: "vezmo-done"
+    retryTapIfNoChange: true
+- assertVisible:
+    id: "result"
+    text: ".*succeeded.*"
+- takeScreenshot: aed-06-back-in-app

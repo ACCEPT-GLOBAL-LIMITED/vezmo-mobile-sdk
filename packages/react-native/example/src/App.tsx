@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } from '@vezmopay/react-native';
 
 /**
@@ -13,6 +13,20 @@ const API_BASE = process.env.EXPO_PUBLIC_VEZMO_API_BASE || 'https://api.dev.vezm
 const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL || `${API_BASE}/demo/mobile-session`;
 // The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription.
 const SUBSCRIPTION_URL = DEMO_URL.replace(/mobile-session$/, 'mobile-subscription');
+
+// The end-to-end runs open vezmoexample://e2e?offerCurrency=AED: the sandbox then offers the buyer that currency, as it
+// would abroad (the CI runners are in the US).
+let offerCurrency: string | null = null;
+const readOffer = (url?: string | null) => {
+  const currency = url ? /[?&]offerCurrency=([A-Za-z]{3})\b/.exec(url)?.[1] : undefined;
+  if (currency) offerCurrency = currency.toUpperCase();
+};
+Linking.getInitialURL()
+  .then(readOffer)
+  .catch(() => undefined);
+Linking.addEventListener('url', ({ url }) => readOffer(url));
+const withOffer = (url: string) =>
+  offerCurrency ? `${url}${url.includes('?') ? '&' : '?'}offerCurrency=${offerCurrency}` : url;
 
 export default function App() {
   return (
@@ -37,7 +51,7 @@ function Shop() {
   const newSession = async (track?: 'mor') => {
     setStatus('Creating a sandbox session…');
     try {
-      const res = await fetch(track ? `${DEMO_URL}?track=${track}` : DEMO_URL, { method: 'POST' });
+      const res = await fetch(withOffer(track ? `${DEMO_URL}?track=${track}` : DEMO_URL), { method: 'POST' });
       const json = await res.json();
       setToken(json?.data?.clientToken ?? '');
       setStatus('Session ready.');
@@ -60,7 +74,7 @@ function Shop() {
     setResult(null);
     setStatus('Loading checkout…');
     try {
-      const res = await fetch(`${SUBSCRIPTION_URL}${query}`, { method: 'POST' });
+      const res = await fetch(withOffer(`${SUBSCRIPTION_URL}${query}`), { method: 'POST' });
       const subscriptionToken = (await res.json())?.data?.subscriptionToken ?? '';
       const prep = await prepareCheckout({ subscriptionToken });
       if (prep.error) return setStatus(`Could not load: ${prep.error.message}`);

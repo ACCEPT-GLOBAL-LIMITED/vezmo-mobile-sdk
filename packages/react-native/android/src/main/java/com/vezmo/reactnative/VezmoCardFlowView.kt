@@ -85,6 +85,16 @@ class VezmoCardFlowView(
   private var sheetConfiguration: PaymentSheet.Configuration? = null
   private var walletConfiguration: PaymentSheet.Configuration? = null
   private var pendingSecret: CompletableDeferred<CreateIntentResult>? = null
+
+  /** The last set-up, to set the card flow up again when the engine says it isn't. */
+  private var lastConfigure: Command.Configure? = null
+
+  /** A payment was started here (Pay with the card, or a wallet) and its result is still to come. */
+  private var paying = false
+
+  /** The card form is being opened: a failure reported meanwhile is the form's, not a payment's. */
+  private var openingCard = false
+  private var openFailure: Throwable? = null
   private var composeView: ComposeView? = null
   private var lastHeightDp = -1f
 
@@ -231,6 +241,7 @@ class VezmoCardFlowView(
     val clickHandler =
       remember {
         WalletButtonsViewClickHandler { wallet ->
+          paying = true
           emit("topWalletTap", Arguments.createMap().apply { putString("wallet", wallet) })
           false // not handled here: the wallet goes on to pay
         }
@@ -248,10 +259,16 @@ class VezmoCardFlowView(
       LaunchedEffect(flow, walletFlow) {
         commands.consumeAsFlow().collect { command ->
           when (command) {
-            is Command.Configure -> walletsOn = configure(flow, walletFlow, command)
+            is Command.Configure -> {
+              lastConfigure = command
+              walletsOn = configure(flow, walletFlow, command)
+            }
             is Command.Off -> emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
-            is Command.PresentCard -> flow.presentPaymentOptions()
-            is Command.ConfirmCard -> flow.confirm()
+            is Command.PresentCard -> openCard(flow)
+            is Command.ConfirmCard -> {
+              paying = true
+              flow.confirm()
+            }
           }
         }
       }
@@ -270,6 +287,33 @@ class VezmoCardFlowView(
         if (walletsOn) walletFlow.WalletButtons(clickHandler)
       }
     }
+  }
+
+  /**
+   * Opens the card form. The engine refuses when it isn't set up after all (its "not configured", never shown): the
+   * card flow is set up again once and the form opened again; failing that, the sheet reads our words.
+   */
+  private suspend fun openCard(flow: PaymentSheet.FlowController) {
+    if (presented(flow)) return
+    val again = lastConfigure
+    if (again != null && configureOne(flow, again.intent, again.card) == null && presented(flow)) return
+    emit(
+      "topConfirmResult",
+      Arguments.createMap().apply {
+        putString("status", "failed")
+        putString("message", CARD_LOADING)
+      },
+    )
+  }
+
+  /** Opens the card form; false when the engine refused at once (it reports that synchronously). */
+  private fun presented(flow: PaymentSheet.FlowController): Boolean {
+    openFailure = null
+    openingCard = true
+    flow.presentPaymentOptions()
+    openingCard = false
+    openFailure?.let { android.util.Log.w("VezmoCheckout", "The card form couldn't open", it) }
+    return openFailure == null
   }
 
   /** Sets up the card flow (and the wallet flow when offered); answers whether the wallet buttons should show. */
@@ -379,6 +423,12 @@ class VezmoCardFlowView(
   }
 
   private fun emitResult(result: PaymentSheetResult) {
+    if (openingCard) {
+      if (result is PaymentSheetResult.Failed) openFailure = result.error
+      return
+    }
+    val payment = paying
+    paying = false
     val map = Arguments.createMap()
     when (result) {
       is PaymentSheetResult.Completed -> {
@@ -391,7 +441,8 @@ class VezmoCardFlowView(
       }
       is PaymentSheetResult.Failed -> {
         map.putString("status", "failed")
-        map.putString("message", result.error.localizedMessage ?: DEFAULT_ERROR)
+        // The engine's own words only for a payment it was running; anything else (not set up, say) in ours.
+        map.putString("message", (if (payment) result.error.localizedMessage else null) ?: DEFAULT_ERROR)
       }
     }
     emit("topConfirmResult", map)

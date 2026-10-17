@@ -76,6 +76,10 @@ struct SessionSnapshot: Equatable {
 }
 
 private let priceChanged = "The price in your currency just changed. Check the new amount and pay again."
+/// The engine isn't set up for this payment (it is loading, or loading again after a currency switch).
+let engineLoading = "The card form is still loading. Try again in a moment."
+/// The engine failed before Vezmo was asked to take the payment: never its own words.
+let notCompleted = "Your payment couldn’t be completed. Please try again."
 
 /// What the token is: an API checkout session's (a one-time payment) or a subscription checkout's (cards and Apple Pay;
 /// a first payment or a free trial).
@@ -205,6 +209,12 @@ final class CheckoutSession: ObservableObject {
     case .element: return s.canPay
     case .upi, .pix: return false
     }
+  }
+
+  /// The engine refused (it isn't set up yet): back to the sheet, in our words.
+  func engineNotReady() {
+    guard snapshot.phase.isReady || snapshot.phase == .paying else { return }
+    set { $0.phase = .ready(error: VezmoError(code: .unknown, message: engineLoading)) }
   }
 
   func setElementError(_ message: String?) {
@@ -406,7 +416,12 @@ final class CheckoutSession: ObservableObject {
         case nil: break
         }
       }
-      let shown = error ?? VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
+      // Without Vezmo's answer, the engine's own words only for a payment Vezmo handed it: a failure before any (the
+      // engine not set up, a wallet that couldn't start) is never shown in its words.
+      let fallback = lastPay == nil
+        ? VezmoError(code: .unknown, message: notCompleted)
+        : VezmoError(code: .declined, message: message.isEmpty ? declinedError.message : message)
+      let shown = error ?? fallback
       set { $0.phase = .ready(error: shown) }
       return
     case .completed:

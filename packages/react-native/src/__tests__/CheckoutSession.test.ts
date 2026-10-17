@@ -124,6 +124,24 @@ describe('CheckoutSession', () => {
     expect(t.session.getSnapshot().phase).toMatchObject({ error: { message: 'Your payment method was declined.' } });
   });
 
+  it('a failure before Vezmo was asked to take the payment never reads in the engine’s words', async () => {
+    t.session.setOption({ label: 'Visa •••• 4242' });
+    t.session.pay();
+    // The card flow refused (it was being set up again): no /pay was made.
+    await t.session.onConfirmResult('failed', 'FlowController is not configured, or has a configuration update in flight.');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'ready',
+      error: { code: 'unknown', message: 'Your payment couldn’t be completed. Please try again.' },
+    });
+    expect(t.api.status).not.toHaveBeenCalled();
+    // Not paying: the card form couldn't open, in the native side's (our) words.
+    await t.session.onConfirmResult('failed', 'The card form is still loading. Try again in a moment.');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'ready',
+      error: { code: 'unknown', message: 'The card form is still loading. Try again in a moment.' },
+    });
+  });
+
   it('a step lost on the device that went through anyway is the payment, as on iOS and Android', async () => {
     t.api.pay.mockResolvedValue({ state: 'requires_action', paymentId: 'pay_1', clientSecret: 'pi_6_secret_l' });
     // The bank app came back late: the device reports a failure, Vezmo has the payment.

@@ -310,6 +310,7 @@ export function Segmented<K extends string>(props: {
         return (
           <Pressable
             key={it.key}
+            testID={`vezmo-pay-in-${it.key}`}
             accessibilityRole="radio"
             accessibilityState={{ checked: on, disabled: props.disabled }}
             disabled={props.disabled}

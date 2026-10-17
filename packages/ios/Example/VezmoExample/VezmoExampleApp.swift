@@ -15,6 +15,22 @@ struct VezmoExampleApp: App {
   }
 }
 
+/// The end-to-end runs launch the app with `offerCurrency` (e.g. AED, a launch argument): the sandbox then offers the
+/// buyer that currency, as it would abroad (the CI runners are in the US).
+private let offerCurrency: String? = {
+  if let value = UserDefaults.standard.string(forKey: "offerCurrency"), !value.isEmpty { return value }
+  let args = ProcessInfo.processInfo.arguments
+  guard let i = args.firstIndex(where: { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-")) == "offerCurrency" }),
+        i + 1 < args.count else { return nil }
+  return args[i + 1]
+}()
+
+/// A demo endpoint's address, with the offer currency the run asked for.
+private func demoURL(_ string: String) -> URL? {
+  guard let offerCurrency else { return URL(string: string) }
+  return URL(string: string + (string.contains("?") ? "&" : "?") + "offerCurrency=\(offerCurrency)")
+}
+
 /// A build setting passed through Info.plist (empty when not set).
 private func setting(_ key: String) -> String? {
   (Bundle.main.object(forInfoDictionaryKey: key) as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -148,7 +164,7 @@ struct Shop: View {
       return
     }
     if let track { demo += "?track=\(track)" }
-    guard let url = URL(string: demo) else { return }
+    guard let url = demoURL(demo) else { return }
     status = "Creating a sandbox session…"
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -193,7 +209,7 @@ struct Shop: View {
   /// the sandbox's demo endpoint does.
   private func subscribe(_ query: String) async {
     guard let demo = setting("VezmoDemoURL"),
-          let url = URL(string: demo.replacingOccurrences(of: "mobile-session", with: "mobile-subscription") + query) else {
+          let url = demoURL(demo.replacingOccurrences(of: "mobile-session", with: "mobile-subscription") + query) else {
       status = "Set VEZMO_DEMO_URL."
       return
     }

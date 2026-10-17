@@ -141,7 +141,6 @@ struct EngineError: LocalizedError {
   var errorDescription: String? { message.isEmpty ? "Your payment couldn’t be completed. Please try again." : message }
 }
 
-private let notReady = "The payment form isn’t ready yet."
 
 /// Why the engine couldn't load or update, for the app's console (the buyer sees our own words).
 let engineLog = Logger(subsystem: "com.vezmo.checkout", category: "engine")
@@ -170,6 +169,10 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
   @Published private(set) var walletFlow: PaymentSheet.FlowController?
   /// Built for the current settings.
   @Published private(set) var loaded = false
+  /// Set up again for a new amount (the buyer switched currency; the rows stay on screen): the engine refuses the card
+  /// form and payments until it ends, so the sheet holds the Card row and Pay meanwhile.
+  @Published private(set) var updating = false
+  private var updates = 0
 
   private var flow: PaymentSheet.FlowController?
   private var settings: EngineSettings?
@@ -201,15 +204,15 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
   // MARK: Commands
 
   func presentCard() {
-    guard let flow, let presenter else { return }
+    guard let flow, let presenter, !updating else { return }
     flow.presentPaymentOptions(from: presenter) { [weak self] _ in
       self?.reportCard()
     }
   }
 
   func confirmCard() {
-    guard let flow, let presenter else {
-      Task { await session?.onConfirmResult(.failed, message: notReady) }
+    guard let flow, let presenter, !updating else {
+      session?.engineNotReady()
       return
     }
     flow.confirm(from: presenter) { [weak self] result in
@@ -247,6 +250,9 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
 
   /// Builds the engine for these settings; false when it couldn't load (the session shows why).
   private func build(_ settings: EngineSettings, _ intent: EngineIntent) async -> Bool {
+    // A new flow: an update of the old one in flight no longer counts (it may never answer).
+    updates += 1
+    updating = false
     guard intent.card else {
       flow = nil
       walletFlow = nil
@@ -283,7 +289,12 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
 
   private func update() {
     guard let flow, let intent else { return }
+    updates += 1
+    let mine = updates
+    updating = true
+    // Only the latest update answers (the engine drops one superseded by another).
     flow.update(intentConfiguration: intentConfiguration(intent)) { [weak self] error in
+      if mine == self?.updates { self?.updating = false }
       if let error {
         engineLog.error("Card flow failed to update: \(String(describing: error), privacy: .public)")
         self?.session?.setElementError(error.localizedDescription)
@@ -397,6 +408,9 @@ final class MethodsHost: ObservableObject, ElementPort, EmbeddedPaymentElementDe
   @Published private(set) var height: CGFloat = 0
   /// Built for the current settings.
   @Published private(set) var loaded = false
+  /// Set up again for a new amount: the engine refuses payments until it ends (see `CardFlowHost.updating`).
+  @Published private(set) var updating = false
+  private var updates = 0
 
   private var settings: EngineSettings?
   private var intent: EngineIntent?
@@ -430,8 +444,8 @@ final class MethodsHost: ObservableObject, ElementPort, EmbeddedPaymentElementDe
   // MARK: Commands
 
   func confirm() {
-    guard let element else {
-      Task { await session?.onConfirmResult(.failed, message: notReady) }
+    guard let element, !updating else {
+      session?.engineNotReady()
       return
     }
     element.presentingViewController = presenter
@@ -474,6 +488,9 @@ final class MethodsHost: ObservableObject, ElementPort, EmbeddedPaymentElementDe
 
   /// Builds the engine for these settings; false when it couldn't load (the session shows why).
   private func build(_ settings: EngineSettings, _ intent: EngineIntent) async -> Bool {
+    // A new element: an update of the old one in flight no longer counts.
+    updates += 1
+    updating = false
     STPAPIClient.shared.publishableKey = settings.publishableKey
     STPAPIClient.shared.stripeAccount = settings.account
     do {
@@ -502,7 +519,11 @@ final class MethodsHost: ObservableObject, ElementPort, EmbeddedPaymentElementDe
 
   private func update() async {
     guard let element, let intent else { return }
+    updates += 1
+    let mine = updates
+    updating = true
     let result = await element.update(intentConfiguration: intentConfiguration(intent))
+    if mine == updates { updating = false }
     if case .failed(let error) = result {
       engineLog.error("Element failed to update: \(String(describing: error), privacy: .public)")
       session?.setElementError(error.localizedDescription)

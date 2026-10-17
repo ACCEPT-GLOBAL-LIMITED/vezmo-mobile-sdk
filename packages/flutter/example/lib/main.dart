@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' show pi;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vezmo_checkout/vezmo_checkout.dart';
 
 /// The Vezmo Flutter example: a small shop with one product and a Buy button that opens the Vezmo sheet. A real app
@@ -45,11 +46,23 @@ class _ShopState extends State<Shop> {
     token.addListener(() => setState(() {}));
   }
 
+  /// The end-to-end runs launch the app with `offerCurrency` (e.g. AED, an intent extra on Android): the sandbox
+  /// then offers the buyer that currency, as it would abroad (the CI runners are in the US). Null otherwise.
+  static Future<String?> offerCurrency() async {
+    try {
+      return await const MethodChannel('vezmo_example/launch').invokeMethod<String>('offerCurrency');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token.
   Future<String?> demoToken(String path, String field) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
     try {
-      final response = await (await client.postUrl(Uri.parse('$apiBase$path'))).close();
+      final currency = await offerCurrency();
+      final query = currency == null ? '' : '${path.contains('?') ? '&' : '?'}offerCurrency=$currency';
+      final response = await (await client.postUrl(Uri.parse('$apiBase$path$query'))).close();
       final body = jsonDecode(await response.transform(utf8.decoder).join()) as Map<String, dynamic>;
       final value = (body['data'] as Map<String, dynamic>?)?[field] as String?;
       return value == null || value.isEmpty ? null : value;

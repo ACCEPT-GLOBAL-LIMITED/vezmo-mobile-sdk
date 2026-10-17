@@ -36,10 +36,14 @@ appId: com.vezmo.example.nativeapp
 - assertVisible: ".*AED.*"
 - takeScreenshot: aed-01-sheet
 # Dollars, then dirhams again: the card flow is set up again for each, and the card form still opens on the first tap.
+# Quickly, as a buyer might: back to dirhams before the dollars are set up, then straight to Card (a phone in the UAE
+# showed the engine's "not configured" here, its Card row up while the card flow was still being set up).
 - tapOn:
     id: "vezmo-pay-in-price"
+    waitToSettleTimeoutMs: 100
 - tapOn:
     id: "vezmo-pay-in-local"
+    waitToSettleTimeoutMs: 100
 - tapOn: "Card"
 - extendedWaitUntil:
     visible: "Card number"
