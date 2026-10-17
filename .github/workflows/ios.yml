@@ -124,7 +124,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ios-native-e2e-${{ matrix.track }}
-          path: e2e-out/**/*.png
+          # The screenshots, and each flow's steps (commands.json shows which retries, if any, ran).
+          path: |
+            e2e-out/**/*.png
+            e2e-out/**/commands.json
       # Maestro's logs, only when something failed.
       - name: Keep the logs of a failed run
         if: failure()

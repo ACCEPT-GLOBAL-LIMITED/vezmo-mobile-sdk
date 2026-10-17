@@ -11,6 +11,10 @@ appId: com.vezmo.example
       id: "new-session"
     timeout: 30000
 - openLink: "vezmoexample://e2e?track=${typeof TRACK == 'undefined' ? 'connect' : TRACK}&offerCurrency=${typeof OFFER_CURRENCY == 'undefined' ? '' : OFFER_CURRENCY}"
+# iOS asks before a link opens an app: "Open in “Vezmo Example”?"
+- tapOn:
+    text: "Open"
+    optional: true
 - extendedWaitUntil:
     visible:
       id: "status"

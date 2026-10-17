@@ -196,7 +196,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: flutter-ios-e2e-${{ matrix.track }}
-          path: packages/flutter/e2e/out-ios/**/*.png
+          # The screenshots, and each flow's steps (commands.json shows which retries, if any, ran).
+          path: |
+            packages/flutter/e2e/out-ios/**/*.png
+            packages/flutter/e2e/out-ios/**/commands.json
       # Maestro's logs and any crash reports, only when something failed.
       - name: Keep the logs of a failed run
         if: failure()
