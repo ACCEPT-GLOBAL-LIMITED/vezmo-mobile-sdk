@@ -1,0 +1,12 @@
+# Opens the card form from the sheet's Card row (Android). Card is tapped again only if nothing at all changed (a
+# dropped tap; an error the sheet shows instead of the form is a change, and fails the flow).
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- tapOn:
+    text: "Card"
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "Card number"
+    timeout: 20000

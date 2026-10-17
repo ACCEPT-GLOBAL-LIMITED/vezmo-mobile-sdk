@@ -1,0 +1,10 @@
+# A new sandbox session from the example app's "New sandbox session" button, on the business the app was launched with.
+# The app tries the demo endpoint up to three times with a short timeout, each try on its status line.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: api-ready.yaml
+- tapOn:
+    id: "new-session"
+- extendedWaitUntil:
+    visible: "Session ready."
+    timeout: 75000

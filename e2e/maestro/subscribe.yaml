@@ -1,0 +1,27 @@
+# Starts a subscription from the example app (BUTTON: `subscribe`, with the 7-day free trial, or `subscribe-now`) and
+# waits for its sheet. The app tries the demo endpoint up to three times; when the sandbox still couldn't make or load
+# the subscription (nothing has been paid yet), the button is tapped once more.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: api-ready.yaml
+- runFlow:
+    file: tap-mid-screen.yaml
+    env:
+      ID: ${BUTTON}
+- extendedWaitUntil:
+    visible: "Card|Could not (load|reach).*"
+    timeout: 90000
+- runFlow:
+    when:
+      visible:
+        id: "status"
+        text: "Could not (load|reach).*"
+    commands:
+      - runFlow: api-ready.yaml
+      - runFlow:
+          file: tap-mid-screen.yaml
+          env:
+            ID: ${BUTTON}
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 90000

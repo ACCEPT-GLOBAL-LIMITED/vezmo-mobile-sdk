@@ -1,12 +1,18 @@
 name: React Native SDK e2e
 
-# Pays on the dev sandbox from the example app, on a real Android emulator. Sessions come from dev's demo endpoint
-# (TEST mode only), so this repo holds no key.
+# Pays on the dev sandbox from the example app, on an Android emulator and an iPhone simulator, once per business model
+# (Connect and merchant of record, in parallel). Sessions come from dev's demo endpoint (TEST mode only), so this repo
+# holds no key.
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['packages/react-native/**', '.github/workflows/react-native-e2e.yml']
+    paths:
+      - 'packages/react-native/**'
+      - 'e2e/**'
+      - '.github/actions/**'
+      - '.github/scripts/maestro-test.sh'
+      - '.github/workflows/react-native-e2e.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,9 +28,13 @@ env:
 
 jobs:
   android:
-    name: Android emulator
+    name: Android emulator (${{ matrix.track }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [connect, mor]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/setup
@@ -34,11 +44,6 @@ jobs:
           java-version: '17'
       - name: Accept Android SDK licences
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
-      - name: Enable KVM for the emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
       - name: Prebuild the example app
         run: yarn example expo prebuild --platform android --no-install
       - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
@@ -53,47 +58,42 @@ jobs:
         env:
           JAVA_OPTS: '-XX:MaxHeapSize=6g'
         run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 -Dorg.gradle.jvmargs=-Xmx4g
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/maestro
       - name: Run the flows on an emulator
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        uses: ./.github/actions/android-emulator
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          # A real phone's size and density (1080x2400, 420 dpi), so screenshots show what buyers see.
-          profile: pixel_7
-          ram-size: 4096M
           working-directory: packages/react-native
+          # One command per line. The dark mode and largest-text screenshots run once, with the Connect flows.
           script: |
             adb shell settings put global hide_error_dialogs 1
             # Keep the whole run's log: a failure early in the run is otherwise rotated out by the time it is saved.
             adb logcat -G 16M
             adb install example/android/app/build/outputs/apk/release/app-release.apk
-            mkdir -p e2e/out
-            maestro test e2e/maestro/android --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
-            adb shell "cmd uimode night yes"
-            maestro test e2e/maestro/look/android --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-dark.png; exit 1)
+            ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out/flows e2e/maestro/android || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night yes"
+            [ ${{ matrix.track }} != connect ] || ../../.github/scripts/maestro-test.sh connect e2e/out/look e2e/maestro/look/android || (adb exec-out screencap -p > e2e/out/failure-dark.png; exit 1)
             # The largest text size the phone offers, light: the sheet's text grows up to the first accessibility size.
-            adb shell "cmd uimode night no"
-            adb shell settings put system font_scale 2.0
-            maestro test e2e/maestro/large/android --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-large.png; exit 1)
+            [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night no"
+            [ ${{ matrix.track }} != connect ] || adb shell settings put system font_scale 2.0
+            [ ${{ matrix.track }} != connect ] || ../../.github/scripts/maestro-test.sh connect e2e/out/large e2e/maestro/large/android || (adb exec-out screencap -p > e2e/out/failure-large.png; exit 1)
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: android-e2e
+          name: android-e2e-${{ matrix.track }}
           path: |
             packages/react-native/e2e/out
             packages/react-native/*.png
             packages/react-native/e2e/**/*.png
 
   ios:
-    name: iOS simulator
+    name: iOS simulator (${{ matrix.track }})
     runs-on: macos-15
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [connect, mor]
     env:
       RCT_USE_RN_DEP: 1
       RCT_USE_PREBUILT_RNCORE: 1
@@ -103,6 +103,8 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
         with:
           xcode-version: latest-stable
+      # Booted (and warmed) before the build: a just-booted simulator's first minutes are busy.
+      - uses: ./.github/actions/ios-simulator
       - name: Prebuild the example app (installs pods)
         run: yarn example expo prebuild --platform ios
       - name: Build the release app for the simulator (JS bundled in)
@@ -111,33 +113,24 @@ jobs:
           xcodebuild -workspace VezmoExample.xcworkspace -scheme VezmoExample -configuration Release
           -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build
           CODE_SIGNING_ALLOWED=NO -quiet
-      - name: Boot an iPhone simulator
-        run: |
-          UDID=$(xcrun simctl list devices available -j | node -e "const d=JSON.parse(require('fs').readFileSync(0)).devices;const all=Object.values(d).flat().filter(x=>/^iPhone/.test(x.name));console.log((all.find(x=>/iPhone 16$/.test(x.name))||all[0]).udid)")
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/dev-api
       - name: Run the flows
         run: |
           xcrun simctl install "$UDID" example/ios/build/Build/Products/Release-iphonesimulator/VezmoExample.app
-          mkdir -p e2e/out-ios
-          # The test driver can take a while to start on a cold CI simulator.
-          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
-          maestro --device "$UDID" test e2e/maestro/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; exit 1)
+          ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out-ios/flows e2e/maestro/ios || { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; exit 1; }
+      # Once, with the Connect flows.
+      - name: The sheet in dark mode and at the largest text size
+        if: matrix.track == 'connect'
+        run: |
           xcrun simctl ui "$UDID" appearance dark
-          maestro --device "$UDID" test e2e/maestro/look/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1)
+          ../../.github/scripts/maestro-test.sh connect e2e/out-ios/look e2e/maestro/look/ios || { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1; }
           # Dynamic Type at its largest, light: the sheet's text grows only up to the first accessibility size.
           xcrun simctl ui "$UDID" appearance light
           xcrun simctl ui "$UDID" content_size accessibility-extra-extra-extra-large
-          maestro --device "$UDID" test e2e/maestro/large/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-large.png; exit 1)
+          ../../.github/scripts/maestro-test.sh connect e2e/out-ios/large e2e/maestro/large/ios || { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-large.png; exit 1; }
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-e2e
+          name: ios-e2e-${{ matrix.track }}
           path: packages/react-native/e2e/out-ios
-

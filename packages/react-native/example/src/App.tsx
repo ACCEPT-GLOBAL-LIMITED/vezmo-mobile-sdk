@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } from '@vezmopay/react-native';
 
@@ -14,19 +14,43 @@ const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL || `${API_BASE}/demo/mob
 // The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription.
 const SUBSCRIPTION_URL = DEMO_URL.replace(/mobile-session$/, 'mobile-subscription');
 
-// The end-to-end runs open vezmoexample://e2e?offerCurrency=AED: the sandbox then offers the buyer that currency, as it
+// The end-to-end runs open vezmoexample://e2e?track=mor&offerCurrency=AED: `track` picks the sandbox business (`mor`,
+// the merchant-of-record one, or `connect`), and `offerCurrency` has the sandbox offer the buyer that currency, as it
 // would abroad (the CI runners are in the US).
-let offerCurrency: string | null = null;
-const readOffer = (url?: string | null) => {
-  const currency = url ? /[?&]offerCurrency=([A-Za-z]{3})\b/.exec(url)?.[1] : undefined;
-  if (currency) offerCurrency = currency.toUpperCase();
+type Launch = { track?: string; offerCurrency?: string };
+const readLaunch = (url?: string | null): Launch | null => {
+  if (!url || !/^vezmoexample:\/\/e2e\b/.test(url)) return null;
+  const param = (name: string) => new RegExp(`[?&]${name}=([A-Za-z]+)\\b`).exec(url)?.[1];
+  return { track: param('track')?.toLowerCase(), offerCurrency: param('offerCurrency')?.toUpperCase() };
 };
-Linking.getInitialURL()
-  .then(readOffer)
-  .catch(() => undefined);
-Linking.addEventListener('url', ({ url }) => readOffer(url));
-const withOffer = (url: string) =>
-  offerCurrency ? `${url}${url.includes('?') ? '&' : '?'}offerCurrency=${offerCurrency}` : url;
+
+// A demo endpoint's address on a business (`mor` or not), with the offer currency the run asked for.
+const demoUrl = (base: string, track: string | undefined, launch: Launch) => {
+  const query = [track === 'mor' && 'track=mor', launch.offerCurrency && `offerCurrency=${launch.offerCurrency}`];
+  const params = query.filter(Boolean).join('&');
+  return params ? `${base}${base.includes('?') ? '&' : '?'}${params}` : base;
+};
+
+// The sandbox's demo endpoints, with a short timeout and up to three tries (a CI runner's first requests can stall,
+// and the sandbox restarts now and then); `show` puts each try on screen. The token in `field`, or null.
+async function demoToken(url: string, field: string, label: string, show: (status: string) => void) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    show(attempt === 1 ? label : `${label} (try ${attempt} of 3)`);
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 15000);
+    try {
+      const res = await fetch(url, { method: 'POST', signal: abort.signal });
+      const token = res.ok ? (await res.json())?.data?.[field] : undefined;
+      if (typeof token === 'string' && token) return token;
+    } catch {
+      // Timed out or unreachable: try again.
+    } finally {
+      clearTimeout(timer);
+    }
+    if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, attempt * 3000));
+  }
+  return null;
+}
 
 export default function App() {
   return (
@@ -46,18 +70,32 @@ function Shop() {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState('');
   const [result, setResult] = useState<CheckoutResult | null>(null);
+  const [launch, setLaunch] = useState<Launch>({});
+  useEffect(() => {
+    // The run's settings, on screen too: the run waits for them before it taps anything.
+    const take = (url?: string | null) => {
+      const read = readLaunch(url);
+      if (!read) return;
+      setLaunch(read);
+      setStatus(`Run: ${read.track ?? 'connect'}${read.offerCurrency ? `, ${read.offerCurrency}` : ''}.`);
+    };
+    Linking.getInitialURL()
+      .then(take)
+      .catch(() => undefined);
+    const subscription = Linking.addEventListener('url', ({ url }) => take(url));
+    return () => subscription.remove();
+  }, []);
+  // The business of the sandbox buttons that name none (the run's `track`, else Connect), and of "Subscribe, no
+  // trial" (the run's `track`, else merchant of record).
+  const track = launch.track;
+  const noTrialTrack = track ?? 'mor';
 
   // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
-  const newSession = async (track?: 'mor') => {
-    setStatus('Creating a sandbox session…');
-    try {
-      const res = await fetch(withOffer(track ? `${DEMO_URL}?track=${track}` : DEMO_URL), { method: 'POST' });
-      const json = await res.json();
-      setToken(json?.data?.clientToken ?? '');
-      setStatus('Session ready.');
-    } catch {
-      setStatus('Could not reach the demo endpoint.');
-    }
+  const newSession = async (sessionTrack?: string) => {
+    const url = demoUrl(DEMO_URL, sessionTrack, launch);
+    const created = await demoToken(url, 'clientToken', 'Creating a sandbox session…', setStatus);
+    if (created) setToken(created);
+    setStatus(created ? 'Session ready.' : 'Could not reach the demo endpoint.');
   };
 
   const pay = async () => {
@@ -70,19 +108,15 @@ function Shop() {
   };
 
   // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
-  const subscribe = async (query: string) => {
+  const subscribe = async (subscriptionTrack: string | undefined, trial: boolean) => {
     setResult(null);
-    setStatus('Loading checkout…');
-    try {
-      const res = await fetch(withOffer(`${SUBSCRIPTION_URL}${query}`), { method: 'POST' });
-      const subscriptionToken = (await res.json())?.data?.subscriptionToken ?? '';
-      const prep = await prepareCheckout({ subscriptionToken });
-      if (prep.error) return setStatus(`Could not load: ${prep.error.message}`);
-      setStatus('');
-      setResult(await presentCheckout());
-    } catch {
-      setStatus('Could not reach the demo endpoint.');
-    }
+    const url = demoUrl(trial ? `${SUBSCRIPTION_URL}?trial=1` : SUBSCRIPTION_URL, subscriptionTrack, launch);
+    const subscriptionToken = await demoToken(url, 'subscriptionToken', 'Loading checkout…', setStatus);
+    if (!subscriptionToken) return setStatus('Could not reach the demo endpoint.');
+    const prep = await prepareCheckout({ subscriptionToken });
+    if (prep.error) return setStatus(`Could not load: ${prep.error.message}`);
+    setStatus('');
+    setResult(await presentCheckout());
   };
 
   const ready = !!token.trim();
@@ -130,14 +164,16 @@ function Shop() {
             autoCorrect={false}
             style={styles.input}
           />
-          <Pressable testID="new-session" onPress={() => newSession()} style={styles.secondary}>
-            <Text style={styles.secondaryText}>New sandbox session</Text>
+          <Pressable testID="new-session" onPress={() => newSession(track)} style={styles.secondary}>
+            <Text style={styles.secondaryText}>New sandbox session{track === 'mor' ? ' · merchant of record' : ''}</Text>
           </Pressable>
           <Pressable testID="new-session-mor" onPress={() => newSession('mor')} style={styles.secondary}>
             <Text style={styles.secondaryText}>New session · merchant of record</Text>
           </Pressable>
-          <Pressable testID="subscribe-now" onPress={() => subscribe('?track=mor')} style={styles.secondary}>
-            <Text style={styles.secondaryText}>Subscribe, no trial · merchant of record</Text>
+          <Pressable testID="subscribe-now" onPress={() => subscribe(noTrialTrack, false)} style={styles.secondary}>
+            <Text style={styles.secondaryText}>
+              Subscribe, no trial{noTrialTrack === 'mor' ? ' · merchant of record' : ''}
+            </Text>
           </Pressable>
         </View>
 
@@ -151,7 +187,7 @@ function Shop() {
               <Text style={styles.price}>$9.99 / month · first 7 days free</Text>
             </View>
           </View>
-          <Pressable testID="subscribe" onPress={() => subscribe('?trial=1')} style={styles.buy}>
+          <Pressable testID="subscribe" onPress={() => subscribe(track, true)} style={styles.buy}>
             <Text style={styles.buyText}>Try 7 days free</Text>
           </Pressable>
         </View>

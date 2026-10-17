@@ -1,17 +1,34 @@
 name: iOS SDK
 
 # The Swift package (VezmoCheckout): builds it and runs its unit tests on an iPhone simulator, then pays on the dev
-# sandbox from the native example app with Maestro (card with 3D Secure, decline, cancel, bad token, merchant of
-# record, Cash App, subscriptions; dark mode and a large text size).
+# sandbox from the native example app with Maestro, once per business model (Connect and merchant of record, in
+# parallel): card with 3D Secure, decline, AED, subscriptions with and without a trial; cancel, bad token and Cash App
+# once; dark mode and a large text size.
 # Sessions come from dev's demo endpoint (TEST mode only), so this repo holds no key.
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['Package.swift', 'packages/ios/**', '.github/workflows/ios.yml']
+    paths:
+      - 'Package.swift'
+      - 'packages/ios/**'
+      - 'e2e/**'
+      - '.github/actions/ios-simulator/**'
+      - '.github/actions/dev-api/**'
+      - '.github/actions/maestro/**'
+      - '.github/scripts/maestro-test.sh'
+      - '.github/workflows/ios.yml'
   pull_request:
     branches: [main]
-    paths: ['Package.swift', 'packages/ios/**', '.github/workflows/ios.yml']
+    paths:
+      - 'Package.swift'
+      - 'packages/ios/**'
+      - 'e2e/**'
+      - '.github/actions/ios-simulator/**'
+      - '.github/actions/dev-api/**'
+      - '.github/actions/maestro/**'
+      - '.github/scripts/maestro-test.sh'
+      - '.github/workflows/ios.yml'
 
 concurrency:
   group: ios-sdk-${{ github.ref }}
@@ -59,14 +76,20 @@ jobs:
           path: out/test.log
 
   example:
-    name: Example app on an iPhone simulator
+    name: Example app on an iPhone simulator (${{ matrix.track }})
     runs-on: macos-15
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [connect, mor]
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
         with:
           xcode-version: latest-stable
+      # Booted (and warmed) before the build: a just-booted simulator's first minutes are busy.
+      - uses: ./.github/actions/ios-simulator
       - name: Generate the Xcode project
         working-directory: packages/ios/Example
         run: |
@@ -81,43 +104,31 @@ jobs:
             -clonedSourcePackagesDirPath "$SPM_DIR" -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO VEZMO_DEMO_URL="$VEZMO_DEMO_URL" VEZMO_API_BASE="$VEZMO_API_BASE" \
             2>&1 | tee build.log | grep -E "error:|warning: .*(VezmoCheckout|VezmoExample)|\*\* BUILD"
-      - name: Boot an iPhone simulator
-        run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          phones = [d for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")]
-          pick = next((d for d in phones if d["name"] == "iPhone 16"), phones[-1])
-          print(pick["udid"]); print(pick["name"], file=sys.stderr)')
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/dev-api
       - name: Run the flows
         run: |
           xcrun simctl install "$UDID" packages/ios/Example/build/Build/Products/Debug-iphonesimulator/VezmoExample.app
-          mkdir -p e2e-out
-          # The test driver can take a while to start on a cold CI simulator.
-          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
-          maestro --device "$UDID" test packages/ios/e2e/maestro --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure.png; exit 1)
+          .github/scripts/maestro-test.sh ${{ matrix.track }} e2e-out/flows packages/ios/e2e/maestro || { xcrun simctl io "$UDID" screenshot e2e-out/failure.png; exit 1; }
+      # Once, with the Connect flows.
+      - name: The sheet in dark mode and at a large text size
+        if: matrix.track == 'connect'
+        run: |
           xcrun simctl ui "$UDID" appearance dark
-          maestro --device "$UDID" test packages/ios/e2e/maestro/look --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure-dark.png; exit 1)
+          .github/scripts/maestro-test.sh connect e2e-out/look packages/ios/e2e/maestro/look || { xcrun simctl io "$UDID" screenshot e2e-out/failure-dark.png; exit 1; }
           # Dynamic Type: the first accessibility text size, light.
           xcrun simctl ui "$UDID" appearance light
           xcrun simctl ui "$UDID" content_size accessibility-medium
-          maestro --device "$UDID" test packages/ios/e2e/maestro/large --test-output-dir e2e-out || (xcrun simctl io "$UDID" screenshot e2e-out/failure-large.png; exit 1)
+          .github/scripts/maestro-test.sh connect e2e-out/large packages/ios/e2e/maestro/large || { xcrun simctl io "$UDID" screenshot e2e-out/failure-large.png; exit 1; }
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-native-e2e
+          name: ios-native-e2e-${{ matrix.track }}
           path: e2e-out/**/*.png
-      # The simulator's full log (hundreds of MB), only when something failed.
+      # Maestro's logs, only when something failed.
       - name: Keep the logs of a failed run
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-native-e2e-logs
+          name: ios-native-e2e-logs-${{ matrix.track }}
           path: e2e-out

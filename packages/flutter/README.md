@@ -310,10 +310,10 @@ To build the iPhone side against a commit of this repository's iOS SDK rather th
 ios --simulator`.
 
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
-Maestro (`e2e/maestro`). On an Android emulator: a card with 3D Secure, a decline, cancel, a bad token, Cash App on
-the merchant-of-record track, a subscription's free trial and its first payment, and the sheet in dark mode. On an
-iPhone simulator: a card with 3D Secure on both business models, a decline, cancel, a bad token, Cash App, a
-subscription's free trial and its first payment, and the sheet in dark mode.
+Maestro (`e2e/maestro`), on an Android emulator and an iPhone simulator alike. On both business models (Connect and
+merchant of record): a card with 3D Secure, a decline, a payment and a subscription in AED, and a subscription's free
+trial and its first payment. Once: cancel, a bad token, Cash App on the merchant-of-record business, and the sheet in
+dark mode.
 
 To release, push a tag `flutter-v<version>` after the Android and iOS SDKs it pins are out; the release order and
 every place the version lives are in

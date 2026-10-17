@@ -1,0 +1,17 @@
+# Types CARD on the open card form (Android) with an expiry, CVC and ZIP, and chooses it (Continue). SHOT names the
+# screenshots.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- tapOn: "Card number"
+# The form moves on by itself: card number, then expiry, then CVC.
+- inputText: ${CARD}
+- inputText: "1234"
+- inputText: "123"
+- tapOn: "ZIP Code"
+- inputText: "10001"
+- hideKeyboard
+- takeScreenshot: ${SHOT}-02-card-filled
+- tapOn: "Continue"
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ${SHOT}-03-card-chosen

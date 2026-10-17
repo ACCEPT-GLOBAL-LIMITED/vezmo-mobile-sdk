@@ -1,0 +1,19 @@
+name: Maestro
+description: Installs the Maestro CLI for the end-to-end flows (a pinned version; the download is retried)
+runs:
+  using: composite
+  steps:
+    - name: Install Maestro
+      shell: bash
+      env:
+        # Pinned: a new Maestro changes how flows run; bump it on purpose.
+        MAESTRO_VERSION: 2.11.0
+      run: |
+        for attempt in 1 2 3; do
+          curl -fsSL --retry 3 https://get.maestro.mobile.dev -o "$RUNNER_TEMP/install-maestro.sh" &&
+            bash "$RUNNER_TEMP/install-maestro.sh" > /dev/null && break
+          echo "::warning::Installing Maestro failed (try $attempt of 3)"
+          sleep 15
+        done
+        "$HOME/.maestro/bin/maestro" --version
+        echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"

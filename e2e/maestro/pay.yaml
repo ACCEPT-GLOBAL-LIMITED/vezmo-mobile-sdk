@@ -1,0 +1,23 @@
+# Pay, 3D Secure when the bank asks (the test challenge), and the sheet's result (SHOT names the screenshots). Pay is
+# pressed only once the sandbox answers its health check; nothing after Pay is ever tried again.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: api-ready.yaml
+- tapOn:
+    id: "vezmo-pay"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: ${SHOT}-04-after-pay
+- tapOn:
+    text: "(?i)complete.*"
+    optional: true
+- tapOn:
+    text: "(?i)submit"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-result-title"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ${SHOT}-05-result

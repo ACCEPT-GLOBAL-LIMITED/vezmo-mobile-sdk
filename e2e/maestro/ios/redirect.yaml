@@ -1,0 +1,44 @@
+# Pays with the redirect method chosen on the sheet (iOS) up to the provider's test page in the in-app browser (SHOT
+# names the screenshots). A cold simulator can leave the browser blank (its web content process never starts): then
+# the browser is closed, the sheet comes back, and the method is started once more. Nothing was authorized: the
+# provider's page never showed.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: ../api-ready.yaml
+- tapOn:
+    id: "vezmo-pay"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: ${SHOT}-03-redirect
+# iOS asks before an app opens a sign-in style browser session.
+- tapOn:
+    text: "Continue"
+    optional: true
+- extendedWaitUntil:
+    visible: "(?i).*authori[sz]e test payment.*"
+    timeout: 60000
+    optional: true
+- runFlow:
+    when:
+      notVisible: "(?i).*authori[sz]e test payment.*"
+    commands:
+      - takeScreenshot: ${SHOT}-03b-blank-browser
+      - tapOn:
+          text: "Done|Cancel|Close"
+          optional: true
+      - extendedWaitUntil:
+          visible:
+            id: "vezmo-pay"
+          timeout: 30000
+      - runFlow: ../api-ready.yaml
+      - tapOn:
+          id: "vezmo-pay"
+      - waitForAnimationToEnd:
+          timeout: 15000
+      - tapOn:
+          text: "Continue"
+          optional: true
+- extendedWaitUntil:
+    visible: "(?i).*authori[sz]e test payment.*"
+    timeout: 60000
+- takeScreenshot: ${SHOT}-04-test-page

@@ -1,0 +1,18 @@
+# Launches the example fresh, then opens its e2e link with the business model the run picks (TRACK: `connect`, or `mor`,
+# the merchant of record, with Cash App, Klarna and Amazon Pay on) and, with OFFER_CURRENCY (e.g. AED), the sandbox
+# offering the buyer that currency, as to a buyer abroad (the runners are in the US). The app shows the settings it
+# took on its status line; nothing is tapped before.
+appId: com.vezmo.example
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "new-session"
+    timeout: 30000
+- openLink: "vezmoexample://e2e?track=${typeof TRACK == 'undefined' ? 'connect' : TRACK}&offerCurrency=${typeof OFFER_CURRENCY == 'undefined' ? '' : OFFER_CURRENCY}"
+- extendedWaitUntil:
+    visible:
+      id: "status"
+      text: "Run: ${typeof TRACK == 'undefined' ? 'connect' : TRACK}.*"
+    timeout: 30000

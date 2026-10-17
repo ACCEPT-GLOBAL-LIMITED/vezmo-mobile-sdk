@@ -1,62 +1,23 @@
-# A subscription paid today on the merchant-of-record track: the first $9.99 charged by our server (3D Secure if the
-# bank asks), the card kept for the renewals, and the subscription back in the app as active.
+# A subscription paid today on the run's business model (TRACK): the first $9.99 charged by our server (3D Secure if
+# the bank asks), the card kept for the renewals, and the subscription back in the app as active.
 appId: com.vezmo.example
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session"
-          timeout: 30000
-- tapOn:
-    id: "subscribe-now"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow: common/launch.yaml
+- runFlow:
+    file: ../../../../../e2e/maestro/subscribe.yaml
+    env:
+      BUTTON: subscribe-now
 - assertVisible: "Due today"
 - takeScreenshot: sub-now-01-sheet
-- tapOn: "Card"
-- extendedWaitUntil:
-    visible: "Card number"
-    timeout: 15000
-- tapOn: "Card number"
-# The form moves on by itself: card number, then expiry, then CVC.
-- inputText: "4242424242424242"
-- inputText: "1234"
-- inputText: "123"
-- tapOn: "ZIP Code"
-- inputText: "10001"
-- hideKeyboard
-- takeScreenshot: sub-now-02-card-filled
-- tapOn: "Continue"
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: sub-now-03-card-chosen
-- tapOn:
-    id: "vezmo-pay"
-- waitForAnimationToEnd:
-    timeout: 15000
-- takeScreenshot: sub-now-04-after-pay
-# 3D Secure (the platform asks for it on every card): the test challenge, if shown.
-- tapOn:
-    text: "(?i)complete.*"
-    optional: true
-- tapOn:
-    text: "(?i)submit"
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: "vezmo-result-title"
-    timeout: 90000
-- takeScreenshot: sub-now-05-result
+- runFlow:
+    file: ../../../../../e2e/maestro/android/card.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: sub-now
+- runFlow:
+    file: ../../../../../e2e/maestro/pay.yaml
+    env:
+      SHOT: sub-now
 - assertVisible: "You’re subscribed"
 - tapOn:
     id: "vezmo-done"

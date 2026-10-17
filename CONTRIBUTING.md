@@ -64,17 +64,23 @@ takes a few extra steps; they are in the [Flutter README](packages/flutter#devel
 | Workflow | Runs on | What it checks |
 | --- | --- | --- |
 | `react-native.yml` | Every pull request and push to `main` | Types, unit tests, the package build, and the example app's iOS and Android builds |
-| `react-native-e2e.yml` | Pushes to `main` that change the package | Pays end to end with Maestro on an Android emulator and an iPhone simulator, then checks dark mode and the largest text size |
-| `ios.yml` | Changes to the iOS SDK | Unit tests, then pays end to end from the example app on an iPhone simulator |
-| `android.yml` | Changes to the Android SDK | Unit tests, lint, screenshot tests and a Maven local publish, then pays end to end from the minified example app on an Android emulator; uploads that app as `example-apk` to install on a phone |
-| `flutter.yml` | Changes to the Flutter plugin or either native SDK | Analysis and tests (Dart, and the Android plugin's own tests), then pays end to end from the example app on both |
+| `react-native-e2e.yml` | Pushes to `main` that change the package | Pays end to end with Maestro on an Android emulator and an iPhone simulator, once per business model, then checks dark mode and the largest text size |
+| `ios.yml` | Changes to the iOS SDK | Unit tests, then pays end to end from the example app on an iPhone simulator, once per business model |
+| `android.yml` | Changes to the Android SDK | Unit tests, lint, screenshot tests and a Maven local publish, then pays end to end from the minified example app on an Android emulator, once per business model; uploads that app as `example-apk` to install on a phone |
+| `flutter.yml` | Changes to the Flutter plugin or either native SDK | Analysis and tests (Dart, and the Android plugin's own tests), then pays end to end from the example app on both, once per business model |
 | `release-*.yml` | Release tags | Publishing; see [RELEASING.md](RELEASING.md) |
 | `testflight-*.yml` | By hand | Sends the example app to TestFlight and reports on its builds |
 
-The end-to-end flows (`packages/*/e2e/maestro`) pay against Vezmo's sandbox: cards with 3D Secure, a decline, cancel,
-a bad token, both business models, a Cash App redirect back into the app, subscriptions with and without a free trial,
-and dark mode. They need no secrets, so they run on pull requests from forks too (a first-time contributor's runs
-start once a maintainer approves them).
+The end-to-end flows (`packages/*/e2e/maestro`, with the steps they share in `e2e/maestro`) pay against Vezmo's
+sandbox on both business models, Connect and merchant of record, each in its own job: cards with 3D Secure, a decline,
+a payment and a subscription in the buyer's own currency (AED), and subscriptions with and without a free trial. Once:
+cancel, a bad token, a Cash App redirect back into the app, and dark mode. They need no secrets, so they run on pull
+requests from forks too (a first-time contributor's runs start once a maintainer approves them).
+
+To run a folder of flows on your own emulator or simulator, name the model:
+`.github/scripts/maestro-test.sh connect out packages/ios/e2e/maestro` (or `maestro test -e TRACK=mor …`). A failed
+flow is never run again; the only retries are before a payment: making or loading the sandbox session, a tap or
+keystroke the device dropped, a browser page that never drew, and Maestro's own driver starting.
 
 ## Pull requests
 

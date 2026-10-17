@@ -1,23 +1,16 @@
-# A redirect method end to end on the merchant-of-record track: Cash App Pay opens its (test) authorization page in
-# the browser, the buyer approves, and the app comes back through its return link with the result.
+# A redirect method end to end on the merchant-of-record business (the only one with Cash App Pay on): Cash App Pay
+# opens its (test) authorization page in the browser, the buyer approves, and the app comes back through its return
+# link with the result.
 appId: com.vezmo.example.flutter
+tags:
+  - mor-only
 ---
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible:
-      id: "new-session-mor"
-    timeout: 30000
-- tapOn:
-    id: "new-session-mor"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow:
+    file: common/launch.yaml
+    env:
+      TRACK: mor
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 # Outside the US the sheet first offers the runner's own currency, and Cash App, Klarna and Amazon Pay are
 # USD-only: pay in USD.
 - tapOn:
@@ -31,21 +24,10 @@ appId: com.vezmo.example.flutter
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: cashapp-02-chosen
-# A busy simulator can drop a tap while the card form closes: tap again if nothing changed.
-- tapOn:
-    id: "vezmo-pay"
-    retryTapIfNoChange: true
-- waitForAnimationToEnd:
-    timeout: 15000
-- takeScreenshot: cashapp-03-redirect
-# iOS asks before an app opens a sign-in style browser session.
-- tapOn:
-    text: "Continue"
-    optional: true
-- extendedWaitUntil:
-    visible: "(?i).*authori[sz]e test payment.*"
-    timeout: 60000
-- takeScreenshot: cashapp-04-test-page
+- runFlow:
+    file: ../../../../../e2e/maestro/ios/redirect.yaml
+    env:
+      SHOT: cashapp
 - tapOn: "(?i).*authori[sz]e test payment.*"
 - extendedWaitUntil:
     visible:

@@ -1,0 +1,6 @@
+# The card on the card form (Android): opens the form from the sheet's Card row, then types CARD and chooses it (SHOT
+# names the screenshots).
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: card-form.yaml
+- runFlow: card-entry.yaml

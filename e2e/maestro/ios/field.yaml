@@ -1,0 +1,20 @@
+# Types VALUE into the card form's field FIELD (its id) and checks the field shows it (SHOWN, a pattern). A busy
+# simulator can drop typed text: then the field is cleared and typed once more. Input only, before any Pay.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- tapOn:
+    id: ${FIELD}
+- inputText: ${VALUE}
+- runFlow:
+    when:
+      notVisible:
+        id: ${FIELD}
+        text: ${SHOWN}
+    commands:
+      - tapOn:
+          id: ${FIELD}
+      - eraseText: 30
+      - inputText: ${VALUE}
+- assertVisible:
+    id: ${FIELD}
+    text: ${SHOWN}

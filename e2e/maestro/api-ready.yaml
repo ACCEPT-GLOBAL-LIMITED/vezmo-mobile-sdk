@@ -1,0 +1,6 @@
+# Waits for Vezmo's dev sandbox to answer its health check (see api-ready.js). A sandbox still down after three minutes
+# fails the flow here, before any session or payment.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runScript: api-ready.js
+- assertTrue: ${output.apiReady}

@@ -44,39 +44,73 @@ class _ShopState extends State<Shop> {
   void initState() {
     super.initState();
     token.addListener(() => setState(() {}));
+    trackArgument().then((track) {
+      if (mounted) setState(() => launchTrack = track);
+    });
   }
 
-  /// The end-to-end runs launch the app with `offerCurrency` (e.g. AED, an intent extra on Android): the sandbox
-  /// then offers the buyer that currency, as it would abroad (the CI runners are in the US). Null otherwise.
-  static Future<String?> offerCurrency() async {
+  /// The end-to-end runs launch the app with arguments (intent extras on Android, launch arguments on iOS):
+  /// `offerCurrency` (e.g. AED) has the sandbox offer the buyer that currency, as it would abroad (the CI runners are
+  /// in the US), and `track` (`mor`, the merchant-of-record business, or `connect`) picks the business of the sandbox
+  /// buttons that name none. Null when not given.
+  static Future<String?> launchArgument(String name) async {
     try {
-      return await const MethodChannel('vezmo_example/launch').invokeMethod<String>('offerCurrency');
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token.
-  Future<String?> demoToken(String path, String field) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
-    try {
-      final currency = await offerCurrency();
-      final query = currency == null ? '' : '${path.contains('?') ? '&' : '?'}offerCurrency=$currency';
-      final response = await (await client.postUrl(Uri.parse('$apiBase$path$query'))).close();
-      final body = jsonDecode(await response.transform(utf8.decoder).join()) as Map<String, dynamic>;
-      final value = (body['data'] as Map<String, dynamic>?)?[field] as String?;
+      final value = await const MethodChannel('vezmo_example/launch').invokeMethod<String>('argument', name);
       return value == null || value.isEmpty ? null : value;
     } catch (_) {
       return null;
-    } finally {
-      client.close();
     }
   }
 
-  // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
+  /// The run's `track`, for the buttons' labels (the calls read it again, so a tap can't beat it).
+  String? launchTrack;
+
+  static Future<String?> trackArgument() async => (await launchArgument('track'))?.toLowerCase();
+
+  String get newSessionLabel =>
+      launchTrack == 'mor' ? 'New sandbox session · merchant of record' : 'New sandbox session';
+
+  // "Subscribe, no trial" is on the merchant-of-record business unless the run picks another.
+  String get noTrialLabel =>
+      (launchTrack ?? 'mor') == 'mor' ? 'Subscribe, no trial · merchant of record' : 'Subscribe, no trial';
+
+  /// The sandbox demo endpoints make a TEST-mode session (or subscription) on a business (`mor` or not) and return
+  /// its token in `field`: a short timeout and up to three tries (a CI runner's first requests can stall, and the
+  /// sandbox restarts now and then), each try on screen. Null when none worked.
+  Future<String?> demoToken(String path, String? track, String field, String label) async {
+    final currency = await launchArgument('offerCurrency');
+    final query = [if (track == 'mor') 'track=mor', if (currency != null) 'offerCurrency=$currency'].join('&');
+    final url = Uri.parse('$apiBase$path${query.isEmpty ? '' : '${path.contains('?') ? '&' : '?'}$query'}');
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      if (mounted) setState(() => status = attempt == 1 ? label : '$label (try $attempt of 3)');
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+      try {
+        final value = await post(client, url, field).timeout(const Duration(seconds: 15));
+        if (value != null && value.isNotEmpty) return value;
+      } catch (_) {
+        // Timed out or unreachable: try again.
+      } finally {
+        client.close(force: true);
+      }
+      if (attempt < 3) await Future<void>.delayed(Duration(seconds: attempt * 3));
+    }
+    return null;
+  }
+
+  /// One POST to a demo endpoint: the token in `field`, or null when the sandbox answered an error.
+  static Future<String?> post(HttpClient client, Uri url, String field) async {
+    final response = await (await client.postUrl(url)).close();
+    final text = await response.transform(utf8.decoder).join();
+    if (response.statusCode < 200 || response.statusCode > 299) return null;
+    final body = jsonDecode(text) as Map<String, dynamic>;
+    return (body['data'] as Map<String, dynamic>?)?[field] as String?;
+  }
+
+  // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on); none,
+  // the run's `track` (else Connect).
   Future<void> newSession([String? track]) async {
-    setState(() => status = 'Creating a sandbox session…');
-    final created = await demoToken('/demo/mobile-session${track == null ? '' : '?track=$track'}', 'clientToken');
+    track ??= await trackArgument();
+    final created = await demoToken('/demo/mobile-session', track, 'clientToken', 'Creating a sandbox session…');
     setState(() {
       if (created != null) token.text = created;
       status = created == null ? 'Could not reach the demo endpoint.' : 'Session ready.';
@@ -93,12 +127,12 @@ class _ShopState extends State<Shop> {
   }
 
   // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
-  Future<void> subscribe(String query) async {
-    setState(() {
-      result = null;
-      status = 'Loading checkout…';
-    });
-    final subscriptionToken = await demoToken('/demo/mobile-subscription$query', 'subscriptionToken');
+  // On the run's `track`, else `fallback` (Connect when null).
+  Future<void> subscribe({String? fallback, required bool trial}) async {
+    setState(() => result = null);
+    final track = await trackArgument() ?? fallback;
+    final path = '/demo/mobile-subscription${trial ? '?trial=1' : ''}';
+    final subscriptionToken = await demoToken(path, track, 'subscriptionToken', 'Loading checkout…');
     if (subscriptionToken == null) {
       setState(() => status = 'Could not reach the demo endpoint.');
       return;
@@ -205,15 +239,11 @@ class _ShopState extends State<Shop> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    secondary('new-session', 'New sandbox session', () => newSession()),
+                    secondary('new-session', newSessionLabel, () => newSession()),
                     const SizedBox(height: 10),
                     secondary('new-session-mor', 'New session · merchant of record', () => newSession('mor')),
                     const SizedBox(height: 10),
-                    secondary(
-                      'subscribe-now',
-                      'Subscribe, no trial · merchant of record',
-                      () => subscribe('?track=mor'),
-                    ),
+                    secondary('subscribe-now', noTrialLabel, () => subscribe(fallback: 'mor', trial: false)),
                   ],
                 ),
               ),
@@ -241,7 +271,7 @@ class _ShopState extends State<Shop> {
                   Expanded(child: details('Northwind Audio Club', r'$9.99 / month · first 7 days free')),
                 ],
               ),
-              primary('subscribe', 'Try 7 days free', () => subscribe('?trial=1')),
+              primary('subscribe', 'Try 7 days free', () => subscribe(trial: true)),
             ]),
           ],
         ),

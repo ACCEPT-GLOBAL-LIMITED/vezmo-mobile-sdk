@@ -1,0 +1,9 @@
+# Warms a just-booted iPhone simulator before the flows (.github/actions/ios-simulator): starts Maestro's test driver
+# and has Safari load Vezmo's dev sandbox over TLS, so the system's certificate checks and the browser's web content
+# process are up before an app needs them.
+appId: com.apple.mobilesafari
+---
+- openLink: https://api.dev.vezmo.com/api/v1/health
+- extendedWaitUntil:
+    visible: '(?s).*"status":"ok".*'
+    timeout: 240000

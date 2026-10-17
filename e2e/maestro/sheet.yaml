@@ -1,0 +1,22 @@
+# Opens the sheet on the session (Buy now) and waits for its Card row. When the SDK could not load the session (the
+# sandbox answered an error, e.g. while it restarted for a deploy), a new session is made and loaded once more: nothing
+# has been paid yet.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- tapOn:
+    id: "pay"
+- extendedWaitUntil:
+    visible: "Card|Could not load.*"
+    timeout: 60000
+- runFlow:
+    when:
+      visible:
+        id: "status"
+        text: "Could not load.*"
+    commands:
+      - runFlow: session.yaml
+      - tapOn:
+          id: "pay"
+- extendedWaitUntil:
+    visible: "Card"
+    timeout: 60000

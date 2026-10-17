@@ -1,0 +1,18 @@
+# Taps the example app's button ID after scrolling it to mid-screen: at the very bottom of an iPhone screen a tap lands
+# in the home indicator's gesture zone, which can swallow it. When the page ends before the button reaches the middle,
+# it is already clear of that zone (the page has bottom padding).
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- scrollUntilVisible:
+    element:
+      id: ${ID}
+    direction: DOWN
+    centerElement: true
+    timeout: 10000
+    optional: true
+- scrollUntilVisible:
+    element:
+      id: ${ID}
+    direction: DOWN
+- tapOn:
+    id: ${ID}

@@ -1,30 +1,11 @@
 # The buyer closes the sheet: the app gets "canceled".
 appId: com.vezmo.example.nativeapp
+tags:
+  - connect-only
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session"
-          timeout: 30000
-- tapOn:
-    id: "new-session"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow: ../common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 - takeScreenshot: cancel-01-sheet
 # Closing the sheet is not an error: the app gets "canceled".
 - tapOn: "Close"

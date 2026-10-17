@@ -1,0 +1,43 @@
+name: Android emulator
+description: >
+  Runs a script on an Android emulator (a Pixel 7, API 34): enables KVM, downloads the emulator and its system image
+  first (retried and checked: a broken download otherwise fails the emulator's start), then starts it.
+inputs:
+  working-directory:
+    description: Where the script runs
+    required: true
+  script:
+    description: The commands to run on the emulator, one per line
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Enable KVM for the emulator
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Download the emulator and its system image
+      shell: bash
+      run: |
+        image="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+        for attempt in 1 2 3; do
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator 'system-images;android-34;google_apis;x86_64' > /dev/null || true
+          [ -s "$image/system.img" ] && [ -x "$ANDROID_HOME/emulator/emulator" ] && exit 0
+          echo "::warning::The emulator's download failed (try $attempt of 3)"
+          rm -rf "$image"
+          sleep 20
+        done
+        exit 1
+    - uses: ./.github/actions/dev-api
+    - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      with:
+        api-level: 34
+        arch: x86_64
+        target: google_apis
+        # A real phone's size and density (1080x2400, 420 dpi), so screenshots show what buyers see.
+        profile: pixel_7
+        ram-size: 4096M
+        working-directory: ${{ inputs.working-directory }}
+        script: ${{ inputs.script }}
