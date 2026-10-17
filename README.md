@@ -122,7 +122,7 @@ Each package has an example app (a small shop called Northwind Audio) that pays 
 | --- | --- |
 | [React Native](packages/react-native/example) | `yarn example expo run:ios` or `yarn example expo run:android` from `packages/react-native` |
 | [iOS](packages/ios/Example) | `xcodegen generate` in `packages/ios/Example`, then open `VezmoExample.xcodeproj` |
-| [Android](packages/android/example) | `gradle :example:installRelease` from `packages/android` |
+| [Android](packages/android/example) | `gradle :example:installRelease` from `packages/android`, or install `example-apk` from the latest [Android SDK run](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/android.yml?query=branch%3Amain) |
 | [Flutter](packages/flutter/example) | `flutter run` from `packages/flutter/example` |
 
 ## Repository layout
