@@ -202,6 +202,7 @@ internal fun CheckoutSheet(
                             amount = amount,
                             elementLoading = elementLoading,
                             qrForm = qrForm,
+                            useEngine = useEngine,
                         )
                     }
                 }
@@ -243,6 +244,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
     amount: String,
     elementLoading: Boolean,
     qrForm: QrFormState,
+    useEngine: Boolean,
 ) {
     val look = LocalLook.current
     val p = look.p
