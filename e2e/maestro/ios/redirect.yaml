@@ -1,5 +1,5 @@
-# Pays with the redirect method chosen on the sheet (iOS) up to the provider's test page in the in-app browser (SHOT
-# names the screenshots). A cold simulator can leave the browser blank (its web content process never starts): then
+# Pays with the redirect method chosen on the sheet (iOS) and approves on the provider's test page in the in-app browser
+# (SHOT names the screenshots). A cold simulator can leave the browser blank (its web content process never starts): then
 # the browser is closed, the sheet comes back, and the method is started once more. Nothing was authorized: the
 # provider's page never showed.
 appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
@@ -42,3 +42,10 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
     visible: "(?i).*authori[sz]e test payment.*"
     timeout: 60000
 - takeScreenshot: ${SHOT}-04-test-page
+# The buyer approves on the provider's page. A tap that lands while the page is still settling can be dropped (the page
+# stays as it was): it is tapped again only if nothing changed.
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    text: "(?i).*authori[sz]e test payment.*"
+    retryTapIfNoChange: true

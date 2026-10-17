@@ -8,7 +8,7 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
       id: ${ID}
     direction: DOWN
     centerElement: true
-    timeout: 10000
+    timeout: 5000
     optional: true
 - scrollUntilVisible:
     element:

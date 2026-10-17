@@ -28,7 +28,6 @@ tags:
     file: ../../../../../e2e/maestro/ios/redirect.yaml
     env:
       SHOT: cashapp
-- tapOn: "(?i).*authori[sz]e test payment.*"
 - extendedWaitUntil:
     visible:
       id: "vezmo-result-title"
