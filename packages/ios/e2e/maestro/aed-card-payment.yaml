@@ -30,6 +30,12 @@ appId: com.vezmo.example.native
 - tapOn:
     id: "vezmo-pay-in-local"
     waitToSettleTimeoutMs: 100
+# The Card row waits the moment the card flow takes to be set up in dirhams again (the engine would refuse meanwhile).
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-card-row"
+      enabled: true
+    timeout: 20000
 - tapOn: "Card"
 - waitForAnimationToEnd:
     timeout: 5000
