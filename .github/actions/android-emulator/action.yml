@@ -1,7 +1,8 @@
 name: Android emulator
 description: >
   Runs a script on an Android emulator (a Pixel 7, API 34): enables KVM, downloads the emulator and its system image
-  first (retried and checked: a broken download otherwise fails the emulator's start), then starts it.
+  first (retried and checked: a broken download otherwise fails the emulator's start), starts it, and lets Google Play
+  services restart itself after its first sync before the script runs.
 inputs:
   working-directory:
     description: Where the script runs
@@ -40,4 +41,7 @@ runs:
         profile: pixel_7
         ram-size: 4096M
         working-directory: ${{ inputs.working-directory }}
-        script: ${{ inputs.script }}
+        # First let Google Play services restart itself after its first sync (see the script).
+        script: |
+          ${{ github.workspace }}/.github/scripts/android-settle.sh
+          ${{ inputs.script }}
