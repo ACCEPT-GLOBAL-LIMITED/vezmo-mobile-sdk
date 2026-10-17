@@ -86,6 +86,9 @@ internal data class SessionSnapshot(
 
 private const val PRICE_CHANGED = "The price in your currency just changed. Check the new amount and pay again."
 
+/** The engine isn't set up for this payment (it is loading, or loading again after a currency switch). */
+internal const val ENGINE_LOADING = "The card form is still loading. Try again in a moment."
+
 /**
  * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
  * are the server's: this only moves the buyer's confirmation token to Vezmo and the answer back to the engine.
@@ -184,6 +187,13 @@ internal class CheckoutSession(
         if (chosen) element?.clearSelection()
         set {
             if (chosen) copy(card = card, method = Method.Card, phase = SessionPhase.Ready(null)) else copy(card = card)
+        }
+    }
+
+    /** The engine refused (it isn't set up yet): back to the sheet, in our words. */
+    fun engineNotReady() {
+        if (snapshot.phase is SessionPhase.Ready || snapshot.phase == SessionPhase.Paying) {
+            set { copy(phase = SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, ENGINE_LOADING))) }
         }
     }
 
@@ -364,9 +374,14 @@ internal class CheckoutSession(
                         return
                     }
                 }
-                set {
-                    copy(phase = SessionPhase.Ready(error ?: VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })))
+                // Without Vezmo's answer, the engine's own words only for a payment Vezmo handed it: a failure before any
+                // (the engine not set up, a wallet that couldn't start) is never shown in its words.
+                val fallback = if (lastPay == null) {
+                    VezmoError(VezmoError.Code.Unknown, DEFAULT_ERROR)
+                } else {
+                    VezmoError(VezmoError.Code.Declined, message.ifEmpty { DECLINED.message })
                 }
+                set { copy(phase = SessionPhase.Ready(error ?: fallback)) }
             }
             ConfirmStatus.Completed -> {
                 // A payment our server already recorded is done; one finished on the device (3D Secure, a redirect)

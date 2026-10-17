@@ -8,6 +8,9 @@ import org.json.JSONObject
 /** The shared pieces of the element and the card flow: their JSON, what is charged, and the look. */
 internal const val DEFAULT_ERROR = "Your payment couldn’t be completed. Please try again."
 
+/** The card form couldn't open: the engine isn't set up yet. */
+internal const val CARD_LOADING = "The card form is still loading. Try again in a moment."
+
 internal fun parseJson(json: String): JSONObject? =
   if (json.isEmpty()) {
     null

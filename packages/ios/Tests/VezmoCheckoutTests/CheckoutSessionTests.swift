@@ -214,6 +214,18 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .declined, message: "engine text")))
   }
 
+  func testAFailureBeforeVezmoWasAskedNeverReadsInTheEnginesWordsNorTheEngineNotSetUp() async {
+    await start()
+    session.setOption("Klarna")
+    session.pay()
+    // The engine refused (it was being set up again after a currency switch): no /pay was made.
+    await session.onConfirmResult(.failed, message: "confirmPayment was called with an update API call in progress.")
+    XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .unknown, message: notCompleted)))
+    XCTAssertTrue(api.confirmCalls.isEmpty)
+    session.engineNotReady()
+    XCTAssertEqual(snap.phase, .ready(error: VezmoError(code: .unknown, message: engineLoading)))
+  }
+
   func testTheEngineLosingAStepItFinishedOnTheDeviceTheServersAnswerWins() async {
     await start()
     api.payAnswer = { PayResponse(state: "requires_action", paymentId: "pay_1", clientSecret: "pi_9_secret_b") }

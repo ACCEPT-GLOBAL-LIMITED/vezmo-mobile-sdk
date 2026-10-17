@@ -116,7 +116,7 @@ internal fun CheckoutSheet(
         }
     }
     val intent = remember(charge, methods, config) { if (charge != null && methods != null) engineIntent(charge, methods, config) else null }
-    LaunchedEffect(settings, intent) {
+    LaunchedEffect(settings, intent, engine.reconfigure) {
         if (useEngine && settings != null && intent != null) engine.configure(context, settings, intent)
     }
     // The engine takes a moment to load: placeholder rows hold its place until it reports in.
@@ -202,6 +202,7 @@ internal fun CheckoutSheet(
                             amount = amount,
                             elementLoading = elementLoading,
                             qrForm = qrForm,
+                            useEngine = useEngine,
                         )
                     }
                 }
@@ -243,6 +244,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
     amount: String,
     elementLoading: Boolean,
     qrForm: QrFormState,
+    useEngine: Boolean,
 ) {
     val look = LocalLook.current
     val p = look.p
@@ -295,6 +297,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                         value = snap.payLocal,
                         onChange = { session.choosePayLocal(it) },
                         disabled = paying,
+                        tags = listOf("vezmo-pay-in-local", "vezmo-pay-in-price"),
                     )
                     if (snap.payLocal) {
                         Txt(
@@ -360,7 +363,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                         CardRow(
                             card = snap.card,
                             selected = snap.method == Method.Card,
-                            disabled = paying,
+                            // Held while the card flow is set up again (a currency switch): the engine would refuse.
+                            disabled = paying || (useEngine && !engine.cardReady),
                             onClick = { session.chooseCard() },
                             onChange = { session.changeCard() },
                         )
@@ -438,7 +442,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                     else -> "Subscribe · $amount"
                 },
                 lock = true,
-                disabled = !CheckoutSession.canPay(snap),
+                disabled = !CheckoutSession.canPay(snap) || (useEngine && !engine.readyFor(snap.method)),
                 busy = paying,
                 onClick = { session.pay() },
                 tag = "vezmo-pay",

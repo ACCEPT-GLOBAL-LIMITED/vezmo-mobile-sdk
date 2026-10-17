@@ -243,6 +243,20 @@ class CheckoutSessionTest {
     }
 
     @Test
+    fun `a failure before Vezmo was asked never reads in the engine's words, nor the engine not set up`() = test { t ->
+        t.session.chooseCard()
+        t.session.setCard(CardChoice("•••• 4242", null))
+        t.session.pay()
+        // The card flow refused (it was being set up again after a currency switch): no /pay was made.
+        t.session.onConfirmResult(ConfirmStatus.Failed, "FlowController is not configured, or has a configuration update in flight.")
+        assertEquals(SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, DEFAULT_ERROR)), t.snap.phase)
+        assertFalse("status" in t.api.calls)
+        // The card form couldn't open: our words.
+        t.session.engineNotReady()
+        assertEquals(SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, ENGINE_LOADING)), t.snap.phase)
+    }
+
+    @Test
     fun `a decline goes back to the engine in our words and leaves the sheet ready to retry`() = test { t ->
         t.api.pay = { throw VezmoApiError(VezmoError.Code.Declined, "Your bank declined this card.", 400) }
         t.session.setOption("Klarna")

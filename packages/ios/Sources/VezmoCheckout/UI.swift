@@ -148,6 +148,7 @@ struct Segmented: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityIdentifier("vezmo-pay-in-\(item.id)")
       }
     }
     .padding(3)

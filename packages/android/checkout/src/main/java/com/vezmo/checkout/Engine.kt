@@ -102,6 +102,32 @@ internal class Engine(private val session: CheckoutSession) {
     var cardLoaded by mutableStateOf<EngineSettings?>(null)
     var elementLoaded by mutableStateOf<EngineSettings?>(null)
 
+    /**
+     * The card flow and the element are set up for what the sheet shows now. False while they are set up again (the
+     * buyer switched currency: the rows stay on screen) or after it failed: the engine refuses the card form and
+     * payments meanwhile, so the sheet holds the Card row and Pay until then.
+     */
+    var cardReady by mutableStateOf(false)
+    var elementReady by mutableStateOf(false)
+
+    /** Bumped to set the engine up again for the same settings (the card form found it not set up after all). */
+    var reconfigure by mutableIntStateOf(0)
+
+    /** The engine can take this way to pay now. */
+    fun readyFor(method: Method) =
+        when (method) {
+            Method.Card -> cardReady
+            Method.Element -> elementReady
+            else -> true
+        }
+
+    /** The card form is being opened: a failure reported meanwhile is the form's, not a payment's. */
+    private var openingCard = false
+    private var openFailure: Throwable? = null
+
+    /** After the engine is set up again, open the card form the buyer asked for. */
+    private var reopenCard = false
+
     /** The element has rows of its own to draw. */
     var elementRows by mutableStateOf(false)
 
@@ -118,9 +144,14 @@ internal class Engine(private val session: CheckoutSession) {
 
     val cardPort =
         object : CardFlowPort {
-            override fun presentCard() = flow.presentPaymentOptions()
+            // The Card row is off until the card flow is set up; a tap that gets here anyway is dropped.
+            override fun presentCard() {
+                if (cardReady) openCardForm(retry = true)
+            }
 
-            override fun confirmCard() = flow.confirm()
+            override fun confirmCard() {
+                if (cardReady) flow.confirm() else session.post { session.engineNotReady() }
+            }
 
             override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
                 cardSecret?.complete(answer(clientSecret, errorMessage))
@@ -130,7 +161,9 @@ internal class Engine(private val session: CheckoutSession) {
 
     val elementPort =
         object : ElementPort {
-            override fun confirm() = embedded.confirm()
+            override fun confirm() {
+                if (elementReady) embedded.confirm() else session.post { session.engineNotReady() }
+            }
 
             override fun clearSelection() = embedded.clearPaymentOption()
 
@@ -165,12 +198,40 @@ internal class Engine(private val session: CheckoutSession) {
             deferred.await()
         }
 
-    fun onFlowResult(result: PaymentSheetResult) =
+    /**
+     * Opens the card form. The engine refuses when it isn't set up after all ("not configured", in its own words, never
+     * shown): it is set up again and the form opened once more; failing that, the buyer reads ours.
+     */
+    private fun openCardForm(retry: Boolean) {
+        openFailure = null
+        openingCard = true
+        flow.presentPaymentOptions() // a refusal is reported at once, to onFlowResult
+        openingCard = false
+        val failure = openFailure ?: return
+        Log.w(TAG, "The card form couldn't open", failure)
+        if (retry) {
+            reopenCard = true
+            cardReady = false
+            reconfigure++
+        } else {
+            session.engineNotReady()
+        }
+    }
+
+    fun onFlowResult(result: PaymentSheetResult) {
+        if (openingCard) {
+            if (result is PaymentSheetResult.Failed) openFailure = result.error
+            return
+        }
         when (result) {
             is PaymentSheetResult.Completed -> report(ConfirmStatus.Completed, "")
             is PaymentSheetResult.Canceled -> report(ConfirmStatus.Canceled, "")
-            is PaymentSheetResult.Failed -> report(ConfirmStatus.Failed, result.error.localizedMessage ?: DEFAULT_ERROR)
+            is PaymentSheetResult.Failed -> {
+                Log.w(TAG, "The card flow failed", result.error)
+                report(ConfirmStatus.Failed, result.error.localizedMessage ?: DEFAULT_ERROR)
+            }
         }
+    }
 
     fun onElementResult(result: EmbeddedPaymentElement.Result) =
         when (result) {
@@ -185,12 +246,19 @@ internal class Engine(private val session: CheckoutSession) {
     suspend fun configure(context: Context, settings: EngineSettings, intent: EngineIntent) {
         val rebuild = settings != configuredWith
         if (rebuild) {
+            // Placeholders until it is built again, even for settings it last finished with (the buyer switched currency
+            // and back before the first switch was set up: those rows would show over a flow still being set up).
+            cardLoaded = null
+            elementLoaded = null
             PaymentConfiguration.init(context.applicationContext, settings.publishableKey, settings.connectedAccountId)
             cardConfiguration = sheetConfiguration(settings, wallets = false)
             walletConfiguration = settings.googlePay?.let { sheetConfiguration(settings, wallets = true) }
             elementConfiguration = elementConfiguration(settings)
             configuredWith = settings
         }
+        // Neither is ready for this amount until set up for it (the element waits for the card flow).
+        cardReady = false
+        elementReady = false
 
         if (!intent.card) {
             walletsOn = false
@@ -198,15 +266,21 @@ internal class Engine(private val session: CheckoutSession) {
             val cards = intentConfiguration(intent, listOf("card"))
             val error = configureOne(flow, cards, cardConfiguration!!)
             if (error != null) {
+                reopenCard = false
                 Log.w(TAG, "The card form couldn't load", error)
                 session.setElementError(error.localizedMessage ?: DEFAULT_ERROR)
                 return
             }
+            cardReady = true
             // A wallet that can't load is left out; the card still works.
             walletsOn = walletConfiguration?.let { configureOne(walletFlow, cards, it) == null } ?: false
             reportCard(flow.getPaymentOption())
         }
         cardLoaded = settings
+        if (reopenCard) {
+            reopenCard = false
+            openCardForm(retry = false)
+        }
 
         elementRows = intent.elementTypes.isNotEmpty()
         if (elementRows) {
@@ -219,6 +293,7 @@ internal class Engine(private val session: CheckoutSession) {
                 }
             }
         }
+        elementReady = true
         elementLoaded = settings
     }
 

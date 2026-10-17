@@ -483,7 +483,8 @@ struct SheetView: View {
           CardRow(
             card: snap.card,
             selected: snap.method == .card,
-            disabled: paying,
+            // Held while the card flow is set up again (a currency switch): the engine would refuse.
+            disabled: paying || cardFlow.updating,
             look: look,
             onPress: { session.chooseCard() },
             onChange: { session.changeCard() }
@@ -551,7 +552,9 @@ struct SheetView: View {
           PrimaryButton(
             label: payLabel,
             look: look,
-            disabled: !CheckoutSession.canPay(snap),
+            disabled: !CheckoutSession.canPay(snap)
+              || (snap.method == .card && cardFlow.updating)
+              || (snap.method == .element && element.updating),
             busy: paying,
             lock: true
           ) { session.pay() }

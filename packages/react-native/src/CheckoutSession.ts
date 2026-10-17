@@ -76,6 +76,8 @@ export interface SessionSnapshot {
 }
 
 const PRICE_CHANGED = 'The price in your currency just changed. Check the new amount and pay again.';
+/** The engine failed before Vezmo was asked to take the payment: never its own words (white label; they differ by platform). */
+const NOT_COMPLETED = 'Your payment couldn’t be completed. Please try again.';
 
 /**
  * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
@@ -372,7 +374,14 @@ export class CheckoutSession {
         this.set({ phase: { name: 'done', result: answer.result } });
         return;
       }
-      const error = this.lastError ?? answer?.error ?? { code: 'declined' as const, message: message || DECLINED.message };
+      // Without Vezmo's answer, the engine's words only for a payment Vezmo handed it. Not paying at all, the card
+      // form couldn't open, and the native side says so in our words.
+      const fallback: VezmoError = this.lastPay
+        ? { code: 'declined', message: message || DECLINED.message }
+        : this.snapshot.phase.name === 'paying'
+          ? { code: 'unknown', message: NOT_COMPLETED }
+          : { code: 'unknown', message: message || NOT_COMPLETED };
+      const error = this.lastError ?? answer?.error ?? fallback;
       this.set({ phase: { name: 'ready', error } });
       return;
     }
