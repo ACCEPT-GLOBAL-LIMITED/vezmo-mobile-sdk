@@ -1,5 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Linking,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  Settings,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SDK_VERSION, VezmoProvider, useVezmoCheckout, type CheckoutResult } from '@vezmopay/react-native';
 
 /**
@@ -14,15 +25,26 @@ const DEMO_URL = process.env.EXPO_PUBLIC_VEZMO_DEMO_URL || `${API_BASE}/demo/mob
 // The sandbox's subscription checkout (same demo business): …/demo/mobile-subscription.
 const SUBSCRIPTION_URL = DEMO_URL.replace(/mobile-session$/, 'mobile-subscription');
 
-// The end-to-end runs open vezmoexample://e2e?track=mor&offerCurrency=AED: `track` picks the sandbox business (`mor`,
-// the merchant-of-record one, or `connect`), and `offerCurrency` has the sandbox offer the buyer that currency, as it
-// would abroad (the CI runners are in the US).
+// The end-to-end runs give the app `track`, the sandbox business (`mor`, the merchant-of-record one, or `connect`), and
+// `offerCurrency`, which has the sandbox offer the buyer that currency, as it would abroad (the CI runners are in the
+// US). On iPhone they are launch arguments (`-track mor`), which iOS keeps in the app's settings; on Android the run
+// opens vezmoexample://e2e?track=mor&offerCurrency=AED.
 type Launch = { track?: string; offerCurrency?: string };
+const launchOf = (track?: string, offerCurrency?: string): Launch | null =>
+  track || offerCurrency ? { track: track?.toLowerCase(), offerCurrency: offerCurrency?.toUpperCase() } : null;
 const readLaunch = (url?: string | null): Launch | null => {
   if (!url || !/^vezmoexample:\/\/e2e\b/.test(url)) return null;
   const param = (name: string) => new RegExp(`[?&]${name}=([A-Za-z]+)\\b`).exec(url)?.[1];
-  return { track: param('track')?.toLowerCase(), offerCurrency: param('offerCurrency')?.toUpperCase() };
+  return launchOf(param('track'), param('offerCurrency')) ?? {};
 };
+const setting = (name: string) => {
+  const value: unknown = Platform.OS === 'ios' ? Settings.get(name) : undefined;
+  return typeof value === 'string' && value ? value : undefined;
+};
+const launchArguments = launchOf(setting('track'), setting('offerCurrency'));
+// The run's settings, shown on the status line: the run waits for them before it taps anything.
+const runStatus = (launch: Launch) =>
+  `Run: ${launch.track ?? 'connect'}${launch.offerCurrency ? `, ${launch.offerCurrency}` : ''}.`;
 
 // A demo endpoint's address on a business (`mor` or not), with the offer currency the run asked for.
 const demoUrl = (base: string, track: string | undefined, launch: Launch) => {
@@ -68,16 +90,15 @@ export default function App() {
 function Shop() {
   const { prepareCheckout, presentCheckout } = useVezmoCheckout();
   const [token, setToken] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(launchArguments ? runStatus(launchArguments) : '');
   const [result, setResult] = useState<CheckoutResult | null>(null);
-  const [launch, setLaunch] = useState<Launch>({});
+  const [launch, setLaunch] = useState<Launch>(launchArguments ?? {});
   useEffect(() => {
-    // The run's settings, on screen too: the run waits for them before it taps anything.
     const take = (url?: string | null) => {
       const read = readLaunch(url);
       if (!read) return;
       setLaunch(read);
-      setStatus(`Run: ${read.track ?? 'connect'}${read.offerCurrency ? `, ${read.offerCurrency}` : ''}.`);
+      setStatus(runStatus(read));
     };
     Linking.getInitialURL()
       .then(take)
