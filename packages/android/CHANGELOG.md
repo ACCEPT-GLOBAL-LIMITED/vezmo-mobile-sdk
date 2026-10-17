@@ -25,6 +25,8 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
 - **Declines in Vezmo's words**: a card declined after 3D Secure shows Vezmo's reason, the same as on iPhone.
 - **Switching currency**: the Card row and Pay wait the moment the sheet takes to set the payment up again in the
   other currency, and a problem there reads in Vezmo's words, never the payment engine's.
+- **Google Pay while switching currency**: a Google Pay tap while the sheet sets the wallet up again for the new
+  amount waits for it ("Google Pay is still loading. Try again in a moment."); the next tap pays.
 - **Large font sizes**: the sheet's buttons, fields and labels grow with the phone's font size instead of clipping.
 - Minified (R8) release builds need no extra rules.
 - Android 7.0+ (API 24), compiled against SDK 36.

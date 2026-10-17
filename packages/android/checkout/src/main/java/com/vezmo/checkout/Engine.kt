@@ -133,6 +133,9 @@ internal class Engine(private val session: CheckoutSession) {
 
     /** Google Pay is set up; [walletsHeight] says whether the phone showed a button. */
     var walletsOn by mutableStateOf(false)
+
+    /** The wallet flow is set up for what the sheet shows: a Google Pay tap before then would fail before Vezmo is asked. */
+    var walletReady by mutableStateOf(false)
     var walletsHeight by mutableIntStateOf(0)
 
     /** Each card the card form reports, numbered so the same card reported again still counts. */
@@ -256,9 +259,10 @@ internal class Engine(private val session: CheckoutSession) {
             elementConfiguration = elementConfiguration(settings)
             configuredWith = settings
         }
-        // Neither is ready for this amount until set up for it (the element waits for the card flow).
+        // None is ready for this amount until set up for it (the element waits for the card flow).
         cardReady = false
         elementReady = false
+        walletReady = false
 
         if (!intent.card) {
             walletsOn = false
@@ -274,6 +278,7 @@ internal class Engine(private val session: CheckoutSession) {
             cardReady = true
             // A wallet that can't load is left out; the card still works.
             walletsOn = walletConfiguration?.let { configureOne(walletFlow, cards, it) == null } ?: false
+            walletReady = walletsOn
             reportCard(flow.getPaymentOption())
         }
         cardLoaded = settings
@@ -381,8 +386,15 @@ internal class Engine(private val session: CheckoutSession) {
     fun WalletButtons(modifier: Modifier = Modifier) {
         val handler = remember {
             WalletButtonsViewClickHandler { wallet ->
-                session.walletStarted(wallet)
-                false // not handled here: the wallet goes on to pay
+                if (!walletReady) {
+                    // Still being set up for this amount or currency (the buyer just switched, or it's still loading on
+                    // a slow network): the wallet would fail before Vezmo is asked. Our words; the next tap pays.
+                    session.post { session.engineNotReady(WALLET_LOADING) }
+                    true // handled here: the wallet doesn't start
+                } else {
+                    session.walletStarted(wallet)
+                    false // not handled here: the wallet goes on to pay
+                }
             }
         }
         Box(modifier.fillMaxWidth().onSizeChanged { walletsHeight = it.height }) {

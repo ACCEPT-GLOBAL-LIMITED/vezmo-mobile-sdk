@@ -78,6 +78,7 @@ struct SessionSnapshot: Equatable {
 private let priceChanged = "The price in your currency just changed. Check the new amount and pay again."
 /// The engine isn't set up for this payment (it is loading, or loading again after a currency switch).
 let engineLoading = "The card form is still loading. Try again in a moment."
+let walletLoading = "Apple Pay is still loading. Try again in a moment."
 /// The engine failed before Vezmo was asked to take the payment: never its own words.
 let notCompleted = "Your payment couldn’t be completed. Please try again."
 
@@ -212,9 +213,9 @@ final class CheckoutSession: ObservableObject {
   }
 
   /// The engine refused (it isn't set up yet): back to the sheet, in our words.
-  func engineNotReady() {
+  func engineNotReady(_ message: String = engineLoading) {
     guard snapshot.phase.isReady || snapshot.phase == .paying else { return }
-    set { $0.phase = .ready(error: VezmoError(code: .unknown, message: engineLoading)) }
+    set { $0.phase = .ready(error: VezmoError(code: .unknown, message: message)) }
   }
 
   func setElementError(_ message: String?) {

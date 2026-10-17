@@ -88,6 +88,7 @@ private const val PRICE_CHANGED = "The price in your currency just changed. Chec
 
 /** The engine isn't set up for this payment (it is loading, or loading again after a currency switch). */
 internal const val ENGINE_LOADING = "The card form is still loading. Try again in a moment."
+internal const val WALLET_LOADING = "Google Pay is still loading. Try again in a moment."
 
 /**
  * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
@@ -191,9 +192,9 @@ internal class CheckoutSession(
     }
 
     /** The engine refused (it isn't set up yet): back to the sheet, in our words. */
-    fun engineNotReady() {
+    fun engineNotReady(message: String = ENGINE_LOADING) {
         if (snapshot.phase is SessionPhase.Ready || snapshot.phase == SessionPhase.Paying) {
-            set { copy(phase = SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, ENGINE_LOADING))) }
+            set { copy(phase = SessionPhase.Ready(VezmoError(VezmoError.Code.Unknown, message))) }
         }
     }
 
