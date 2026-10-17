@@ -26,8 +26,13 @@ if [ -n "${UDID:-}" ]; then
 fi
 # The simulator's TLS gate (.github/actions/ios-simulator): the flows wait for it before a session and before Pay.
 [ -n "${SIM_TLS_GATE:-}" ] && options+=(-e "SIM_TLS_GATE=$SIM_TLS_GATE")
-# What the gate saw go wrong during this run (failed checks, trustd restarts), at the end of the step's log.
-gate_report() { [ -n "${SIM_TLS_GATE_LOG:-}" ] && grep -v ': ok$' "$SIM_TLS_GATE_LOG" | sed 's/^/TLS gate: /' || true; }
+# What the gate saw go wrong so far (failed checks, trustd restarts) at the end of the step's log, and its logs and any
+# trustd stack samples next to the flows' output.
+gate_report() {
+  [ -n "${SIM_TLS_GATE_LOGS:-}" ] || return 0
+  sed 's/^/TLS gate: /' "$SIM_TLS_GATE_LOGS/gate.log" 2> /dev/null
+  cp -R "$SIM_TLS_GATE_LOGS" "$out/sim-tls-gate" 2> /dev/null || true
+}
 trap gate_report EXIT
 
 mkdir -p "$out"
