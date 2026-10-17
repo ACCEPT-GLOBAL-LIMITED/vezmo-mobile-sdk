@@ -42,10 +42,30 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
     visible: "(?i).*authori[sz]e test payment.*"
     timeout: 60000
 - takeScreenshot: ${SHOT}-04-test-page
-# The buyer approves on the provider's page. A tap that lands while the page is still settling can be dropped (the page
-# stays as it was): it is tapped again only if nothing changed.
+# The buyer approves on the provider's page. On a busy simulator the in-app browser can take the tap for the start of a
+# long press (a link preview) and never click: the page stays. A click leaves the page within seconds, so while the
+# button is still there 15 s later it is tapped again, twice at most. Nothing was approved until the page moves on.
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:
     text: "(?i).*authori[sz]e test payment.*"
     retryTapIfNoChange: true
+- extendedWaitUntil:
+    notVisible: "(?i).*authori[sz]e test payment.*"
+    timeout: 15000
+    optional: true
+- runFlow:
+    when:
+      visible: "(?i).*authori[sz]e test payment.*"
+    commands:
+      - takeScreenshot: ${SHOT}-04b-tap-not-taken
+      - tapOn: "(?i).*authori[sz]e test payment.*"
+      - extendedWaitUntil:
+          notVisible: "(?i).*authori[sz]e test payment.*"
+          timeout: 15000
+          optional: true
+- runFlow:
+    when:
+      visible: "(?i).*authori[sz]e test payment.*"
+    commands:
+      - tapOn: "(?i).*authori[sz]e test payment.*"
