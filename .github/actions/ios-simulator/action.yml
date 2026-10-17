@@ -1,7 +1,8 @@
 name: iPhone simulator
 description: >
-  Boots an iPhone simulator for the end-to-end flows and readies it: stops its push daemon, installs Maestro, and warms
-  the test driver, the system's certificate checks and the browser. Sets UDID for the steps after it.
+  Boots an iPhone simulator for the end-to-end flows and readies it: stops its push daemon, starts the TLS gate the flows
+  check before a session and before Pay, installs Maestro, and warms the test driver, the system's certificate checks
+  and the browser. Sets UDID and SIM_TLS_GATE for the steps after it.
 runs:
   using: composite
   steps:
@@ -25,6 +26,19 @@ runs:
         if xcrun simctl spawn "$UDID" launchctl list | grep -q 'com\.apple\.apsd$'; then
           echo "::warning::The simulator's push daemon is still running."
         fi
+    # The flows ask this gate before a session and before Pay: HTTPS inside the simulator works right now (a stalled
+    # trustd is restarted). See .github/scripts/sim-tls-gate.py.
+    - name: Start the simulator's TLS gate
+      shell: bash
+      run: |
+        xcrun --sdk iphonesimulator swiftc -O -target arm64-apple-ios17.0-simulator \
+          "$GITHUB_WORKSPACE/e2e/sim-probe/main.swift" -o "$RUNNER_TEMP/sim-probe"
+        nohup python3 "$GITHUB_WORKSPACE/.github/scripts/sim-tls-gate.py" "$RUNNER_TEMP/sim-probe" \
+          > "$RUNNER_TEMP/sim-tls-gate.log" 2>&1 &
+        for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8732/ && break; sleep 1; done
+        cat "$RUNNER_TEMP/sim-tls-gate.log"
+        echo "SIM_TLS_GATE=http://127.0.0.1:8732/" >> "$GITHUB_ENV"
+        echo "SIM_TLS_GATE_LOG=$RUNNER_TEMP/sim-tls-gate.log" >> "$GITHUB_ENV"
     - uses: ./.github/actions/maestro
     # Starts Maestro's test driver (later runs reuse it) and has Safari load the dev sandbox over TLS: the first
     # certificate check and web content process of a just-booted simulator can take minutes on a CI Mac. Infrastructure

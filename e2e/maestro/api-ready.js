@@ -1,11 +1,14 @@
-// Waits until Vezmo's dev sandbox answers its health check (three times in a row once it has failed), for up to three
-// minutes. Other teams deploy the sandbox at any time, and it answers 5xx for a minute or so while it restarts: a flow
-// waits here instead of making a session or pressing Pay into that minute.
+// Waits until the flow can safely make a session or press Pay, for up to six minutes:
+// - Vezmo's dev sandbox answers its health check (three times in a row once it has failed). Other teams deploy it at
+//   any time, and it answers 5xx for a minute or so while it restarts.
+// - On an iPhone simulator, an HTTPS request made inside it gets through (SIM_TLS_GATE, .github/scripts/sim-tls-gate.py,
+//   which restarts the simulator's certificate checks when they stop answering).
 var HEALTH = 'https://api.dev.vezmo.com/api/v1/health';
+var GATE = typeof SIM_TLS_GATE === 'undefined' ? '' : SIM_TLS_GATE;
 
-function healthy() {
+function answers(url) {
   try {
-    return http.get(HEALTH).ok;
+    return http.get(url).ok;
   } catch (e) {
     return false;
   }
@@ -17,10 +20,12 @@ function pause(ms) {
   while (Date.now() < until) {}
 }
 
-var deadline = Date.now() + 180000;
-var inARow = healthy() ? 3 : 0;
-while (inARow < 3 && Date.now() < deadline) {
+var deadline = Date.now() + 360000;
+var inARow = answers(HEALTH) ? 3 : 0;
+var simulator = !GATE || answers(GATE);
+while ((inARow < 3 || !simulator) && Date.now() < deadline) {
   pause(2000);
-  inARow = healthy() ? inARow + 1 : 0;
+  inARow = answers(HEALTH) ? inARow + 1 : 0;
+  simulator = !GATE || answers(GATE);
 }
-output.apiReady = inARow >= 3;
+output.apiReady = inARow >= 3 && simulator;

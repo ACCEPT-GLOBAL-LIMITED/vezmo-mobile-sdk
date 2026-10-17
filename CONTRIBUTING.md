@@ -80,7 +80,9 @@ requests from forks too (a first-time contributor's runs start once a maintainer
 To run a folder of flows on your own emulator or simulator, name the model:
 `.github/scripts/maestro-test.sh connect out packages/ios/e2e/maestro` (or `maestro test -e TRACK=mor …`). A failed
 flow is never run again; the only retries are before a payment: making or loading the sandbox session, a tap or
-keystroke the device dropped, a browser page that never drew, and Maestro's own driver starting.
+keystroke the device dropped, a browser page that never drew, and Maestro's own driver starting. Before a session and
+before Pay, every flow waits until the sandbox is up and, on an iPhone simulator, until HTTPS gets through inside it
+(`.github/scripts/sim-tls-gate.py`).
 
 ## Pull requests
 
