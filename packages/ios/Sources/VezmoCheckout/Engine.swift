@@ -167,6 +167,9 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
   weak var presenter: UIViewController?
   /// The flow behind the express Apple Pay button (nil: none on this session).
   @Published private(set) var walletFlow: PaymentSheet.FlowController?
+  /// The wallet flow is updating for a new amount: an Apple Pay tap now would fail before Vezmo is asked.
+  @Published private(set) var walletUpdating = false
+  private var walletUpdates = 0
   /// Built for the current settings.
   @Published private(set) var loaded = false
   /// Set up again for a new amount (the buyer switched currency; the rows stay on screen): the engine refuses the card
@@ -253,6 +256,8 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     // A new flow: an update of the old one in flight no longer counts (it may never answer).
     updates += 1
     updating = false
+    walletUpdates += 1
+    walletUpdating = false
     guard intent.card else {
       flow = nil
       walletFlow = nil
@@ -301,7 +306,14 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
       }
       self?.reportCard()
     }
-    walletFlow?.update(intentConfiguration: intentConfiguration(intent)) { _ in }
+    if let walletFlow {
+      walletUpdates += 1
+      let mineWallet = walletUpdates
+      walletUpdating = true
+      walletFlow.update(intentConfiguration: intentConfiguration(intent)) { [weak self] _ in
+        if mineWallet == self?.walletUpdates { self?.walletUpdating = false }
+      }
+    }
   }
 
   private func intentConfiguration(_ intent: EngineIntent) -> PaymentSheet.IntentConfiguration {
@@ -355,8 +367,14 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     Task { await session?.onConfirmResult(status, message: message) }
   }
 
-  fileprivate func walletTapped(_ wallet: String) {
+  /// Whether the wallet may start: not while it is updating for a new amount (our words instead; the next tap pays).
+  fileprivate func walletTapped(_ wallet: String) -> Bool {
+    if walletUpdating {
+      session?.engineNotReady(walletLoading)
+      return false
+    }
     session?.walletStarted(wallet)
+    return true
   }
 
   // MARK: Confirmation token → Vezmo → client secret
@@ -382,10 +400,7 @@ struct WalletButtons: View {
     return WalletButtonsView(
       flowController: flow,
       confirmHandler: { result in host.report(result) },
-      clickHandler: { wallet in
-        host.walletTapped(wallet)
-        return true
-      }
+      clickHandler: { wallet in host.walletTapped(wallet) }
     )
     .id(ObjectIdentifier(flow))
   }

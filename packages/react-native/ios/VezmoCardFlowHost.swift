@@ -19,6 +19,9 @@ public final class VezmoCardFlowHost: UIView {
 
   private var flow: PaymentSheet.FlowController?
   private var walletFlow: PaymentSheet.FlowController?
+  /// The wallet flow is updating for a new amount: an Apple Pay tap now would fail before Vezmo is asked.
+  private var walletUpdating = false
+  private var walletUpdates = 0
   private var wallets: UIViewController?
   /// The wallet buttons' height for a width (SwiftUI's own measure).
   private var measureWallets: ((CGFloat) -> CGFloat)?
@@ -108,6 +111,8 @@ public final class VezmoCardFlowHost: UIView {
     guard intent["card"] as? Bool == true else {
       removeWallets()
       flow = nil
+      walletUpdates += 1
+      walletUpdating = false
       walletFlow = nil
       emitCardOption()
       emit("loaded", [:])
@@ -126,9 +131,13 @@ public final class VezmoCardFlowHost: UIView {
       let withWallets = sheetConfiguration(from: config, wallets: true)
       if withWallets.applePay != nil {
         let wallets = try await makeFlow(intent: intent, configuration: withWallets)
+        walletUpdates += 1
+        walletUpdating = false
         walletFlow = wallets
         showWallets(wallets)
       } else {
+        walletUpdates += 1
+        walletUpdating = false
         walletFlow = nil
         removeWallets()
       }
@@ -156,7 +165,14 @@ public final class VezmoCardFlowHost: UIView {
       if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
       self?.emitCardOption()
     }
-    walletFlow?.update(intentConfiguration: intentConfiguration(from: intent)) { _ in }
+    if let walletFlow {
+      walletUpdates += 1
+      let mine = walletUpdates
+      walletUpdating = true
+      walletFlow.update(intentConfiguration: intentConfiguration(from: intent)) { [weak self] _ in
+        if mine == self?.walletUpdates { self?.walletUpdating = false }
+      }
+    }
   }
 
   private func intentConfiguration(from intent: [String: Any]) -> PaymentSheet.IntentConfiguration {
@@ -260,7 +276,13 @@ public final class VezmoCardFlowHost: UIView {
       flowController: flow,
       confirmHandler: { [weak self] result in self?.emitResult(result) },
       clickHandler: { [weak self] wallet in
-        self?.emit("walletTap", ["wallet": wallet])
+        guard let self else { return false }
+        if self.walletUpdating {
+          // Still being set up for this amount or currency: our words, and the next tap pays.
+          self.emit("confirmResult", ["status": "failed", "message": "Apple Pay is still loading. Try again in a moment."])
+          return false
+        }
+        self.emit("walletTap", ["wallet": wallet])
         return true
       }
     )

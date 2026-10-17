@@ -17,6 +17,8 @@ The first release of the Vezmo payment sheet for React Native and Expo.
   (Cash App, Klarna, Amazon Pay, 3D Secure in the browser).
 - **The payment engine's own error text is never shown**: a card form that can't open is set up again once, and
   otherwise reads in Vezmo's words (seen after switching currency on Android).
+- **Wallets while switching currency**: a Google Pay or Apple Pay tap while the sheet sets the wallet up again for
+  the new amount waits for it, in our words; the next tap pays.
 - **Expo config plugin** for Apple Pay and the card-scanning camera text.
 - **Subscriptions**: `prepareCheckout({ subscriptionToken })` starts a subscription in the app (the first payment,
   or a free trial with the card saved); the result carries `subscription: { ref, status }`. Apple Pay shows it as a

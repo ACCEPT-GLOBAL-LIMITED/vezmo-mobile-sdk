@@ -21,6 +21,8 @@ The first release of the Vezmo payment sheet for native iOS apps (Swift Package 
 - **Declines in Vezmo's words**: a card declined after 3D Secure shows Vezmo's reason, the same as on Android.
 - **Switching currency**: the Card row and Pay wait the moment the sheet takes to set the payment up again in the
   other currency, and a problem there reads in Vezmo's words, never the payment engine's.
+- **Apple Pay while switching currency**: a Apple Pay tap while the sheet sets the wallet up again for the new
+  amount waits for it ("Apple Pay is still loading. Try again in a moment."); the next tap pays.
 - **Privacy manifest**: declares what the sheet sends Vezmo to take the payment (no tracking).
 - **UIKit and SwiftUI**: `prepare(clientToken:)` and `present(from:)` with async/await, the `.vezmoCheckout` view
   modifier, and `VezmoCheckout.handleURL` for links back into the app.

@@ -47,6 +47,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.consumeAsFlow
 import org.json.JSONObject
 
+private const val WALLET_LOADING = "Google Pay is still loading. Try again in a moment."
+
 /**
  * Cards and wallets on Android: the processor's flow controller (the native card form, Google Pay) in Compose,
  * confirmed through Vezmo's server like the element. It draws only the express wallet buttons; the sheet draws the
@@ -91,6 +93,9 @@ class VezmoCardFlowView(
 
   /** A payment was started here (Pay with the card, or a wallet) and its result is still to come. */
   private var paying = false
+
+  /** The wallet flow is set up for the latest amount: a Google Pay tap before then would fail before Vezmo is asked. */
+  private var walletReady = false
 
   /** The card form is being opened: a failure reported meanwhile is the form's, not a payment's. */
   private var openingCard = false
@@ -241,9 +246,21 @@ class VezmoCardFlowView(
     val clickHandler =
       remember {
         WalletButtonsViewClickHandler { wallet ->
-          paying = true
-          emit("topWalletTap", Arguments.createMap().apply { putString("wallet", wallet) })
-          false // not handled here: the wallet goes on to pay
+          if (!walletReady) {
+            // Still being set up for this amount or currency: our words, and the next tap pays.
+            emit(
+              "topConfirmResult",
+              Arguments.createMap().apply {
+                putString("status", "failed")
+                putString("message", WALLET_LOADING)
+              },
+            )
+            true // handled here: the wallet doesn't start
+          } else {
+            paying = true
+            emit("topWalletTap", Arguments.createMap().apply { putString("wallet", wallet) })
+            false // not handled here: the wallet goes on to pay
+          }
         }
       }
     CompositionLocalProvider(
@@ -261,7 +278,9 @@ class VezmoCardFlowView(
           when (command) {
             is Command.Configure -> {
               lastConfigure = command
+              walletReady = false
               walletsOn = configure(flow, walletFlow, command)
+              walletReady = walletsOn
             }
             is Command.Off -> emit("topLoaded", Arguments.createMap().apply { putBoolean("ok", true) })
             is Command.PresentCard -> openCard(flow)
