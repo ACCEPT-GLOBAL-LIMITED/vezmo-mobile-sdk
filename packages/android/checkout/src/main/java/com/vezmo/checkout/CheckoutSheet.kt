@@ -295,6 +295,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                         value = snap.payLocal,
                         onChange = { session.choosePayLocal(it) },
                         disabled = paying,
+                        tags = listOf("vezmo-pay-in-local", "vezmo-pay-in-price"),
                     )
                     if (snap.payLocal) {
                         Txt(

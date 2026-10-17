@@ -326,6 +326,8 @@ internal fun <K> Segmented(
     value: K,
     onChange: (K) -> Unit,
     disabled: Boolean,
+    /** Test tags, one per item. */
+    tags: List<String> = emptyList(),
 ) {
     val look = LocalLook.current
     val p = look.p
@@ -337,7 +339,7 @@ internal fun <K> Segmented(
             .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        items.forEach { (key, label, sub) ->
+        items.forEachIndexed { i, (key, label, sub) ->
             val on = key == value
             val r = look.radius - 3.dp
             Box(
@@ -355,7 +357,8 @@ internal fun <K> Segmented(
                             Modifier.clip(RoundedCornerShape(r))
                         },
                     ).semantics { selected = on }
-                    .clickable(enabled = !disabled, role = Role.RadioButton) { onChange(key) },
+                    .clickable(enabled = !disabled, role = Role.RadioButton) { onChange(key) }
+                    .then(tags.getOrNull(i)?.let { Modifier.testTag(it) } ?: Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 Row(verticalAlignment = Alignment.Bottom) {

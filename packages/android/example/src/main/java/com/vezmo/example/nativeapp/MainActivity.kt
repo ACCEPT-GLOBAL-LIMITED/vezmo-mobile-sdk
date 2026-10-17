@@ -84,6 +84,7 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        offerCurrency = intent.getStringExtra("offerCurrency")?.ifBlank { null }
         enableEdgeToEdge()
         setContent { Shop() }
     }
@@ -378,9 +379,16 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp) =
         )
     }
 
+/**
+ * The end-to-end runs launch the app with `offerCurrency` (e.g. AED): the sandbox then offers the buyer that currency,
+ * as it would abroad (the CI runners are in the US).
+ */
+private var offerCurrency: String? = null
+
 /** The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token. */
 private fun demoToken(url: String, field: String): String? {
-    val conn = URL(url).openConnection() as HttpURLConnection
+    val full = offerCurrency?.let { url + (if ('?' in url) "&" else "?") + "offerCurrency=" + it } ?: url
+    val conn = URL(full).openConnection() as HttpURLConnection
     return try {
         conn.requestMethod = "POST"
         conn.connectTimeout = 15_000
