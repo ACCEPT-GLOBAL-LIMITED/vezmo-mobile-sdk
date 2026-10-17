@@ -1,0 +1,19 @@
+name: Dev sandbox ready
+description: >
+  Waits until Vezmo's dev sandbox (the flows' API) answers its health check three times in a row: other teams deploy
+  it at any time, and it answers 5xx for a minute or so while it restarts.
+runs:
+  using: composite
+  steps:
+    - name: Wait for the dev sandbox
+      shell: bash
+      run: |
+        in_a_row=0
+        for i in $(seq 1 120); do
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 10 https://api.dev.vezmo.com/api/v1/health || true)
+          if [ "$code" = 200 ]; then in_a_row=$((in_a_row + 1)); else in_a_row=0; echo "Health check: $code"; fi
+          [ "$in_a_row" -ge 3 ] && { echo "The dev sandbox is up."; exit 0; }
+          sleep 5
+        done
+        echo "::error::Vezmo's dev sandbox did not answer its health check for 10 minutes."
+        exit 1

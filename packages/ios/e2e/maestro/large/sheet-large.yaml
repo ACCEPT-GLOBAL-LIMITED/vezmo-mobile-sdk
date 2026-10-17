@@ -2,22 +2,9 @@
 # with the buyer's setting and the layout holds. Screenshots only, no payment.
 appId: com.vezmo.example.native
 ---
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible:
-      id: "new-session"
-    timeout: 30000
-- tapOn:
-    id: "new-session"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow: ../common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: large-01-sheet
@@ -28,16 +15,10 @@ appId: com.vezmo.example.native
       text: ".*canceled.*"
     timeout: 15000
 # A subscription's plan block and authorization at the same size.
-- scrollUntilVisible:
-    element:
-      id: "subscribe"
-    direction: DOWN
-    centerElement: true # tap it mid-screen, clear of the home indicator and gesture bar
-- tapOn:
-    id: "subscribe"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow:
+    file: ../../../../../e2e/maestro/subscribe.yaml
+    env:
+      BUTTON: subscribe
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: large-02-subscription

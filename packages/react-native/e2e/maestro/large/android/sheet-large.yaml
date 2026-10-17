@@ -16,11 +16,13 @@ appId: com.vezmo.example
           element:
             id: "new-session"
           timeout: 30000
+# The buttons sit below the fold at this size: the session's steps are inline, scrolled to.
+- runFlow: ../../../../../../e2e/maestro/api-ready.yaml
 - tapOn:
     id: "new-session"
 - extendedWaitUntil:
     visible: "Session ready."
-    timeout: 30000
+    timeout: 75000
 - scrollUntilVisible:
     element:
       id: "pay"

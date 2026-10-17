@@ -1,16 +1,39 @@
 name: Flutter plugin
 
 # The Flutter plugin (packages/flutter): analysis and Dart tests; then its example app, built on the native Android and
-# iOS SDKs from this checkout, pays end to end on an Android emulator (plus the sheet in dark mode) and an iPhone
-# simulator. Sessions come from dev's demo endpoint (TEST mode only), so this repo holds no key.
+# iOS SDKs from this checkout, pays end to end on an Android emulator and an iPhone simulator (plus the sheet in dark
+# mode), once per business model (Connect and merchant of record, in parallel). Sessions come from dev's demo endpoint
+# (TEST mode only), so this repo holds no key.
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['packages/flutter/**', 'packages/android/**', 'packages/ios/**', 'Package.swift', '.github/workflows/flutter.yml']
+    paths:
+      - 'packages/flutter/**'
+      - 'packages/android/**'
+      - 'packages/ios/**'
+      - 'Package.swift'
+      - 'e2e/**'
+      - '.github/actions/android-emulator/**'
+      - '.github/actions/ios-simulator/**'
+      - '.github/actions/dev-api/**'
+      - '.github/actions/maestro/**'
+      - '.github/scripts/maestro-test.sh'
+      - '.github/workflows/flutter.yml'
   pull_request:
     branches: [main]
-    paths: ['packages/flutter/**', 'packages/android/**', 'packages/ios/**', 'Package.swift', '.github/workflows/flutter.yml']
+    paths:
+      - 'packages/flutter/**'
+      - 'packages/android/**'
+      - 'packages/ios/**'
+      - 'Package.swift'
+      - 'e2e/**'
+      - '.github/actions/android-emulator/**'
+      - '.github/actions/ios-simulator/**'
+      - '.github/actions/dev-api/**'
+      - '.github/actions/maestro/**'
+      - '.github/scripts/maestro-test.sh'
+      - '.github/workflows/flutter.yml'
 
 concurrency:
   group: flutter-plugin-${{ github.ref }}
@@ -55,9 +78,13 @@ jobs:
         run: flutter pub publish --dry-run
 
   android:
-    name: Example app on an Android emulator
+    name: Example app on an Android emulator (${{ matrix.track }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [connect, mor]
     env:
       # The plugin resolves the native Android SDK from Maven local (built from this checkout below), not a release.
       ORG_GRADLE_PROJECT_vezmoMavenLocal: true
@@ -89,50 +116,39 @@ jobs:
       - name: Plugin unit tests (Android)
         working-directory: packages/flutter/example/android
         run: ./gradlew :vezmo_checkout:testDebugUnitTest --console=plain
-      - name: Enable KVM for the emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/maestro
       - name: Run the flows on an emulator
-        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        uses: ./.github/actions/android-emulator
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
-          # A real phone's size and density (1080x2400, 420 dpi), so screenshots show what buyers see.
-          profile: pixel_7
-          ram-size: 4096M
           working-directory: packages/flutter
+          # One command per line. The sheet in dark mode (screenshots only) runs once, with the Connect flows.
           script: |
             adb shell settings put global hide_error_dialogs 1
             # Keep the whole run's log: a failure early in the run is otherwise rotated out by the time it is saved.
             adb logcat -G 16M
             adb install example/build/app/outputs/flutter-apk/app-release.apk
-            mkdir -p e2e/out
-            maestro test e2e/maestro/android --format junit --output e2e/out/report.xml --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
-            # The sheet in dark mode: screenshots only.
-            adb shell "cmd uimode night yes"
-            maestro test e2e/maestro/look/android --test-output-dir e2e/out || (adb exec-out screencap -p > e2e/out/failure-dark.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
-            adb shell "cmd uimode night no"
+            ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out/flows e2e/maestro/android || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night yes"
+            [ ${{ matrix.track }} != connect ] || ../../.github/scripts/maestro-test.sh connect e2e/out/look e2e/maestro/look/android || (adb exec-out screencap -p > e2e/out/failure-dark.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night no"
             adb logcat -d > e2e/out/logcat.txt
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: flutter-android-e2e
+          name: flutter-android-e2e-${{ matrix.track }}
           path: |
             packages/flutter/e2e/out
             packages/flutter/*.png
 
   ios:
-    name: Example app on an iPhone simulator
+    name: Example app on an iPhone simulator (${{ matrix.track }})
     runs-on: macos-15
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        track: [connect, mor]
     env:
       # Build against this commit's iOS SDK (the Swift package at the repository root), not a published release.
       VEZMO_IOS_SDK_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -146,6 +162,8 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # Booted (and warmed) before the build: a just-booted simulator's first minutes are busy.
+      - uses: ./.github/actions/ios-simulator
       # Flutter names the plugin's Swift package after the plugin's folder, and Xcode refuses a package whose folder
       # name differs from its own (packages/flutter vs vezmo_checkout): reach the plugin through a folder named
       # vezmo_checkout, as an app that installs it from pub.dev does.
@@ -162,58 +180,30 @@ jobs:
             find ~/Library/Developer/Xcode/DerivedData -name workspace-state.json -maxdepth 6 -exec cat {} \;
             exit 1
           }
-      - name: Boot an iPhone simulator
-        run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
-          phones = [d for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")]
-          pick = next((d for d in phones if d["name"] == "iPhone 16"), phones[-1])
-          print(pick["udid"]); print(pick["name"], file=sys.stderr)')
-          echo "UDID=$UDID" >> "$GITHUB_ENV"
-          xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-      - name: Install Maestro
-        run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/dev-api
       - name: Run the flows
         run: |
           xcrun simctl install "$UDID" example/build/ios/iphonesimulator/Runner.app
-          mkdir -p e2e/out-ios
-          # The test driver can take a while to start on a cold CI simulator.
-          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
-          flows() {
-            maestro --device "$UDID" test "$@" --format junit --output e2e/out-ios/report.xml --test-output-dir e2e/out-ios 2>&1 | tee e2e/maestro.txt
-            return "${PIPESTATUS[0]}"
-          }
-          restart() { xcrun simctl shutdown "$UDID"; xcrun simctl boot "$UDID"; xcrun simctl bootstatus "$UDID" -b; }
-          fail() { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; cp -R ~/Library/Logs/DiagnosticReports e2e/out-ios/crashes 2>/dev/null; exit 1; }
-          flows e2e/maestro/ios && exit 0
-          # A busy CI Mac sometimes starts Maestro's driver too late: restart the simulator and run them all again.
-          if grep -q "iOS driver not ready" e2e/maestro.txt; then restart; flows e2e/maestro/ios && exit 0; fi
-          # It also sometimes drops a tap or never loads the in-app browser: a failed flow gets one more try on a
-          # fresh simulator. A real failure fails twice.
-          failed=$(python3 -c 'import xml.etree.ElementTree as E; print(" ".join("e2e/maestro/ios/%s.yaml" % t.get("name") for t in E.parse("e2e/out-ios/report.xml").iter("testcase") if t.find("failure") is not None or t.find("error") is not None))' || true)
-          [ -n "$failed" ] || fail
-          echo "Trying again: $failed"
-          restart
-          flows $failed || fail
-      # The sheet in dark mode: screenshots only (as the Android job and the other SDKs' runs).
+          ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out-ios/flows e2e/maestro/ios || { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure.png; cp -R ~/Library/Logs/DiagnosticReports e2e/out-ios/crashes 2>/dev/null; exit 1; }
+      # The sheet in dark mode: screenshots only (as the Android job and the other SDKs' runs), once.
       - name: The sheet in dark mode
+        if: matrix.track == 'connect'
         run: |
-          export MAESTRO_DRIVER_STARTUP_TIMEOUT=240000
           xcrun simctl ui "$UDID" appearance dark
-          maestro --device "$UDID" test e2e/maestro/look/ios --test-output-dir e2e/out-ios || (xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1)
+          ../../.github/scripts/maestro-test.sh connect e2e/out-ios/look e2e/maestro/look/ios || { xcrun simctl io "$UDID" screenshot e2e/out-ios/failure-dark.png; exit 1; }
       - name: Keep screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: flutter-ios-e2e
-          path: packages/flutter/e2e/out-ios/**/*.png
+          name: flutter-ios-e2e-${{ matrix.track }}
+          # The screenshots, and each flow's steps (commands.json shows which retries, if any, ran).
+          path: |
+            packages/flutter/e2e/out-ios/**/*.png
+            packages/flutter/e2e/out-ios/**/commands.json
       # Maestro's logs and any crash reports, only when something failed.
       - name: Keep the logs of a failed run
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: flutter-ios-e2e-logs
+          name: flutter-ios-e2e-logs-${{ matrix.track }}
           path: packages/flutter/e2e/out-ios

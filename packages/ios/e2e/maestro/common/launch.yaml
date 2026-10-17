@@ -1,0 +1,14 @@
+# Launches the example fresh on the business model the run picks (TRACK: `connect`, or `mor`, the merchant of record,
+# with Cash App, Klarna and Amazon Pay on) and, with OFFER_CURRENCY (e.g. AED), the sandbox offering the buyer that
+# currency, as to a buyer abroad (the runners are in the US). Both are launch arguments the example reads.
+appId: com.vezmo.example.native
+---
+- launchApp:
+    clearState: true
+    arguments:
+      track: "${typeof TRACK == 'undefined' ? 'connect' : TRACK}"
+      offerCurrency: "${typeof OFFER_CURRENCY == 'undefined' ? '' : OFFER_CURRENCY}"
+- extendedWaitUntil:
+    visible:
+      id: "new-session"
+    timeout: 30000

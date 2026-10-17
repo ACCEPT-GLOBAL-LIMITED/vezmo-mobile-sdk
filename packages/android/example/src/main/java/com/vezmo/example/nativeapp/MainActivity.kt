@@ -72,6 +72,7 @@ import com.vezmo.checkout.rememberVezmoCheckout
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         offerCurrency = intent.getStringExtra("offerCurrency")?.ifBlank { null }
+        launchTrack = intent.getStringExtra("track")?.ifBlank { null }?.lowercase()
         enableEdgeToEdge()
         setContent { Shop() }
     }
@@ -122,9 +124,7 @@ private fun Shop() {
     // `mor`: a session on the sandbox's merchant-of-record business (it has Cash App, Klarna and Amazon Pay on).
     val newSession: (String?) -> Unit = { track ->
         scope.launch {
-            status = "Creating a sandbox session…"
-            val url = BuildConfig.VEZMO_DEMO_URL + (track?.let { "?track=$it" } ?: "")
-            val created = withContext(Dispatchers.IO) { runCatching { demoToken(url, "clientToken") }.getOrNull() }
+            val created = demoToken(demoUrl(BuildConfig.VEZMO_DEMO_URL, track), "clientToken", "Creating a sandbox session…") { status = it }
             if (created == null) {
                 status = "Could not reach the demo endpoint."
             } else {
@@ -148,12 +148,12 @@ private fun Shop() {
         }
     }
     // A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken.
-    val subscribe: (String) -> Unit = { query ->
+    val subscribe: (String?, Boolean) -> Unit = { track, trial ->
         focus.clearFocus()
         scope.launch {
             result = null
-            status = "Loading checkout…"
-            val subscriptionToken = withContext(Dispatchers.IO) { runCatching { demoToken(SUBSCRIPTION_URL + query, "subscriptionToken") }.getOrNull() }
+            val url = demoUrl(SUBSCRIPTION_URL + if (trial) "?trial=1" else "", track)
+            val subscriptionToken = demoToken(url, "subscriptionToken", "Loading checkout…") { status = it }
             if (subscriptionToken == null) {
                 status = "Could not reach the demo endpoint."
                 return@launch
@@ -168,6 +168,8 @@ private fun Shop() {
         }
     }
     val ready = token.isNotBlank()
+    // "Subscribe, no trial" is on the merchant-of-record business unless the run picks another.
+    val noTrialTrack = launchTrack ?: "mor"
 
     Column(
         Modifier
@@ -263,9 +265,9 @@ private fun Shop() {
                     .background(Color.White)
                     .border(1.dp, LINE, CircleShape)
                     .testTag("new-session")
-                    .clickable { newSession(null) },
+                    .clickable { newSession(launchTrack) },
                 contentAlignment = Alignment.Center,
-            ) { BasicText("New sandbox session", style = style(14f, weight = FontWeight.SemiBold)) }
+            ) { BasicText(if (launchTrack == "mor") "New sandbox session · merchant of record" else "New sandbox session", style = style(14f, weight = FontWeight.SemiBold)) }
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -285,9 +287,9 @@ private fun Shop() {
                     .background(Color.White)
                     .border(1.dp, LINE, CircleShape)
                     .testTag("subscribe-now")
-                    .clickable { subscribe("?track=mor") },
+                    .clickable { subscribe(noTrialTrack, false) },
                 contentAlignment = Alignment.Center,
-            ) { BasicText("Subscribe, no trial · merchant of record", style = style(14f, weight = FontWeight.SemiBold)) }
+            ) { BasicText(if (noTrialTrack == "mor") "Subscribe, no trial · merchant of record" else "Subscribe, no trial", style = style(14f, weight = FontWeight.SemiBold)) }
         }
 
         // A subscription with a free trial (the demo business's Club plan).
@@ -312,7 +314,7 @@ private fun Shop() {
                     .clip(CircleShape)
                     .background(INK)
                     .testTag("subscribe")
-                    .clickable { subscribe("?trial=1") },
+                    .clickable { subscribe(launchTrack, true) },
                 contentAlignment = Alignment.Center,
             ) { BasicText("Try 7 days free", style = style(16f, Color.White, FontWeight.SemiBold)) }
         }
@@ -385,17 +387,43 @@ private fun Modifier.dashedBorder(color: Color, radius: Dp) =
  */
 private var offerCurrency: String? = null
 
-/** The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token. */
-private fun demoToken(url: String, field: String): String? {
-    val full = offerCurrency?.let { url + (if ('?' in url) "&" else "?") + "offerCurrency=" + it } ?: url
-    val conn = URL(full).openConnection() as HttpURLConnection
+/**
+ * The end-to-end runs launch the app with `track` (`mor`, the sandbox's merchant-of-record business, or `connect`):
+ * the sandbox buttons that name no business use it.
+ */
+private var launchTrack: String? = null
+
+/** A demo endpoint's address on a business (`mor` or not), with the offer currency the run asked for. */
+private fun demoUrl(url: String, track: String?): String {
+    val query = listOfNotNull("track=mor".takeIf { track == "mor" }, offerCurrency?.let { "offerCurrency=$it" })
+    return if (query.isEmpty()) url else url + (if ('?' in url) "&" else "?") + query.joinToString("&")
+}
+
+/**
+ * The sandbox demo endpoints make a TEST-mode session (or subscription) and return its token in `field`: a short
+ * timeout and up to three tries (a CI runner's first requests can stall, and the sandbox restarts now and then), each
+ * try shown through `show`. Null when none worked.
+ */
+private suspend fun demoToken(url: String, field: String, label: String, show: (String) -> Unit): String? {
+    for (attempt in 1..3) {
+        show(if (attempt == 1) label else "$label (try $attempt of 3)")
+        val token = withContext(Dispatchers.IO) { runCatching { postForToken(url, field) }.getOrNull() }
+        if (token != null) return token
+        if (attempt < 3) delay(attempt * 3_000L)
+    }
+    return null
+}
+
+private fun postForToken(url: String, field: String): String? {
+    val conn = URL(url).openConnection() as HttpURLConnection
     return try {
         conn.requestMethod = "POST"
-        conn.connectTimeout = 15_000
-        conn.readTimeout = 30_000
+        conn.connectTimeout = 10_000
+        conn.readTimeout = 15_000
         conn.doOutput = true
         conn.setFixedLengthStreamingMode(0)
         conn.outputStream.close()
+        if (conn.responseCode !in 200..299) return null
         val body = conn.inputStream.bufferedReader().use { it.readText() }
         JSONObject(body).optJSONObject("data")?.optString(field)?.ifEmpty { null }
     } finally {

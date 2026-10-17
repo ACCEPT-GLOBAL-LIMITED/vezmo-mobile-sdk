@@ -1,0 +1,13 @@
+# Opens the card form from the sheet's Card row (iOS). A busy simulator can drop the tap: Card is tapped again only if
+# nothing at all changed (an error the sheet shows instead of the form is a change, and fails the flow). The form's
+# labels differ across iOS versions, so it is waited for by any of them.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- tapOn:
+    text: "Card"
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "(?i)(add card|card information|card number)"
+    timeout: 20000

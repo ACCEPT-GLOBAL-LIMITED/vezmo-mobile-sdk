@@ -1,0 +1,40 @@
+# A subscription paid today in the buyer's own currency (AED) on the run's business model (TRACK): the sheet opens in
+# dirhams, the card form opens on the first tap of Card, and the first payment goes through.
+appId: com.vezmo.example
+---
+- runFlow:
+    file: common/launch.yaml
+    env:
+      OFFER_CURRENCY: AED
+- runFlow:
+    file: ../../../../../e2e/maestro/subscribe.yaml
+    env:
+      BUTTON: subscribe-now
+- assertVisible: "Due today"
+- assertVisible: "Pay in"
+- assertVisible: ".*AED.*"
+- takeScreenshot: aed-sub-01-sheet
+# The card form opens on the first tap of Card.
+- tapOn: "Card"
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible: "(?i)(add card|card information|card number)"
+    timeout: 20000
+- runFlow:
+    file: ../../../../../e2e/maestro/ios/card-entry.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: aed-sub
+- runFlow:
+    file: ../../../../../e2e/maestro/pay.yaml
+    env:
+      SHOT: aed-sub
+- assertVisible: "You’re subscribed"
+- tapOn:
+    id: "vezmo-done"
+    retryTapIfNoChange: true
+- assertVisible:
+    id: "result"
+    text: ".*active.*"
+- takeScreenshot: aed-sub-06-back-in-app

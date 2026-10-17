@@ -1,8 +1,9 @@
 # A bad session token: the app shows the error and the sheet never opens.
 appId: com.vezmo.example
+tags:
+  - connect-only
 ---
-- launchApp:
-    clearState: true
+- runFlow: common/launch.yaml
 - extendedWaitUntil:
     visible:
       id: "client-token"
@@ -13,6 +14,8 @@ appId: com.vezmo.example
 - inputText: "not-a-real-session-token"
 # Tapping outside the field closes the keyboard.
 - tapOn: "Northwind Audio"
+# The sandbox is up, so the error is the token's.
+- runFlow: ../../../../../e2e/maestro/api-ready.yaml
 - tapOn:
     id: "pay"
 - extendedWaitUntil:

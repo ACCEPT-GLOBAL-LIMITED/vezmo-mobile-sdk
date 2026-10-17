@@ -2,30 +2,12 @@
 # On the merchant-of-record demo, which shows every way to pay in the list (Cash App, Klarna, Amazon Pay).
 appId: com.vezmo.example
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session-mor"
-          timeout: 30000
-- tapOn:
-    id: "new-session-mor"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow:
+    file: ../../android/common/launch.yaml
+    env:
+      TRACK: mor
+- runFlow: ../../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../../e2e/maestro/sheet.yaml
 # Outside the US the sheet first offers the runner's own currency, which hides the USD-only methods: pay in USD.
 - tapOn:
     text: "(.*[0-9][ ,]+)?USD"
@@ -36,8 +18,5 @@ appId: com.vezmo.example
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: dark-01-sheet
-- tapOn: "Card"
-- extendedWaitUntil:
-    visible: "Card number"
-    timeout: 20000
+- runFlow: ../../../../../../e2e/maestro/android/card-form.yaml
 - takeScreenshot: dark-02-card-form

@@ -1,0 +1,28 @@
+# Pays with the redirect method chosen on the sheet (Android) and approves on the provider's test page in the browser
+# (SHOT names the screenshots).
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runFlow: ../api-ready.yaml
+- tapOn:
+    id: "vezmo-pay"
+- waitForAnimationToEnd:
+    timeout: 15000
+- takeScreenshot: ${SHOT}-03-redirect
+# A fresh emulator's browser asks its first-run questions before showing the page.
+- tapOn:
+    text: "(?i)(use without an account|accept & continue|accept and continue)"
+    optional: true
+- tapOn:
+    text: "(?i)(no thanks|no, thanks)"
+    optional: true
+- extendedWaitUntil:
+    visible: "(?i).*authori[sz]e test payment.*"
+    timeout: 60000
+- takeScreenshot: ${SHOT}-04-test-page
+# The buyer approves on the provider's page. A tap that lands while the page is still settling can be dropped (the page
+# stays as it was): it is tapped again only if nothing changed.
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    text: "(?i).*authori[sz]e test payment.*"
+    retryTapIfNoChange: true

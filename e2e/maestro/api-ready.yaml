@@ -1,0 +1,7 @@
+# Waits until the flow can safely make a session or press Pay (see api-ready.js): the dev sandbox is up and, on an
+# iPhone simulator, HTTPS gets through inside it. Still not after six minutes: the flow fails here, before any session
+# or payment.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- runScript: api-ready.js
+- assertTrue: ${output.apiReady}

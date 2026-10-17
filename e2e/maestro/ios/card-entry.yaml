@@ -1,0 +1,42 @@
+# Types CARD on the open card form (iOS) with an expiry, CVC and ZIP, and chooses it (Continue). SHOT names the
+# screenshots.
+appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
+---
+- takeScreenshot: ${SHOT}-01a-card-form
+# Each field by its id (iOS reads the card number's label with the supported brands appended).
+- runFlow:
+    file: field.yaml
+    env:
+      FIELD: "Card number"
+      VALUE: ${CARD}
+      SHOWN: ".*${CARD.slice(-4)}.*"
+- runFlow:
+    file: field.yaml
+    env:
+      FIELD: "MM / YY"
+      VALUE: "1234"
+      SHOWN: "12 ?/ ?34"
+- runFlow:
+    file: field.yaml
+    env:
+      FIELD: "CVC"
+      VALUE: "123"
+      SHOWN: "123"
+- runFlow:
+    file: field.yaml
+    env:
+      FIELD: "ZIP"
+      VALUE: "10001"
+      SHOWN: "10001"
+- takeScreenshot: ${SHOT}-01b-card-filled
+# The number pad has no return key: its Done bar closes it.
+- tapOn:
+    text: "Done"
+    optional: true
+# A busy simulator can drop a tap while the card form closes: tap again if nothing changed.
+- tapOn:
+    text: "Continue"
+    retryTapIfNoChange: true
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: ${SHOT}-03-card-chosen

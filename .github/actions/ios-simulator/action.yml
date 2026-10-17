@@ -1,0 +1,60 @@
+name: iPhone simulator
+description: >
+  Boots an iPhone simulator for the end-to-end flows and readies it: stops its push daemon, starts the TLS gate the flows
+  check before a session and before Pay, installs Maestro, and warms the test driver, the system's certificate checks
+  and the browser. Sets UDID and SIM_TLS_GATE for the steps after it.
+runs:
+  using: composite
+  steps:
+    - name: Boot an iPhone simulator
+      shell: bash
+      run: |
+        UDID=$(xcrun simctl list devices available -j | python3 -c '
+        import json, sys
+        phones = [d for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")]
+        pick = next((d for d in phones if d["name"] == "iPhone 16"), phones[-1])
+        print(pick["udid"]); print(pick["name"], file=sys.stderr)')
+        echo "UDID=$UDID" >> "$GITHUB_ENV"
+        xcrun simctl boot "$UDID"
+        xcrun simctl bootstatus "$UDID" -b > /dev/null
+        # On a CI Mac the simulator's push daemon can't get its certificate ("Client is not supported") and reconnects
+        # to Apple's push servers in a tight loop: dozens of TLS handshakes a second. That starves the certificate
+        # checks every app's HTTPS waits on (a sandbox call hangs) and the launch of the browser's web content process
+        # (a redirect's page stays blank). The flows use no push: stop it.
+        xcrun simctl spawn "$UDID" launchctl disable system/com.apple.apsd 2> /dev/null || true
+        xcrun simctl spawn "$UDID" launchctl bootout system/com.apple.apsd 2> /dev/null || true
+        if xcrun simctl spawn "$UDID" launchctl list | grep -q 'com\.apple\.apsd$'; then
+          echo "::warning::The simulator's push daemon is still running."
+        fi
+    # Keeps HTTPS inside the simulator working (a stuck trustd is restarted within seconds) and tells the flows, which
+    # ask before a session and before Pay. See .github/scripts/sim-tls-gate.py.
+    - name: Start the simulator's TLS gate
+      shell: bash
+      run: |
+        xcrun --sdk iphonesimulator swiftc -O -target arm64-apple-ios17.0-simulator \
+          "$GITHUB_WORKSPACE/e2e/sim-probe/main.swift" -o "$RUNNER_TEMP/sim-probe"
+        mkdir -p "$RUNNER_TEMP/sim-tls-gate"
+        nohup python3 "$GITHUB_WORKSPACE/.github/scripts/sim-tls-gate.py" "$RUNNER_TEMP/sim-probe" \
+          "$RUNNER_TEMP/sim-tls-gate" > "$RUNNER_TEMP/sim-tls-gate/server.log" 2>&1 &
+        for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8732/ && break; sleep 1; done
+        cat "$RUNNER_TEMP/sim-tls-gate/"*.log 2> /dev/null || true
+        echo "SIM_TLS_GATE=http://127.0.0.1:8732/" >> "$GITHUB_ENV"
+        echo "SIM_TLS_GATE_LOGS=$RUNNER_TEMP/sim-tls-gate" >> "$GITHUB_ENV"
+    - uses: ./.github/actions/maestro
+    # Starts Maestro's test driver (later runs reuse it) and has Safari load the dev sandbox over TLS: the first
+    # certificate check and web content process of a just-booted simulator can take minutes on a CI Mac. Infrastructure
+    # only (no app, no payment), so it is tried up to three times.
+    - name: Warm up the simulator
+      shell: bash
+      env:
+        MAESTRO_DRIVER_STARTUP_TIMEOUT: '300000'
+      run: |
+        mkdir -p "$RUNNER_TEMP/warm-up"
+        for attempt in 1 2 3; do
+          # --no-reinstall-driver: the driver stays up after this run, for the flows' runs to reuse.
+          maestro --device "$UDID" test --no-reinstall-driver "$GITHUB_WORKSPACE/e2e/maestro/ios/warm-up.yaml" \
+            --test-output-dir "$RUNNER_TEMP/warm-up/$attempt" && exit 0
+          echo "::warning::Warming up the simulator failed (try $attempt of 3)"
+          pkill -f 'xcodebuild.*maestro' || true
+        done
+        exit 1

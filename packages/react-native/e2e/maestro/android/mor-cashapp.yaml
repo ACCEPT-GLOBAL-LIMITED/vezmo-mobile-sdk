@@ -1,31 +1,16 @@
-# A redirect method end to end on the merchant-of-record track: Cash App Pay opens its (test) authorization page in
-# the browser, the buyer approves, and the app comes back through its return link with the result.
+# A redirect method end to end on the merchant-of-record business (the only one with Cash App Pay on): Cash App Pay
+# opens its (test) authorization page in the browser, the buyer approves, and the app comes back through its return
+# link with the result.
 appId: com.vezmo.example
+tags:
+  - mor-only
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session-mor"
-          timeout: 30000
-- tapOn:
-    id: "new-session-mor"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow:
+    file: common/launch.yaml
+    env:
+      TRACK: mor
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 # Outside the US the sheet first offers the runner's own currency, and Cash App, Klarna and Amazon Pay are
 # USD-only: pay in USD.
 - tapOn:
@@ -39,23 +24,10 @@ appId: com.vezmo.example
 - waitForAnimationToEnd:
     timeout: 5000
 - takeScreenshot: cashapp-02-chosen
-- tapOn:
-    id: "vezmo-pay"
-- waitForAnimationToEnd:
-    timeout: 15000
-- takeScreenshot: cashapp-03-redirect
-# A fresh emulator's browser asks its first-run questions before showing the page.
-- tapOn:
-    text: "(?i)(use without an account|accept & continue|accept and continue)"
-    optional: true
-- tapOn:
-    text: "(?i)(no thanks|no, thanks)"
-    optional: true
-- extendedWaitUntil:
-    visible: "(?i).*authori[sz]e test payment.*"
-    timeout: 60000
-- takeScreenshot: cashapp-04-test-page
-- tapOn: "(?i).*authori[sz]e test payment.*"
+- runFlow:
+    file: ../../../../../e2e/maestro/android/redirect.yaml
+    env:
+      SHOT: cashapp
 - extendedWaitUntil:
     visible:
       id: "vezmo-result-title"

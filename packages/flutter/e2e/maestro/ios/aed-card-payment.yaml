@@ -1,0 +1,54 @@
+# A card payment in the buyer's own currency (AED, as a phone in the UAE is offered) on the run's business model
+# (TRACK): the sheet opens in dirhams, the card form opens after switching to dollars and back, and the payment goes
+# through priced in dirhams.
+appId: com.vezmo.example.flutter
+---
+- runFlow:
+    file: common/launch.yaml
+    env:
+      OFFER_CURRENCY: AED
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
+# Dirhams first, the price's dollars beside them.
+- assertVisible: "Pay in"
+- assertVisible: ".*AED.*"
+- takeScreenshot: aed-01-sheet
+# Dollars, then dirhams again: the card flow is set up again for each, and the card form still opens.
+# Quickly, as a buyer might: back to dirhams before the dollars are set up, then straight to Card (a phone in the UAE
+# showed the engine's "not configured" here, its Card row up while the card flow was still being set up).
+- tapOn:
+    id: "vezmo-pay-in-price"
+    waitToSettleTimeoutMs: 100
+- tapOn:
+    id: "vezmo-pay-in-local"
+    waitToSettleTimeoutMs: 100
+# The Card row waits the moment the card flow takes to be set up in dirhams again (the engine would refuse meanwhile).
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-card-row"
+      enabled: true
+    timeout: 20000
+- tapOn: "Card"
+- waitForAnimationToEnd:
+    timeout: 5000
+# The card form opens as its own sheet; its fields are labelled differently across iOS versions, so wait for the form.
+- extendedWaitUntil:
+    visible: "(?i)(add card|card information|card number)"
+    timeout: 20000
+- runFlow:
+    file: ../../../../../e2e/maestro/ios/card-entry.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: aed
+- runFlow:
+    file: ../../../../../e2e/maestro/pay.yaml
+    env:
+      SHOT: aed
+- assertVisible: "Payment successful"
+- tapOn:
+    id: "vezmo-done"
+    retryTapIfNoChange: true
+- assertVisible:
+    id: "result"
+    text: ".*succeeded.*"
+- takeScreenshot: aed-06-back-in-app

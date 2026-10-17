@@ -1,66 +1,23 @@
-# A subscription paid today on the merchant-of-record track: the first $9.99 charged by our server (3D Secure if the
-# bank asks), the card kept for the renewals, and the subscription back in the app as active.
+# A subscription paid today on the run's business model (TRACK): the first $9.99 charged by our server (3D Secure if
+# the bank asks), the card kept for the renewals, and the subscription back in the app as active.
 appId: com.vezmo.example.flutter
 ---
-- launchApp:
-    clearState: true
-- tapOn:
-    id: "subscribe-now"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow: common/launch.yaml
+- runFlow:
+    file: ../../../../../e2e/maestro/subscribe.yaml
+    env:
+      BUTTON: subscribe-now
 - assertVisible: "Due today"
 - takeScreenshot: sub-now-01-sheet
-- tapOn: "Card"
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: sub-now-01a-after-card-tap
-# The card form opens as its own sheet; its fields are labelled differently across iOS versions, so wait for the form.
-- extendedWaitUntil:
-    visible: "(?i)(add card|card information|card number)"
-    timeout: 20000
-# Each field by its id (iOS reads the card field's label with the supported brands appended).
-- tapOn:
-    id: "Card number"
-- inputText: "4242424242424242"
-- tapOn:
-    id: "MM / YY"
-- inputText: "1234"
-- tapOn:
-    id: "CVC"
-- inputText: "123"
-- tapOn:
-    id: "ZIP"
-- inputText: "10001"
-- takeScreenshot: sub-now-01b-card-form
-# The number pad has no return key: its Done bar closes it.
-- tapOn:
-    text: "Done"
-    optional: true
-- takeScreenshot: sub-now-02-card-filled
-- tapOn: "Continue"
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: sub-now-03-card-chosen
-# A busy simulator can drop a tap while the card form closes: tap again if nothing changed.
-- tapOn:
-    id: "vezmo-pay"
-    retryTapIfNoChange: true
-- waitForAnimationToEnd:
-    timeout: 15000
-- takeScreenshot: sub-now-04-after-pay
-# 3D Secure (the platform asks for it on every card): the test challenge, if shown.
-- tapOn:
-    text: "(?i)complete.*"
-    optional: true
-- tapOn:
-    text: "(?i)submit"
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: "vezmo-result-title"
-    timeout: 90000
-- takeScreenshot: sub-now-05-result
+- runFlow:
+    file: ../../../../../e2e/maestro/ios/card.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: sub-now
+- runFlow:
+    file: ../../../../../e2e/maestro/pay.yaml
+    env:
+      SHOT: sub-now
 - assertVisible: "You’re subscribed"
 - tapOn:
     id: "vezmo-done"

@@ -15,20 +15,28 @@ struct VezmoExampleApp: App {
   }
 }
 
-/// The end-to-end runs launch the app with `offerCurrency` (e.g. AED, a launch argument): the sandbox then offers the
-/// buyer that currency, as it would abroad (the CI runners are in the US).
-private let offerCurrency: String? = {
-  if let value = UserDefaults.standard.string(forKey: "offerCurrency"), !value.isEmpty { return value }
+/// A launch argument the end-to-end runs pass (`-name value`), or nil.
+private func launchArgument(_ name: String) -> String? {
+  if let value = UserDefaults.standard.string(forKey: name), !value.isEmpty { return value }
   let args = ProcessInfo.processInfo.arguments
-  guard let i = args.firstIndex(where: { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-")) == "offerCurrency" }),
+  guard let i = args.firstIndex(where: { $0.trimmingCharacters(in: CharacterSet(charactersIn: "-")) == name }),
         i + 1 < args.count else { return nil }
   return args[i + 1]
-}()
+}
 
-/// A demo endpoint's address, with the offer currency the run asked for.
-private func demoURL(_ string: String) -> URL? {
-  guard let offerCurrency else { return URL(string: string) }
-  return URL(string: string + (string.contains("?") ? "&" : "?") + "offerCurrency=\(offerCurrency)")
+/// The end-to-end runs launch the app with `offerCurrency` (e.g. AED): the sandbox then offers the buyer that currency,
+/// as it would abroad (the CI runners are in the US).
+private let offerCurrency = launchArgument("offerCurrency")
+
+/// The end-to-end runs launch the app with `track` (`mor`, the sandbox's merchant-of-record business, or `connect`):
+/// the sandbox buttons that name no business use it.
+private let launchTrack = launchArgument("track")?.lowercased()
+
+/// A demo endpoint's address on a business (`mor` or not), with the offer currency the run asked for.
+private func demoURL(_ string: String, track: String?) -> URL? {
+  let query = [track == "mor" ? "track=mor" : nil, offerCurrency.map { "offerCurrency=\($0)" }].compactMap { $0 }
+  guard !query.isEmpty else { return URL(string: string) }
+  return URL(string: string + (string.contains("?") ? "&" : "?") + query.joined(separator: "&"))
 }
 
 /// A build setting passed through Info.plist (empty when not set).
@@ -50,6 +58,8 @@ struct Shop: View {
   @FocusState private var typingToken: Bool
 
   private var ready: Bool { !token.trimmingCharacters(in: .whitespaces).isEmpty }
+  /// "Subscribe, no trial" is on the merchant-of-record business unless the run picks another.
+  private var noTrialTrack: String { launchTrack ?? "mor" }
 
   var body: some View {
     ScrollView {
@@ -131,8 +141,8 @@ struct Shop: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
         .focused($typingToken)
         .accessibilityIdentifier("client-token")
-      Button { Task { await newSession() } } label: {
-        Text("New sandbox session").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
+      Button { Task { await newSession(track: launchTrack) } } label: {
+        Text(launchTrack == "mor" ? "New sandbox session · merchant of record" : "New sandbox session").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
           .frame(maxWidth: .infinity).frame(height: 44)
           .background(Capsule(style: .circular).fill(Color.white))
           .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
@@ -146,8 +156,8 @@ struct Shop: View {
           .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
       }
       .accessibilityIdentifier("new-session-mor")
-      Button { Task { await subscribe("?track=mor") } } label: {
-        Text("Subscribe, no trial · merchant of record").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
+      Button { Task { await subscribe(track: noTrialTrack, trial: false) } } label: {
+        Text(noTrialTrack == "mor" ? "Subscribe, no trial · merchant of record" : "Subscribe, no trial").font(.system(size: 14, weight: .semibold)).foregroundColor(Color(hex: 0x0B0C14))
           .frame(maxWidth: .infinity).frame(height: 44)
           .background(Capsule(style: .circular).fill(Color.white))
           .overlay(Capsule(style: .circular).strokeBorder(Color(hex: 0xE1E3EC), lineWidth: 1))
@@ -158,24 +168,33 @@ struct Shop: View {
     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color(hex: 0xE1E3EC), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
   }
 
-  private func newSession(track: String? = nil) async {
-    guard var demo = setting("VezmoDemoURL") else {
+  private func newSession(track: String?) async {
+    guard let demo = setting("VezmoDemoURL") else {
       status = "Paste a client token, or set VEZMO_DEMO_URL."
       return
     }
-    if let track { demo += "?track=\(track)" }
-    guard let url = demoURL(demo) else { return }
-    status = "Creating a sandbox session…"
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    do {
-      let (data, _) = try await URLSession.shared.data(for: request)
-      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      token = (json?["data"] as? [String: Any])?["clientToken"] as? String ?? ""
-      status = token.isEmpty ? "Could not create a session." : "Session ready."
-    } catch {
-      status = "Could not reach the demo endpoint."
+    guard let url = demoURL(demo, track: track) else { return }
+    let created = await demoToken(url, field: "clientToken", label: "Creating a sandbox session…")
+    if let created { token = created }
+    status = created == nil ? "Could not reach the demo endpoint." : "Session ready."
+  }
+
+  /// The sandbox's demo endpoints, with a short timeout and up to three tries (a CI runner's first requests can stall,
+  /// and the sandbox restarts now and then), each try on screen. The token in `field`, or nil.
+  private func demoToken(_ url: URL, field: String, label: String) async -> String? {
+    for attempt in 1...3 {
+      status = attempt == 1 ? label : "\(label) (try \(attempt) of 3)"
+      var request = URLRequest(url: url, timeoutInterval: 15)
+      request.httpMethod = "POST"
+      if let answer = try? await URLSession.shared.data(for: request),
+         let http = answer.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+         let json = try? JSONSerialization.jsonObject(with: answer.0) as? [String: Any],
+         let value = (json["data"] as? [String: Any])?[field] as? String, !value.isEmpty {
+        return value
+      }
+      if attempt < 3 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 3_000_000_000) }
     }
+    return nil
   }
 
   /// A subscription: the club with a 7-day free trial.
@@ -191,7 +210,7 @@ struct Shop: View {
         }
         .padding(.horizontal, 4)
       }
-      Button { Task { await subscribe("?trial=1") } } label: {
+      Button { Task { await subscribe(track: launchTrack, trial: true) } } label: {
         Text("Try 7 days free").font(.system(size: 16, weight: .semibold)).foregroundColor(.white)
           .frame(maxWidth: .infinity).frame(height: 52)
           .background(Capsule(style: .circular).fill(Color(hex: 0x0B0C14)))
@@ -207,30 +226,24 @@ struct Shop: View {
 
   /// A real app's server creates the subscription (POST /merchant/subscription) and returns its checkoutToken; here
   /// the sandbox's demo endpoint does.
-  private func subscribe(_ query: String) async {
-    guard let demo = setting("VezmoDemoURL"),
-          let url = demoURL(demo.replacingOccurrences(of: "mobile-session", with: "mobile-subscription") + query) else {
+  private func subscribe(track: String?, trial: Bool) async {
+    let endpoint = setting("VezmoDemoURL")?.replacingOccurrences(of: "mobile-session", with: "mobile-subscription")
+    guard let endpoint, let url = demoURL(endpoint + (trial ? "?trial=1" : ""), track: track) else {
       status = "Set VEZMO_DEMO_URL."
       return
     }
     typingToken = false
     result = nil
-    status = "Loading checkout…"
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    do {
-      let (data, _) = try await URLSession.shared.data(for: request)
-      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      let subscriptionToken = (json?["data"] as? [String: Any])?["subscriptionToken"] as? String ?? ""
-      if let error = await vezmo.prepare(subscriptionToken: subscriptionToken) {
-        status = "Could not load: \(error.message)"
-        return
-      }
-      status = ""
-      showing = true
-    } catch {
+    guard let subscriptionToken = await demoToken(url, field: "subscriptionToken", label: "Loading checkout…") else {
       status = "Could not reach the demo endpoint."
+      return
     }
+    if let error = await vezmo.prepare(subscriptionToken: subscriptionToken) {
+      status = "Could not load: \(error.message)"
+      return
+    }
+    status = ""
+    showing = true
   }
 
   private func pay() async {

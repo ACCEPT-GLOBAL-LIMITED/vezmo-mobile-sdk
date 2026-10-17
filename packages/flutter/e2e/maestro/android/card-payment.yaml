@@ -1,74 +1,26 @@
-# A card payment on a dev sandbox session, end to end: the Vezmo sheet, the card form, Vezmo's server pricing and
-# confirming it, 3D Secure on the device, and the result back in the app.
+# A card payment on a dev sandbox session, end to end, on the run's business model (TRACK): the Vezmo sheet, the card
+# form, Vezmo's server pricing and confirming it, 3D Secure on the device, and the result back in the app.
 appId: com.vezmo.example.flutter
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session"
-          timeout: 30000
-- tapOn:
-    id: "new-session"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow: common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 - waitForAnimationToEnd:
     timeout: 5000
-- takeScreenshot: 01-sheet
-- tapOn: "Card"
-- extendedWaitUntil:
-    visible: "Card number"
-    timeout: 15000
-- tapOn: "Card number"
-# The form moves on by itself: card number, then expiry, then CVC.
-- inputText: "4242424242424242"
-- inputText: "1234"
-- inputText: "123"
-- tapOn: "ZIP Code"
-- inputText: "10001"
-- hideKeyboard
-- takeScreenshot: 02-card-filled
-- tapOn: "Continue"
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: 03-card-chosen
-- tapOn:
-    id: "vezmo-pay"
-- waitForAnimationToEnd:
-    timeout: 15000
-- takeScreenshot: 04-after-pay
-# 3D Secure (the platform asks for it on every card): the test challenge, if shown.
-- tapOn:
-    text: "(?i)complete.*"
-    optional: true
-- tapOn:
-    text: "(?i)submit"
-    optional: true
-- extendedWaitUntil:
-    visible:
-      id: "vezmo-result-title"
-    timeout: 90000
-- waitForAnimationToEnd:
-    timeout: 5000
-- takeScreenshot: 05-result
+- takeScreenshot: card-01-sheet
+- runFlow:
+    file: ../../../../../e2e/maestro/android/card.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: card
+- runFlow:
+    file: ../../../../../e2e/maestro/pay.yaml
+    env:
+      SHOT: card
 - assertVisible: "Payment successful"
 - tapOn:
     id: "vezmo-done"
 - assertVisible:
     id: "result"
     text: ".*succeeded.*"
-- takeScreenshot: 06-back-in-app
+- takeScreenshot: card-06-back-in-app

@@ -1,9 +1,0 @@
-# The flows run one after another on one simulator. The browser redirect (Cash App's test page in the in-app browser)
-# goes early, while the simulator is fresh: late in a long run its browser sometimes never loads the page.
-flows:
-  - "*"
-executionOrder:
-  continueOnFailure: true
-  flowsOrder:
-    - card-payment
-    - mor-cashapp

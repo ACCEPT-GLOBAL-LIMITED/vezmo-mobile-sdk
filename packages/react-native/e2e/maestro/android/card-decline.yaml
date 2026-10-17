@@ -1,44 +1,16 @@
-# A declined card (4000 0000 0000 0002): the sheet shows the reason and stays ready for another card.
+# A declined card (4000 0000 0000 0002) on the run's business model (TRACK): the sheet shows the reason and stays ready
+# for another card.
 appId: com.vezmo.example
 ---
-# A fresh launch right after the last flow's clear-data can be killed by the system's late task cleanup: retry it.
-- retry:
-    maxRetries: 2
-    commands:
-      - launchApp:
-          clearState: true
-      # A just-booted emulator can show a system "isn't responding" dialog over the app.
-      - tapOn:
-          text: "Wait"
-          optional: true
-      - extendedWaitUntil:
-          visible:
-            id: "new-session"
-          timeout: 30000
-- tapOn:
-    id: "new-session"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
-- tapOn: "Card"
-- extendedWaitUntil:
-    visible: "Card number"
-    timeout: 15000
-- tapOn: "Card number"
-- inputText: "4000000000000002"
-- inputText: "1234"
-- inputText: "123"
-- tapOn: "ZIP Code"
-- inputText: "10001"
-- hideKeyboard
-- tapOn: "Continue"
-- waitForAnimationToEnd:
-    timeout: 5000
+- runFlow: common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
+- runFlow:
+    file: ../../../../../e2e/maestro/android/card.yaml
+    env:
+      CARD: "4000000000000002"
+      SHOT: decline
+- runFlow: ../../../../../e2e/maestro/api-ready.yaml
 - tapOn:
     id: "vezmo-pay"
 # The bank says no: the sheet stays open with the reason, ready for another card.

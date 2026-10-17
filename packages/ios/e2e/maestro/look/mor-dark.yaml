@@ -1,22 +1,12 @@
 # The merchant-of-record sheet in dark mode, with the pay-later and Cash App rows (screenshot only, no payment).
 appId: com.vezmo.example.native
 ---
-- launchApp:
-    clearState: true
-- extendedWaitUntil:
-    visible:
-      id: "new-session-mor"
-    timeout: 30000
-- tapOn:
-    id: "new-session-mor"
-- extendedWaitUntil:
-    visible: "Session ready."
-    timeout: 30000
-- tapOn:
-    id: "pay"
-- extendedWaitUntil:
-    visible: "Card"
-    timeout: 60000
+- runFlow:
+    file: ../common/launch.yaml
+    env:
+      TRACK: mor
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
 # Outside the US the sheet first offers the runner's own currency, and Cash App, Klarna and Amazon Pay are
 # USD-only: pay in USD.
 - tapOn:
