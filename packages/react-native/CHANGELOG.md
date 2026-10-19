@@ -20,6 +20,8 @@ The first release of the Vezmo payment sheet for React Native and Expo.
 - **Wallets while switching currency**: a Google Pay or Apple Pay tap while the sheet sets the wallet up again for
   the new amount waits for it, in our words; the next tap pays.
 - **Expo config plugin** for Apple Pay and the card-scanning camera text.
+- **Privacy manifest** (iOS, in the pod's `VezmoReactNativePrivacy` bundle): declares what the sheet sends Vezmo to
+  take the payment, as the native iOS SDK does; no tracking.
 - **Subscriptions**: `prepareCheckout({ subscriptionToken })` starts a subscription in the app (the first payment,
   or a free trial with the card saved); the result carries `subscription: { ref, status }`. Apple Pay shows it as a
   recurring payment on iPhone.

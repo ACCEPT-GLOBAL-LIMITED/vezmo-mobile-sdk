@@ -10,9 +10,13 @@ import UIKit
 ///     switch await vezmo.present(from: viewController) { … }
 ///
 /// A subscription is the same with `prepare(subscriptionToken:)`.
+///
+/// It lives on the main actor, like the screens it presents over: create and use it from your views and view
+/// controllers (Swift 6 apps need no `Sendable` workarounds).
+@MainActor
 public final class VezmoCheckout {
   /// This SDK's version (sent to Vezmo with each call, for support).
-  public static let version = "0.1.0"
+  nonisolated public static let version = "0.1.0"
 
   public let configuration: Configuration
   private var prepared: (session: CheckoutSession, merchantDisplayName: String?)?
@@ -28,7 +32,6 @@ public final class VezmoCheckout {
   /// - Parameters:
   ///   - clientToken: From your server: the API checkout session's `clientToken`.
   ///   - merchantDisplayName: Shown at the top of the sheet. Defaults to the business name on the session.
-  @MainActor
   public func prepare(clientToken: String, merchantDisplayName: String? = nil) async -> VezmoError? {
     await load(clientToken, kind: .payment, merchantDisplayName: merchantDisplayName, missing: "clientToken is required.")
   }
@@ -38,12 +41,10 @@ public final class VezmoCheckout {
   /// - Parameters:
   ///   - subscriptionToken: From your server: the subscription's `checkoutToken` (`POST /merchant/subscription`).
   ///   - merchantDisplayName: Shown at the top of the sheet. Defaults to the business name.
-  @MainActor
   public func prepare(subscriptionToken: String, merchantDisplayName: String? = nil) async -> VezmoError? {
     await load(subscriptionToken, kind: .subscription, merchantDisplayName: merchantDisplayName, missing: "subscriptionToken is required.")
   }
 
-  @MainActor
   private func load(_ rawToken: String, kind: CheckoutKind, merchantDisplayName: String?, missing: String) async -> VezmoError? {
     let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !token.isEmpty else { return VezmoError(code: .config, message: missing) }
@@ -59,7 +60,6 @@ public final class VezmoCheckout {
   }
 
   /// Opens the sheet over `viewController` (or whatever it presents) and returns when the buyer is done.
-  @MainActor
   public func present(from viewController: UIViewController) async -> CheckoutResult {
     guard !presenting else {
       return .failed(VezmoError(code: .config, message: "The checkout is already open."))
@@ -90,15 +90,15 @@ public final class VezmoCheckout {
   }
 
   /// Hands the app a link back from 3D Secure, a bank app or a pay-later provider. Call it from `onOpenURL` or your
-  /// scene delegate's `scene(_:openURLContexts:)`; returns true when the link was Vezmo's.
+  /// scene delegate's `scene(_:openURLContexts:)` (no `await` needed); returns true when the link was Vezmo's.
   @discardableResult
-  public static func handleURL(_ url: URL) -> Bool {
+  nonisolated public static func handleURL(_ url: URL) -> Bool {
     StripeAPI.handleURLCallback(with: url)
   }
 }
 
 extension VezmoCheckout {
-  public struct Configuration {
+  public struct Configuration: Sendable {
     /// The link that opens your app after a bank app, a pay-later provider or 3D Secure, registered under
     /// Developers → Mobile apps (for example `acme://vezmo`). Required for redirect-based methods.
     public var returnURL: URL?
@@ -128,7 +128,7 @@ extension VezmoCheckout {
     }
   }
 
-  public struct ApplePay: Equatable {
+  public struct ApplePay: Equatable, Sendable {
     /// Your Apple Merchant ID (Apple Developer → Identifiers → Merchant IDs).
     public var merchantId: String
     public var merchantCountryCode: String
@@ -139,14 +139,14 @@ extension VezmoCheckout {
     }
   }
 
-  public enum Style {
+  public enum Style: Sendable {
     case automatic, light, dark
   }
 
-  /// What you may change in the sheet's look.
-  public struct Appearance {
+  /// What you may change in the sheet's look. (Sendable: `UIColor` is immutable.)
+  public struct Appearance: @unchecked Sendable {
     /// The sheet's colour tokens.
-    public enum ColorKey: String, CaseIterable {
+    public enum ColorKey: String, CaseIterable, Sendable {
       case page, surface, surface2, raised, fill, disabled, onDisabled, field, fieldLine, line
       case ink, ink2, ink3, accent, onAccent, accentSoft, good, bad, badSoft, warn, warnInk, warnSoft, logoTile, scrim
     }
@@ -170,21 +170,23 @@ extension VezmoCheckout {
 // MARK: - SwiftUI
 
 extension View {
-  /// Presents the prepared Vezmo sheet while `isPresented` is true; `onCompletion` gets the result and
-  /// `isPresented` goes back to false.
+  /// Presents the prepared Vezmo sheet while `isPresented` is true; `onCompletion` gets the result (on the main actor)
+  /// and `isPresented` goes back to false.
+  @MainActor
   public func vezmoCheckout(
     _ checkout: VezmoCheckout,
     isPresented: Binding<Bool>,
-    onCompletion: @escaping (CheckoutResult) -> Void
+    onCompletion: @escaping @MainActor (CheckoutResult) -> Void
   ) -> some View {
     modifier(VezmoCheckoutPresenter(checkout: checkout, isPresented: isPresented, onCompletion: onCompletion))
   }
 }
 
+@MainActor
 private struct VezmoCheckoutPresenter: ViewModifier {
   let checkout: VezmoCheckout
   @Binding var isPresented: Bool
-  let onCompletion: (CheckoutResult) -> Void
+  let onCompletion: @MainActor (CheckoutResult) -> Void
 
   func body(content: Content) -> some View {
     content

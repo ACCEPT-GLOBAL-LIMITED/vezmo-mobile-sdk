@@ -26,4 +26,7 @@ The first release of the Vezmo payment sheet for native iOS apps (Swift Package 
 - **Privacy manifest**: declares what the sheet sends Vezmo to take the payment (no tracking).
 - **UIKit and SwiftUI**: `prepare(clientToken:)` and `present(from:)` with async/await, the `.vezmoCheckout` view
   modifier, and `VezmoCheckout.handleURL` for links back into the app.
+- **Swift 6**: `VezmoCheckout` lives on the main actor, its results, errors and settings are `Sendable`, and
+  `VezmoCheckout.handleURL` and `VezmoCheckout.version` need no `await`, so apps in Swift 6 language mode
+  build cleanly (the example app does, in CI). The `.vezmoCheckout` modifier calls `onCompletion` on the main actor.
 - iOS 15.1+.

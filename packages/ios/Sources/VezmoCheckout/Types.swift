@@ -1,7 +1,7 @@
 import Foundation
 
 /// The outcome `present(from:)` returns. It never throws.
-public enum CheckoutResult: Equatable {
+public enum CheckoutResult: Equatable, Sendable {
   /// Paid. `paymentId` and `transactionId` match the dashboard and the webhook. `paymentId` is nil only when a
   /// subscription's free trial started: nothing was charged today. `subscription` is set for a subscription checkout.
   case succeeded(paymentId: String?, transactionId: String?, subscription: SubscriptionResult?)
@@ -13,8 +13,8 @@ public enum CheckoutResult: Equatable {
 }
 
 /// The subscription a subscription checkout started.
-public struct SubscriptionResult: Equatable {
-  public enum Status: String {
+public struct SubscriptionResult: Equatable, Sendable {
+  public enum Status: String, Sendable {
     /// The first payment went through.
     case active
     /// A free trial started; the card is saved for the first charge.
@@ -33,8 +33,8 @@ public struct SubscriptionResult: Equatable {
   }
 }
 
-public struct VezmoError: Error, Equatable {
-  public enum Code: String {
+public struct VezmoError: Error, Equatable, Sendable {
+  public enum Code: String, Sendable {
     /// The bank said no; the buyer can try another card or way to pay.
     case declined
     /// The session ran out: create a new one.

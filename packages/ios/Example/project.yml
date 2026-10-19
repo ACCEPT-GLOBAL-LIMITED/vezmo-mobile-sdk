@@ -25,7 +25,8 @@ targets:
         INFOPLIST_FILE: VezmoExample/Info.plist
         CODE_SIGN_ENTITLEMENTS: VezmoExample/VezmoExample.entitlements
         TARGETED_DEVICE_FAMILY: "1"
-        SWIFT_VERSION: "5.0"
+        # Swift 6 language mode (complete concurrency checking): proves apps on Swift 6 build against the SDK cleanly.
+        SWIFT_VERSION: "6.0"
         # Where sandbox sessions come from and which API the sheet talks to; empty means "paste a client token" and
         # the production API. CI sets both to Vezmo's dev sandbox.
         VEZMO_DEMO_URL: ""

@@ -22,6 +22,9 @@ Pod::Spec.new do |s|
 
   s.source_files = "ios/**/*.{h,m,mm,swift}"
   s.private_header_files = "ios/**/*.h"
+  # Apple's privacy manifest, in its own bundle (beside the app's own manifest): no tracking; what the sheet sends
+  # Vezmo to take the payment, as the native iOS SDK declares. The payment engine's pod brings its own.
+  s.resource_bundles = { "VezmoReactNativePrivacy" => ["ios/PrivacyInfo.xcprivacy"] }
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",

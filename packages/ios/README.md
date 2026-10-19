@@ -7,7 +7,9 @@ Your server keeps your Vezmo API key. The app only ever receives a session's cli
 
 ## Requirements
 
-- iOS 15.1 or later, Xcode 16 or later, Swift 5.9 or later.
+- iOS 15.1 or later, Xcode 16 or later, Swift 5.9 or later. Swift 6 apps build cleanly too: `VezmoCheckout` lives on
+  the main actor (create and use it from your views and view controllers), its results are `Sendable`, and
+  `VezmoCheckout.handleURL` needs no `await`.
 - Your app added in the Vezmo dashboard under **Developers → Mobile apps**, with its return link (for example
   `acme://vezmo`). The buyer comes back through it after 3D Secure, a bank app or a pay-later provider.
 
@@ -278,6 +280,9 @@ The package's privacy manifest declares what the sheet sends to Vezmo to take th
 and never for tracking: the payment method the buyer chooses, their name and address (asked for UPI and Pix), and for
 Pix their CPF or CNPJ (as other data). The payment engine inside the package declares its own. Xcode adds both to your
 app's privacy report.
+
+It declares no location: the sheet never reads the phone's location. Vezmo offers the buyer their own currency
+from the country of the network connection (its IP address) on Vezmo's server, not from the device.
 
 ## Releases
 

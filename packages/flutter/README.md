@@ -268,6 +268,16 @@ Apple and Google require their own in-app purchase for digital goods and service
 to app features or content, in-game items). Use Vezmo for real-world goods and services: deliveries, memberships,
 classes, rentals, services.
 
+## App Store privacy
+
+On iPhone the plugin runs on the iOS SDK, whose privacy manifest declares what the sheet sends to Vezmo to take the
+payment, for app functionality only and never for tracking: the payment method the buyer chooses, their name and
+address (asked for UPI and Pix), and for Pix their CPF or CNPJ (as other data). Xcode adds it, and the payment
+engine's own, to your app's privacy report.
+
+It declares no location: the sheet never reads the phone's location. Vezmo offers the buyer their own currency
+from the country of the network connection (its IP address) on Vezmo's server, not from the device.
+
 ## Troubleshooting
 
 - **The `config` error "Vezmo checkout needs a FlutterFragmentActivity"**: your `MainActivity` extends
