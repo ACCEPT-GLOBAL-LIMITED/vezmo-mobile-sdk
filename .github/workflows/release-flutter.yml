@@ -5,8 +5,10 @@ name: Release Flutter plugin
 #
 # One-time setup on pub.dev (by a Vezmo admin):
 #   1. Verify the publisher `vezmo.com` (pub.dev → Create publisher, a DNS TXT record on vezmo.com).
-#   2. Publish 0.1.0 by hand from packages/flutter with `dart pub publish` (pub.dev only allows automated publishing
-#      for a package that already exists), then move the package to the vezmo.com publisher (package Admin tab).
+#   2. Once the native SDKs it pins are out (Android on Maven Central, the iOS root tag), publish 0.1.0 by hand from
+#      packages/flutter with `flutter pub publish` (pub.dev only allows automated publishing for a package that
+#      already exists; `dart pub` can't resolve the Flutter SDK), then move the package to the vezmo.com publisher
+#      (package Admin tab). Push no `flutter-v0.1.0` tag: this workflow would fail on the existing version.
 #   3. Package Admin tab → Automated publishing → Enable publishing from GitHub Actions: repository
 #      `ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk`, tag pattern `flutter-v{{version}}`, and "Require GitHub Actions
 #      environment" `pub.dev`.
