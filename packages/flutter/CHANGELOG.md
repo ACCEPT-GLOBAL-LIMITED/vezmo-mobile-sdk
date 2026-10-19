@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0
 
 The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`), on Vezmo's native SDKs.
 
