@@ -27,8 +27,9 @@ import androidx.lifecycle.ViewModelProvider
  */
 internal class VezmoCheckoutActivity : ComponentActivity() {
     /**
-     * The session and the bridge to the payment engine survive the activity being recreated (a change of font size or
-     * language, say), so a payment in flight neither gets lost nor starts over.
+     * The session and the bridge to the payment engine survive the activity being recreated (it handles configuration
+     * changes in place, but Android still recreates it for a few, such as new wallpaper colours), so a payment in flight
+     * neither gets lost nor starts over.
      */
     class Holder : ViewModel() {
         var session: CheckoutSession? = null

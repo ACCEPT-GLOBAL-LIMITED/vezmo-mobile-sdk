@@ -36,8 +36,9 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
 - **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
   `Network`, so a payment that went through is never reported as failed. A payment Vezmo already took
   stays the result even when the payment engine fails afterwards.
-- **The sheet's activity recreated mid-payment** (a change of font size or language, or the process stopped in the
-  background): the payment in flight still reaches its result, never lost and never charged twice.
+- **A payment in flight is never lost or doubled**: the sheet's activity is no longer recreated for a font size,
+  language or other configuration change (only rotation, size and dark mode were handled), and when Android recreates
+  it anyway, or the process was stopped in the background, the payment still ends as its result.
 - **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.
 - Minified (R8) release builds need no extra rules.
 - Android 7.0+ (API 24), compiled against SDK 36.

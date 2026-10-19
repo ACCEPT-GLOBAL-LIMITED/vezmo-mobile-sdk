@@ -1,6 +1,6 @@
-# The sheet's activity recreated in the middle of a payment, part 1 of 2: a card payment up to the tap on Pay. Then
-# android.yml changes the phone's font size, which recreates the sheet's activity (rotation doesn't: the sheet handles
-# it itself), and part 2 checks the payment still ends as the payment, once.
+# A configuration change in the middle of a payment, part 1 of 2: a card payment up to the tap on Pay. Then android.yml
+# changes the phone's font size (an activity that doesn't handle it is recreated; the sheet's handles it in place), and
+# part 2 checks the payment still ends as the payment, once, in the bigger text.
 appId: com.vezmo.example.nativeapp
 ---
 - runFlow: ../common/launch.yaml

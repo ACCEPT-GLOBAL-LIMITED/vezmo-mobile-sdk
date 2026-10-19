@@ -124,9 +124,9 @@ the result is `Processing`, because the buyer can still approve it; the webhook 
 **No answer while paying.** When the payment request gets no answer (a timeout, a dropped connection), the sheet
 checks the session before reporting `Network`: a payment that went through all the same is the result.
 
-**The sheet's activity recreated.** A payment in flight survives the sheet's activity being recreated (a change
-of font size or language, say) and the app's process being stopped in the background: the result is still
-that payment's, never a second charge.
+**A payment in flight is never lost or doubled.** The sheet isn't recreated for a configuration change (rotation,
+font size, language, dark mode). When Android recreates it anyway, or stops the app's process in the background, the
+result is still that payment's.
 
 `prepare()` returns the same `VezmoError` when the session can't be paid (expired, already paid, a bad token).
 
