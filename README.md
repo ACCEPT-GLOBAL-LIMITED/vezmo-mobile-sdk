@@ -5,6 +5,10 @@
 [![iOS](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/ios.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/ios.yml)
 [![Android](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/android.yml)
 [![Flutter](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/flutter.yml/badge.svg?branch=main)](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/actions/workflows/flutter.yml)
+[![npm](https://img.shields.io/npm/v/@vezmopay/react-native?label=npm)](https://www.npmjs.com/package/@vezmopay/react-native)
+[![pub.dev](https://img.shields.io/pub/v/vezmo_checkout?label=pub.dev)](https://pub.dev/packages/vezmo_checkout)
+[![Maven Central](https://img.shields.io/maven-metadata/v?metadataUrl=https%3A%2F%2Frepo1.maven.org%2Fmaven2%2Fcom%2Fvezmo%2Fvezmo-checkout%2Fmaven-metadata.xml&label=maven%20central)](https://central.sonatype.com/artifact/com.vezmo/vezmo-checkout)
+[![Swift Package Manager](https://img.shields.io/github/v/tag/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk?filter=%21*-v*&sort=semver&label=swiftpm)](packages/ios#readme)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Take payments in your iPhone and Android apps with Vezmo, in a native payment sheet: cards with 3D Secure, Apple Pay,
