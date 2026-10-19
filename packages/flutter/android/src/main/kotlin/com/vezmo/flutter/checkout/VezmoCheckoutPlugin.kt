@@ -169,7 +169,7 @@ class VezmoCheckoutPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, Acti
         }
         return VezmoConfiguration(
             returnUrl = map["returnUrl"] as? String,
-            googlePay = (map["googlePay"] as? Map<*, *>)?.let { GooglePayOptions(it["merchantCountryCode"] as? String ?: "US") },
+            googlePay = (map["googlePay"] as? Map<*, *>)?.let { GooglePayOptions(it["merchantCountryCode"] as? String) },
             style = when (map["style"]) {
                 "light" -> VezmoStyle.Light
                 "dark" -> VezmoStyle.Dark

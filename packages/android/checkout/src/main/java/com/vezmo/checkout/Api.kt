@@ -265,6 +265,11 @@ internal data class CheckoutConfig(
     val localOffer: LocalOffer?,
     /** A subscription checkout: the plan, and what starting it means. Null for a one-time payment. */
     val subscription: SubscriptionPlan? = null,
+    /**
+     * The country of the account that processes the payment (the business's own on Connect, Vezmo's on merchant of
+     * record): Google Pay's merchant country. Null from a server that doesn't say.
+     */
+    val processingCountry: String? = null,
 ) {
     companion object {
         /** A subscription checkout as the sheet's config: cards and Google Pay only, the plan beside the price. */
@@ -298,6 +303,7 @@ internal data class CheckoutConfig(
                     nextChargeAt = v.str("nextChargeAt"),
                     consentText = v.str("consentText") ?: "",
                 ),
+                processingCountry = v.str("processingCountry"),
             )
         }
 
@@ -317,6 +323,7 @@ internal data class CheckoutConfig(
                 theme = j.str("theme"),
                 paymentId = j.str("paymentId") ?: "",
                 localOffer = j.optJSONObject("localOffer")?.let(LocalOffer::from),
+                processingCountry = j.str("processingCountry"),
             )
         }
     }

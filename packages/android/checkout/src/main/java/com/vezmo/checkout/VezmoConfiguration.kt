@@ -12,7 +12,7 @@ data class VezmoConfiguration(
     val returnUrl: String? = null,
     /**
      * Google Pay shows when the business offers it and the phone has it; sandbox sessions use Google's test
-     * environment automatically. Set this to change the merchant country (default `US`).
+     * environment automatically. Its merchant country comes from the session; set this only to override it.
      */
     val googlePay: GooglePayOptions? = null,
     /** Light, dark, or follow the phone (default). */
@@ -30,8 +30,11 @@ data class VezmoConfiguration(
 
 @Parcelize
 data class GooglePayOptions(
-    /** Your business's country, as a two-letter code. */
-    val merchantCountryCode: String = "US",
+    /**
+     * The country of the account that processes the payment, as two letters. Leave it null: Vezmo's session says
+     * (your business's own country on Connect, Vezmo's on merchant of record).
+     */
+    val merchantCountryCode: String? = null,
 ) : Parcelable
 
 enum class VezmoStyle { Automatic, Light, Dark }

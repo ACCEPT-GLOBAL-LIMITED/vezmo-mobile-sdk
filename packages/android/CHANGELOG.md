@@ -28,5 +28,15 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
 - **Google Pay while switching currency**: a Google Pay tap while the sheet sets the wallet up again for the new
   amount waits for it ("Google Pay is still loading. Try again in a moment."); the next tap pays.
 - **Large font sizes**: the sheet's buttons, fields and labels grow with the phone's font size instead of clipping.
+- **Google Pay merchant country** from the session: the country of the account that processes the payment (the
+  business's own on Connect, Vezmo's on merchant of record). `GooglePayOptions.merchantCountryCode` is optional and
+  only overrides it; US when the server doesn't say.
+- **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`Succeeded`);
+  still waiting in the buyer's bank app, the result is `Processing`, never canceled, since the buyer can still approve it.
+- **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
+  `Network`, so a payment that went through is never reported as failed.
+- **The sheet's activity recreated mid-payment** (a change of font size or language, or the process stopped in the
+  background): the payment in flight still reaches its result, never lost and never charged twice.
+- **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.
 - Minified (R8) release builds need no extra rules.
 - Android 7.0+ (API 24), compiled against SDK 36.

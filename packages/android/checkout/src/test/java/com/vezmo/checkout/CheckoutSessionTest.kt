@@ -410,6 +410,103 @@ class CheckoutSessionTest {
         u.session.dispose()
     }
 
+    // ── closing while UPI or Pix may still be paid ─────────────────────────
+    private suspend fun TestScope.upi(): Setup {
+        val u = Setup(this)
+        u.api.checkout = { BASE.copy(enabledMethods = setOf("card", "upi"), localOffer = INR_OFFER) }
+        u.session.load()
+        u.session.chooseMethod(Method.Upi)
+        u.session.payWithQr(QrMethod.Upi, QrBilling(name = "Asha Rao", line1 = "12 MG Road", country = "IN"))
+        assertTrue(u.snap.phase is SessionPhase.Waiting)
+        return u
+    }
+
+    @Test
+    fun `closing while UPI waits on the bank app is Processing, never Canceled`() = test { _ ->
+        val u = upi()
+        u.api.status = SessionStatus("requires_action", "pay_1", null)
+        assertEquals(CheckoutResult.Processing("pay_1"), u.session.closeRequested())
+        assertFalse(u.api.calls.any { it.startsWith("confirm") })
+        u.session.dispose()
+    }
+
+    @Test
+    fun `closing after the UPI payment went through shows the receipt instead`() = test { _ ->
+        val u = upi()
+        assertNull(u.session.closeRequested())
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), u.snap.phase)
+        assertTrue("confirm:tok:pi_7" in u.api.calls)
+        u.session.dispose()
+    }
+
+    @Test
+    fun `closing after giving up on UPI is Canceled, unless it was paid meanwhile`() = test { _ ->
+        val u = upi()
+        u.session.stopWaiting()
+        u.api.status = SessionStatus("requires_action", "pay_1", null)
+        assertEquals(CheckoutResult.Canceled, u.session.closeRequested())
+        u.api.status = SessionStatus("processing", "pay_1", null)
+        assertNull(u.session.closeRequested())
+        assertEquals(SessionPhase.Done(CheckoutResult.Processing("pay_1")), u.snap.phase)
+        u.session.dispose()
+    }
+
+    @Test
+    fun `closing with no UPI or Pix started is Canceled, without asking Vezmo`() = test { t ->
+        assertEquals(CheckoutResult.Canceled, t.session.closeRequested())
+        assertFalse("status" in t.api.calls)
+    }
+
+    // ── no answer from /pay ────────────────────────────────────────────────
+    private val noAnswer = VezmoApiError(VezmoError.Code.Network, "Check your connection and try again.", null)
+
+    @Test
+    fun `a pay with no answer that went through all the same is the payment, not a failure`() = test { t ->
+        t.api.pay = { throw noAnswer }
+        t.session.setOption("Klarna")
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        assertEquals(listOf<Pair<String?, String?>>(null to ""), t.element.resolved)
+        t.session.onConfirmResult(ConfirmStatus.Failed, "engine text")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+    }
+
+    @Test
+    fun `a pay with no answer that didn't go through is the network error, and the next try starts clean`() = test { t ->
+        t.api.pay = { throw noAnswer }
+        t.api.status = SessionStatus("open", "pay_1", null)
+        t.session.setOption("Klarna")
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        assertEquals(1, t.api.calls.count { it == "status" })
+        assertEquals(listOf<Pair<String?, String?>>(null to noAnswer.message), t.element.resolved)
+        t.session.onConfirmResult(ConfirmStatus.Failed, "engine text")
+        assertEquals(SessionPhase.Ready(noAnswer.toVezmoError()), t.snap.phase)
+
+        t.api.pay = { PayResponse("succeeded", "pay_1", "VT2", "pi_1_secret_a", null) }
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_2")
+        t.session.onConfirmResult(ConfirmStatus.Completed, "")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT2")), t.snap.phase)
+    }
+
+    // ── the sheet open again after its activity or the process was gone ───
+    @Test
+    fun `reopened after the process was gone mid-payment - a paid session is the payment, not already paid`() = test { _ ->
+        val paid = VezmoApiError(VezmoError.Code.AlreadyPaid, "This payment has already been made.", 409, "already_paid")
+        val reopened = Setup(this)
+        reopened.api.checkout = { throw paid }
+        reopened.session.load(recovering = true)
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), reopened.snap.phase)
+        reopened.session.dispose()
+        // A session prepared fresh that is already paid stays "already paid" (the app shouldn't present it).
+        val fresh = Setup(this)
+        fresh.api.checkout = { throw paid }
+        fresh.session.load()
+        assertEquals(SessionPhase.Closed(CheckoutResult.Failed(paid.toVezmoError())), fresh.snap.phase)
+        fresh.session.dispose()
+    }
+
     @Test
     fun `the UPI watcher checks by itself and stops once paid`() = test { t ->
         val u = Setup(this)

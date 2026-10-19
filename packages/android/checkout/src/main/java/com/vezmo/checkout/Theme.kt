@@ -37,7 +37,7 @@ internal data class SheetPalette(
     val good: Color,
     val bad: Color,
     val badSoft: Color,
-    /** The test-mode badge (as on the hosted checkout). */
+    /** The test-mode badge, behind white text (at least 4.5:1 for it). */
     val warn: Color,
     /** Time running out (the last minute of a UPI or Pix code). */
     val warnInk: Color,
@@ -75,7 +75,7 @@ internal val LIGHT = SheetPalette(
     good = Color(0xFF0E8A55),
     bad = Color(0xFFD12C4B),
     badSoft = rgba(209, 44, 75, 0.07f),
-    warn = Color(0xFFEA580C),
+    warn = Color(0xFFC2410C),
     warnInk = Color(0xFFB45309),
     warnSoft = Color(0xFFFEF3C7),
     logoTile = Color(0xFFFFFFFF),
@@ -103,7 +103,7 @@ internal val DARK = SheetPalette(
     good = Color(0xFF3DD68C),
     bad = Color(0xFFFF6B85),
     badSoft = rgba(255, 107, 133, 0.1f),
-    warn = Color(0xFFEA580C),
+    warn = Color(0xFFC2410C),
     warnInk = Color(0xFFFBBF24),
     warnSoft = rgba(251, 191, 36, 0.14f),
     logoTile = Color(0xFF1D1D28),

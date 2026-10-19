@@ -1,11 +1,15 @@
-import { recurringMinorIn, type Charge, type SheetMethods } from './flow';
+import { merchantCountry, recurringMinorIn, type Charge, type SheetMethods } from './flow';
 import { elementAppearance, type SheetPalette, type VezmoAppearance } from './theme';
 import type { CheckoutConfig } from './types';
 
 export interface WalletOptions {
-  /** Apple Pay: your Apple Merchant ID (created in Apple Developer → Identifiers → Merchant IDs). */
+  /**
+   * Apple Pay: your Apple Merchant ID (created in Apple Developer → Identifiers → Merchant IDs). Leave out
+   * `merchantCountryCode`: the session says which country processes the payment (your business's own on Connect,
+   * Vezmo's on merchant of record).
+   */
   applePay?: { merchantId: string; merchantCountryCode?: string };
-  /** Google Pay: `testEnv` for sandbox sessions is set automatically. */
+  /** Google Pay: the merchant country comes from the session too; `testEnv` for sandbox sessions is set automatically. */
   googlePay?: { merchantCountryCode?: string };
 }
 
@@ -39,14 +43,14 @@ export function elementConfigJson(args: {
       args.withWallets && methods.applePay && wallets?.applePay?.merchantId
         ? {
             merchantId: wallets.applePay.merchantId,
-            merchantCountryCode: wallets.applePay.merchantCountryCode ?? 'US',
+            merchantCountryCode: merchantCountry(wallets.applePay.merchantCountryCode, config.processingCountry),
             recurring: applePayRecurring(config, args.charge, args.merchantDisplayName),
           }
         : null,
     googlePay:
       args.withWallets && methods.googlePay
       ? {
-          merchantCountryCode: wallets?.googlePay?.merchantCountryCode ?? 'US',
+          merchantCountryCode: merchantCountry(wallets?.googlePay?.merchantCountryCode, config.processingCountry),
           currencyCode: args.charge.currency,
           testEnv: !config.livemode,
         }

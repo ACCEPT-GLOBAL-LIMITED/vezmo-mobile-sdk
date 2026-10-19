@@ -17,6 +17,8 @@ struct EngineSettings: Equatable {
   var radius: CGFloat
   var fontFamily: String?
   var applePay: VezmoCheckout.ApplePay?
+  /// The country of the account that processes the payment, from the session (Apple Pay's merchant country).
+  var processingCountry: String? = nil
   /// A subscription in Apple Pay's sheet and the buyer's Wallet (iOS 16+); nil for a one-time payment.
   var applePayRecurring: ApplePayRecurring?
   var billingName: String?
@@ -341,7 +343,7 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
       }
       configuration.applePay = PaymentSheet.ApplePayConfiguration(
         merchantId: applePay.merchantId,
-        merchantCountryCode: applePay.merchantCountryCode,
+        merchantCountryCode: merchantCountry(applePay.merchantCountryCode, session: settings.processingCountry),
         customHandlers: handlers
       )
     }

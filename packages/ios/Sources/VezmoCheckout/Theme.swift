@@ -17,7 +17,7 @@ struct Palette: Equatable {
     fill: rgba(118, 118, 128, 0.12), disabled: hex(0xECECF1), onDisabled: hex(0xA1A1AA), field: hex(0xFFFFFF),
     fieldLine: hex(0xE1E3EC), line: hex(0xE8EAF1), ink: hex(0x0B0C14), ink2: hex(0x454A5A), ink3: hex(0x6B7083),
     accent: hex(0x503AF2), onAccent: hex(0xFFFFFF), accentSoft: rgba(80, 58, 242, 0.08), good: hex(0x0E8A55),
-    bad: hex(0xD12C4B), badSoft: rgba(209, 44, 75, 0.07), warn: hex(0xEA580C), warnInk: hex(0xB45309),
+    bad: hex(0xD12C4B), badSoft: rgba(209, 44, 75, 0.07), warn: hex(0xC2410C), warnInk: hex(0xB45309),
     warnSoft: hex(0xFEF3C7), logoTile: hex(0xFFFFFF), scrim: rgba(11, 12, 20, 0.42),
     payShadow: hex(0x503AF2)
   )
@@ -27,7 +27,7 @@ struct Palette: Equatable {
     fill: rgba(118, 118, 128, 0.24), disabled: hex(0x26262F), onDisabled: hex(0x6B6B76), field: hex(0x1B1C27),
     fieldLine: hex(0x2A2B37), line: hex(0x24252F), ink: hex(0xF4F4F7), ink2: hex(0xB9BBC7), ink3: hex(0x8C8FA0),
     accent: hex(0x7B6BFF), onAccent: hex(0xFFFFFF), accentSoft: rgba(123, 107, 255, 0.16), good: hex(0x3DD68C),
-    bad: hex(0xFF6B85), badSoft: rgba(255, 107, 133, 0.1), warn: hex(0xEA580C), warnInk: hex(0xFBBF24),
+    bad: hex(0xFF6B85), badSoft: rgba(255, 107, 133, 0.1), warn: hex(0xC2410C), warnInk: hex(0xFBBF24),
     warnSoft: rgba(251, 191, 36, 0.14), logoTile: hex(0x1D1D28), scrim: rgba(0, 0, 0, 0.62),
     payShadow: nil
   )

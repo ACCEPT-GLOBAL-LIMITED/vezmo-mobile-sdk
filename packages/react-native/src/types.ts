@@ -11,7 +11,10 @@ export type CheckoutResult =
       /** For a subscription checkout: the subscription, now `active` (first payment made) or `trialing`. */
       subscription?: SubscriptionResult;
     }
-  /** Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook. */
+  /**
+   * Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment the buyer started and can
+   * still finish in their bank app after closing the sheet: wait for the webhook, which says how it ends.
+   */
   | { status: 'processing'; paymentId: string | null; subscription?: SubscriptionResult }
   /** The buyer closed the sheet. Not an error. */
   | { status: 'canceled' }
@@ -81,6 +84,11 @@ export interface CheckoutConfig {
   appReturnUrl: string | null;
   /** A subscription checkout: the plan, and what starting it means. Absent for a one-time payment. */
   subscription?: SubscriptionPlan | null;
+  /**
+   * The country of the account that processes the payment (the business's own on Connect, Vezmo's on merchant of
+   * record): Apple Pay's and Google Pay's merchant country. Absent from a server that doesn't say.
+   */
+  processingCountry?: string | null;
 }
 
 /** What the buyer subscribes to (from the subscription checkout). */
@@ -125,6 +133,8 @@ export interface SubscriptionView {
   livemode: boolean;
   nextChargeAt: string | null;
   manageUrl: string | null;
+  /** See `CheckoutConfig.processingCountry`. */
+  processingCountry?: string | null;
 }
 
 export type MethodKey =

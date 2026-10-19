@@ -16,6 +16,7 @@ final class FakeAPI: CheckoutAPI {
   /// Answered first, one per call; then `statusAnswer`.
   var statusOnce: [SessionStatus] = []
   var statusAnswer = SessionStatus(state: "succeeded", paymentId: "pay_1", transactionId: "VT1")
+  var statusCalls = 0
   var checkoutError: VezmoAPIError?
   var confirmError: VezmoAPIError?
   var intentError: VezmoAPIError?
@@ -63,7 +64,8 @@ final class FakeAPI: CheckoutAPI {
   }
 
   func status(token: String) async throws -> SessionStatus {
-    statusOnce.isEmpty ? statusAnswer : statusOnce.removeFirst()
+    statusCalls += 1
+    return statusOnce.isEmpty ? statusAnswer : statusOnce.removeFirst()
   }
 
   // Subscriptions
@@ -399,6 +401,86 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
     XCTAssertEqual(api.confirmCancelled, [false])
     session.dispose()
+  }
+
+  // MARK: Closing while UPI or Pix may still be paid
+
+  private func startUPI() async {
+    await start(makeConfig(enabled: ["card": true, "upi": true], localOffer: rupees))
+    session.choosePayLocal(true)
+    session.chooseMethod(.upi)
+    await session.payWithQr(.upi, billing: QrBilling(name: "Asha Rao", line1: "12 MG Road", country: "IN"))
+  }
+
+  func testClosingWhileUPIWaitsOnTheBankAppIsProcessingNeverCanceled() async {
+    await startUPI()
+    XCTAssertTrue(snap.phase.isWaiting)
+    api.statusAnswer = SessionStatus(state: "requires_action", paymentId: "pay_1", transactionId: nil)
+    let result = await session.closeRequested()
+    // The buyer can still approve it in their UPI app: the merchant waits for the webhook.
+    XCTAssertEqual(result, .processing(paymentId: "pay_1", subscription: nil))
+    XCTAssertTrue(api.confirmCalls.isEmpty)
+  }
+
+  func testClosingAfterTheUPIPaymentWentThroughShowsTheReceiptInstead() async {
+    await startUPI()
+    api.statusAnswer = SessionStatus(state: "succeeded", paymentId: "pay_1", transactionId: "VT1")
+    let result = await session.closeRequested()
+    XCTAssertNil(result) // the sheet stays open, on the receipt
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+    XCTAssertEqual(api.confirmCalls, [["tok", "pi_7"]])
+  }
+
+  func testClosingAfterGivingUpOnUPIIsCanceledUnlessItWasPaidMeanwhile() async {
+    await startUPI()
+    session.stopWaiting()
+    api.statusAnswer = SessionStatus(state: "requires_action", paymentId: "pay_1", transactionId: nil)
+    let notPaid = await session.closeRequested()
+    XCTAssertEqual(notPaid, .canceled)
+    api.statusAnswer = SessionStatus(state: "processing", paymentId: "pay_1", transactionId: nil)
+    let paid = await session.closeRequested()
+    XCTAssertNil(paid)
+    XCTAssertEqual(snap.phase, .done(.processing(paymentId: "pay_1", subscription: nil)))
+  }
+
+  func testClosingWithoutUPIOrPixIsCanceledWithoutAskingVezmo() async {
+    await start()
+    let result = await session.closeRequested()
+    XCTAssertEqual(result, .canceled)
+    XCTAssertEqual(api.statusCalls, 0)
+  }
+
+  // MARK: No answer from /pay
+
+  func testAPayThatGotNoAnswerButWentThroughIsThePaymentNotAFailure() async {
+    await start()
+    api.payAnswer = { throw VezmoAPIError(.network, "Check your connection and try again.") }
+    api.statusAnswer = SessionStatus(state: "succeeded", paymentId: "pay_1", transactionId: "VT1")
+    session.setOption("Klarna")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    XCTAssertEqual(element.resolutions, [[nil, ""]])
+    await session.onConfirmResult(.failed, message: "engine text")
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+  }
+
+  func testAPayThatGotNoAnswerAndDidntGoThroughIsTheNetworkError() async {
+    await start()
+    let network = VezmoAPIError(.network, "Check your connection and try again.")
+    api.payAnswer = { throw network }
+    api.statusAnswer = SessionStatus(state: "open", paymentId: "pay_1", transactionId: nil)
+    session.setOption("Klarna")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    XCTAssertEqual(api.statusCalls, 1)
+    await session.onConfirmResult(.failed, message: "engine text")
+    XCTAssertEqual(snap.phase, .ready(error: network.vezmoError))
+    // The next try starts clean.
+    session.pay()
+    api.payAnswer = { PayResponse(state: "succeeded", paymentId: "pay_1", transactionId: "VT2", clientSecret: "pi_1_secret_a") }
+    await session.onConfirmationToken("ctoken_2")
+    await session.onConfirmResult(.completed, message: "")
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT2", subscription: nil)))
   }
 
   func testAPixCodeNeedsTheBuyersCPFOrCNPJ() {

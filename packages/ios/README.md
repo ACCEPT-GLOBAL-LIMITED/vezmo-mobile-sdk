@@ -51,7 +51,7 @@ let vezmo = VezmoCheckout(configuration: .init(
 | Setting | What it does |
 | --- | --- |
 | `returnURL` | Your registered return link. Needed for 3D Secure in some banks, bank apps and pay-later methods. |
-| `applePay` | `.init(merchantId:merchantCountryCode:)`. Without it the sheet shows no Apple Pay. |
+| `applePay` | `.init(merchantId:merchantCountryCode:)`. Without it the sheet shows no Apple Pay. The merchant country defaults to that of the account processing the payment, read from the session (your business's own on Connect, Vezmo's on merchant of record); set it only to override that. |
 | `style` | `.automatic` (follow the phone, default), `.light` or `.dark`. |
 | `appearance` | Colors, corner radius and font, below. |
 
@@ -152,7 +152,7 @@ show.
 | Result | Meaning |
 | --- | --- |
 | `.succeeded(paymentId, transactionId, subscription)` | Paid. Both ids match the dashboard and the webhook. `subscription` is set for a subscription checkout; `paymentId` is nil only when a free trial started (nothing charged today). |
-| `.processing(paymentId, subscription)` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `.processing(paymentId, subscription)` | Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment still waiting in the buyer's bank app when they closed the sheet. Wait for the webhook, which says how it ends. |
 | `.canceled` | The buyer closed the sheet. Not an error. |
 | `.failed(error)` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
@@ -165,6 +165,13 @@ show.
 | `.network` | No connection. Let the buyer try again. |
 | `.config` | A setup mistake in the app (for example `present` before `prepare`). |
 | `.unknown` | Anything else. Let the buyer try again. |
+
+**Closing while UPI or Pix waits.** When the buyer closes the sheet while a UPI or Pix payment waits in their bank
+app, the sheet asks Vezmo first. Paid meanwhile: it shows the receipt, and the result is `.succeeded`. Still waiting:
+the result is `.processing`, because the buyer can still approve it; the webhook says how it ends.
+
+**No answer while paying.** When the payment request gets no answer (a timeout, a dropped connection), the sheet
+checks the session before reporting `.network`: a payment that went through all the same is the result.
 
 ## Subscriptions
 

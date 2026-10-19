@@ -26,9 +26,13 @@ import androidx.lifecycle.ViewModelProvider
  * drawn in Compose. The engine's card form and 3D Secure open on top of it. Closing delivers the [CheckoutResult].
  */
 internal class VezmoCheckoutActivity : ComponentActivity() {
-    /** The session survives the activity being recreated. */
+    /**
+     * The session and the bridge to the payment engine survive the activity being recreated (a change of font size or
+     * language, say), so a payment in flight neither gets lost nor starts over.
+     */
     class Holder : ViewModel() {
         var session: CheckoutSession? = null
+        var engine: Engine? = null
 
         override fun onCleared() {
             session?.dispose()
@@ -54,9 +58,11 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
                 request.configuration.returnUrl,
                 subscription = request.subscription,
             ).also { s ->
-                s.post { s.load() }
+                // Maybe paid meanwhile (the process was gone mid-payment): then the result, not "already paid".
+                s.post { s.load(recovering = true) }
             }
         holder.session = session
+        val keptEngine = holder.engine?.takeIf { it.session === session } ?: Engine(session).also { holder.engine = it }
         bars(dark = false)
 
         setContent {
@@ -72,7 +78,7 @@ internal class VezmoCheckoutActivity : ComponentActivity() {
                 }
             }
             LaunchedEffect(dark) { bars(dark) }
-            val engine = rememberEngine(session)
+            val engine = rememberEngine(session, keptEngine)
             Box(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
                 CheckoutSheet(session, engine, request, dark, onClose = ::close)
             }

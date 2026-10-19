@@ -29,4 +29,12 @@ The first release of the Vezmo payment sheet for native iOS apps (Swift Package 
 - **Swift 6**: `VezmoCheckout` lives on the main actor, its results, errors and settings are `Sendable`, and
   `VezmoCheckout.handleURL` and `VezmoCheckout.version` need no `await`, so apps in Swift 6 language mode
   build cleanly (the example app does, in CI). The `.vezmoCheckout` modifier calls `onCompletion` on the main actor.
+- **Apple Pay merchant country** from the session: the country of the account that processes the payment (the
+  business's own on Connect, Vezmo's on merchant of record). `ApplePay.merchantCountryCode` is optional and only
+  overrides it; US when the server doesn't say.
+- **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`.succeeded`);
+  still waiting in the buyer's bank app, the result is `.processing`, never canceled, since the buyer can still approve it.
+- **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
+  `.network`, so a payment that went through is never reported as failed.
+- **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.
 - iOS 15.1+.

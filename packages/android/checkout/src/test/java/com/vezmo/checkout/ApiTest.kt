@@ -140,5 +140,9 @@ class ApiTest {
         assertEquals(null, config.customerName)
         assertEquals(setOf("card", "googlePay"), config.enabledMethods)
         assertEquals(4900L, config.amountMinor)
+        // A server that doesn't say which country processes the payment.
+        assertEquals(null, config.processingCountry)
+        val withCountry = api(200, json.replace("\"appReturnUrl\":null", "\"appReturnUrl\":null,\"processingCountry\":\"AE\"")).checkout("tok")
+        assertEquals("AE", withCountry.processingCountry)
     }
 }

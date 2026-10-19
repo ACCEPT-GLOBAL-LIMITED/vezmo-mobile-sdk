@@ -5,7 +5,8 @@ public enum CheckoutResult: Equatable, Sendable {
   /// Paid. `paymentId` and `transactionId` match the dashboard and the webhook. `paymentId` is nil only when a
   /// subscription's free trial started: nothing was charged today. `subscription` is set for a subscription checkout.
   case succeeded(paymentId: String?, transactionId: String?, subscription: SubscriptionResult?)
-  /// Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook.
+  /// Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment the buyer started and
+  /// can still finish in their bank app after closing the sheet: wait for the webhook, which says how it ends.
   case processing(paymentId: String?, subscription: SubscriptionResult?)
   /// The buyer closed the sheet. Not an error.
   case canceled
@@ -82,10 +83,13 @@ struct CheckoutConfig: Decodable, Equatable {
   var localOffer: LocalOffer?
   /// A subscription checkout: the plan, and what starting it means. Nil for a one-time payment.
   var subscription: SubscriptionPlan?
+  /// The country of the account that processes the payment (the business's own on Connect, Vezmo's on merchant of
+  /// record): Apple Pay's merchant country. Nil from a server that doesn't say.
+  var processingCountry: String? = nil
 
   private enum CodingKeys: String, CodingKey {
     case publishableKey, connectedAccountId, livemode, amountMinor, currency, title, merchantName, enabledMethods
-    case customerName, customerEmail, theme, paymentId, localOffer
+    case customerName, customerEmail, theme, paymentId, localOffer, processingCountry
   }
 
   func enabled(_ method: String) -> Bool { (enabledMethods?[method] ?? nil) == true }
@@ -140,6 +144,8 @@ struct SubscriptionView: Decodable, Equatable {
   var livemode: Bool
   var nextChargeAt: String?
   var manageUrl: String?
+  /// See `CheckoutConfig.processingCountry`.
+  var processingCountry: String? = nil
 }
 
 /// POST /subscription-checkout/:token/pay: the subscription twin of `PayResponse`.

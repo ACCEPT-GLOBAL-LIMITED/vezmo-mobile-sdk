@@ -88,6 +88,16 @@ internal fun resultFromStatus(s: SessionStatus): CheckoutResult? =
         else -> null // still open or waiting on the buyer
     }
 
+/**
+ * Google Pay's merchant country: the app's own, else the country of the account that processes the payment (from the
+ * session: the business's own on Connect, Vezmo's on merchant of record), else US (a server that doesn't say).
+ */
+internal fun merchantCountry(app: String?, session: String?): String =
+    listOf(app, session).firstNotNullOfOrNull { c -> c?.trim()?.uppercase()?.takeIf { Regex("[A-Z]{2}").matches(it) } } ?: "US"
+
+/** Paid, or money on its way. */
+internal val CheckoutResult.isPaid get() = this is CheckoutResult.Succeeded || this is CheckoutResult.Processing
+
 internal val DECLINED = VezmoError(VezmoError.Code.Declined, "Your payment didn’t go through. Try another card or way to pay.")
 internal val EXPIRED = VezmoError(VezmoError.Code.Expired, "This checkout has expired. Please start again.")
 

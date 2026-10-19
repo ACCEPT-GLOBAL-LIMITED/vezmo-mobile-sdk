@@ -31,7 +31,7 @@ export interface SheetPalette {
   good: string;
   bad: string;
   badSoft: string;
-  /** The test-mode badge (as on the hosted checkout). */
+  /** The test-mode badge, behind white text (at least 4.5:1 for it). */
   warn: string;
   /** Time running out (the last minute of a UPI or Pix code). */
   warnInk: string;
@@ -65,7 +65,7 @@ export const LIGHT: SheetPalette = {
   good: '#0E8A55',
   bad: '#D12C4B',
   badSoft: 'rgba(209,44,75,0.07)',
-  warn: '#EA580C',
+  warn: '#C2410C',
   warnInk: '#B45309',
   warnSoft: '#FEF3C7',
   logoTile: '#FFFFFF',
@@ -94,7 +94,7 @@ export const DARK: SheetPalette = {
   good: '#3DD68C',
   bad: '#FF6B85',
   badSoft: 'rgba(255,107,133,0.1)',
-  warn: '#EA580C',
+  warn: '#C2410C',
   warnInk: '#FBBF24',
   warnSoft: 'rgba(251,191,36,0.14)',
   logoTile: '#1D1D28',

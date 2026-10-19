@@ -1,0 +1,16 @@
+# The sheet's activity recreated in the middle of a payment, part 1 of 2: a card payment up to the tap on Pay. Then
+# android.yml changes the phone's font size, which recreates the sheet's activity (rotation doesn't: the sheet handles
+# it itself), and part 2 checks the payment still ends as the payment, once.
+appId: com.vezmo.example.nativeapp
+---
+- runFlow: ../common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
+- runFlow:
+    file: ../../../../../e2e/maestro/android/card.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: recreate
+- runFlow: ../../../../../e2e/maestro/api-ready.yaml
+- tapOn:
+    id: "vezmo-pay"
