@@ -254,8 +254,10 @@ how you take payments, and send the screenshots of your checkout that Google ask
 
 1. In your Apple Developer account, create a **Merchant ID** and turn on **Apple Pay Payment Processing** for your
    app's App ID with it. In Xcode, add the **Apple Pay** capability to the Runner target with that Merchant ID.
-2. Write to Vezmo support with your Merchant ID. We send you a certificate signing request; create the **Apple Pay
-   Payment Processing Certificate** with it and send us the certificate.
+2. In your Vezmo dashboard, open **Developers → Mobile apps → Apple Pay in your iPhone app** and add your Apple Merchant ID.
+   Download the request file we attach, create the **Apple Pay Payment Processing Certificate** with it in your Apple
+   Developer account, and upload the certificate on the same page. Apple Pay works once it shows **Active** there;
+   certificates last 25 months, and the page reminds you to renew.
 3. Pass the Merchant ID as `applePay: ApplePayOptions(merchantId: 'merchant.com.acme')`.
 
 ## Testing
