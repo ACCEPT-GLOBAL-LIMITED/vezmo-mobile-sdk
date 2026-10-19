@@ -273,6 +273,16 @@ it('shows the canceled state', async () => {
   `VezmoProvider` must be a link registered under Developers → Mobile apps, and your app must open that scheme (in a
   bare app: URL Types and `RCTLinkingManager`, above).
 
+## App Store privacy
+
+The package's privacy manifest (in its pod) declares what the sheet sends to Vezmo to take the payment, for app
+functionality only and never for tracking: the payment method the buyer chooses, their name and address (asked for UPI
+and Pix), and for Pix their CPF or CNPJ (as other data). The payment engine's pod declares its own. Xcode adds both to
+your app's privacy report.
+
+It declares no location: the sheet never reads the phone's location. Vezmo offers the buyer their own currency
+from the country of the network connection (its IP address) on Vezmo's server, not from the device.
+
 ## License
 
 MIT

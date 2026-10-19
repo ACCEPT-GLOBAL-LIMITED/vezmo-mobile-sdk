@@ -67,3 +67,8 @@ jobs:
         run: yarn example expo prebuild --platform ios
       - name: Build
         run: yarn example build:ios
+      - name: The pod's privacy manifest is in the app
+        run: |
+          APP=$(find example/ios/build/Build/Products -maxdepth 2 -name '*.app' | head -1)
+          find "$APP" -path '*VezmoReactNativePrivacy.bundle/PrivacyInfo.xcprivacy' | grep . \
+            || { echo "::error::VezmoReactNativePrivacy.bundle/PrivacyInfo.xcprivacy is missing from $APP"; exit 1; }

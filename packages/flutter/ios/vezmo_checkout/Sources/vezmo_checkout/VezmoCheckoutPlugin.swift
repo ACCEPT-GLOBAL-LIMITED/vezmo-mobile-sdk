@@ -34,16 +34,20 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
   }
 
   private func prepare(_ args: [String: Any], result: @escaping FlutterResult) {
-    let vezmo = VezmoCheckout(configuration: Self.configuration(args["configuration"] as? [String: Any] ?? [:]))
-    checkout = vezmo
+    let configuration = Self.configuration(args["configuration"] as? [String: Any] ?? [:])
     let merchantDisplayName = args["merchantDisplayName"] as? String
+    // Dart sends exactly one of the two tokens.
+    let subscriptionToken = args["subscriptionToken"] as? String
+    let clientToken = args["clientToken"] as? String ?? ""
+    // The SDK lives on the main actor (Dart's `present` comes after this answers).
     Task { @MainActor in
-      // Dart sends exactly one of the two tokens.
+      let vezmo = VezmoCheckout(configuration: configuration)
+      self.checkout = vezmo
       let error: VezmoError?
-      if let subscriptionToken = args["subscriptionToken"] as? String {
+      if let subscriptionToken {
         error = await vezmo.prepare(subscriptionToken: subscriptionToken, merchantDisplayName: merchantDisplayName)
       } else {
-        error = await vezmo.prepare(clientToken: args["clientToken"] as? String ?? "", merchantDisplayName: merchantDisplayName)
+        error = await vezmo.prepare(clientToken: clientToken, merchantDisplayName: merchantDisplayName)
       }
       result(error.map { Self.error($0.code, $0.message) })
     }
