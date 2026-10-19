@@ -464,6 +464,16 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
   }
 
+  func testAnEngineFailureAfterVezmoTookThePaymentIsThePaymentNeverTheEnginesWords() async {
+    await start()
+    api.payAnswer = { PayResponse(state: "succeeded", paymentId: "pay_1", transactionId: "VT1", clientSecret: "pi_1_secret_a") }
+    session.setOption("Klarna")
+    session.pay()
+    await session.onConfirmationToken("ctoken_1")
+    await session.onConfirmResult(.failed, message: "No launcher for a was found, did you call register?")
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+  }
+
   func testAPayThatGotNoAnswerAndDidntGoThroughIsTheNetworkError() async {
     await start()
     let network = VezmoAPIError(.network, "Check your connection and try again.")

@@ -34,7 +34,8 @@ The first release of the Vezmo payment sheet for native Android apps (`com.vezmo
 - **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`Succeeded`);
   still waiting in the buyer's bank app, the result is `Processing`, never canceled, since the buyer can still approve it.
 - **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
-  `Network`, so a payment that went through is never reported as failed.
+  `Network`, so a payment that went through is never reported as failed. A payment Vezmo already took
+  stays the result even when the payment engine fails afterwards.
 - **The sheet's activity recreated mid-payment** (a change of font size or language, or the process stopped in the
   background): the payment in flight still reaches its result, never lost and never charged twice.
 - **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.

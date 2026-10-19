@@ -398,9 +398,10 @@ internal class CheckoutSession(
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
             ConfirmStatus.Failed -> {
-                // The engine gave up for want of Vezmo's answer, but the payment went through.
-                recovered?.let { landed ->
-                    set { copy(phase = SessionPhase.Done(landed)) }
+                // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo
+                // had already taken the payment. Either way the payment is the result, never the engine's words.
+                (recovered ?: lastPay?.let(::resultFromPay))?.let { paid ->
+                    set { copy(phase = SessionPhase.Done(paid)) }
                     return
                 }
                 val error = lastError ?: when (val verdict = deviceFailure()) {

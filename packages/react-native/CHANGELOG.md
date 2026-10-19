@@ -37,7 +37,8 @@ The first release of the Vezmo payment sheet for React Native and Expo.
 - **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`succeeded`);
   still waiting in the buyer's bank app, the result is `processing`, never canceled, since the buyer can still approve it.
 - **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
-  `network`, so a payment that went through is never reported as failed.
+  `network`, so a payment that went through is never reported as failed. A payment Vezmo already took
+  stays the result even when the payment engine fails afterwards.
 - **iPhone card form while the amount changes**: the card form and Pay wait for the card flow to be set up for the
   new amount (as on Android), where the payment engine refused them before.
 - **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.

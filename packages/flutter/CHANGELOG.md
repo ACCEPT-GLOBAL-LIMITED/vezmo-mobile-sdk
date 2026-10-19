@@ -25,7 +25,8 @@ The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`)
 - **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`CheckoutSucceeded`);
   still waiting in the buyer's bank app, the result is `CheckoutProcessing`, never canceled, since the buyer can still approve it.
 - **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
-  `network`, so a payment that went through is never reported as failed.
+  `network`, so a payment that went through is never reported as failed. A payment Vezmo already took
+  stays the result even when the payment engine fails afterwards.
 - **Android**: a payment in flight survives the sheet's activity being recreated or the process being stopped.
 - **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.
 - Android 7.0+ (API 24), iOS 15.1+; Flutter 3.41+.

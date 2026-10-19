@@ -472,6 +472,16 @@ class CheckoutSessionTest {
     }
 
     @Test
+    fun `an engine failure after Vezmo took the payment is the payment, never the engine's words`() = test { t ->
+        t.api.pay = { PayResponse("succeeded", "pay_1", "VT1", "pi_1_secret_a", null) }
+        t.session.setOption("Klarna")
+        t.session.pay()
+        t.session.onConfirmationToken("ctoken_1")
+        t.session.onConfirmResult(ConfirmStatus.Failed, "No launcher for a was found, did you call register?")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+    }
+
+    @Test
     fun `a pay with no answer that didn't go through is the network error, and the next try starts clean`() = test { t ->
         t.api.pay = { throw noAnswer }
         t.api.status = SessionStatus("open", "pay_1", null)

@@ -385,9 +385,11 @@ export class CheckoutSession {
       return;
     }
     if (status === 'failed') {
-      // The engine gave up for want of Vezmo's answer, but the payment went through.
-      if (this.recovered) {
-        this.set({ phase: { name: 'done', result: this.recovered } });
+      // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo had
+      // already taken the payment. Either way the payment is the result, never the engine's words.
+      const paid = this.recovered ?? (this.lastPay ? resultFromPay(this.lastPay) : null);
+      if (paid) {
+        this.set({ phase: { name: 'done', result: paid } });
         return;
       }
       const answer = this.lastError ? null : await this.afterDeviceFailure();

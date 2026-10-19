@@ -316,6 +316,18 @@ describe('CheckoutSession', () => {
     });
   });
 
+  it('an engine failure after Vezmo took the payment is the payment, never the engine’s words', async () => {
+    t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', clientSecret: 'pi_1_secret_a' });
+    t.session.setOption({ label: 'Klarna' });
+    t.session.pay();
+    await t.session.onConfirmationToken('ctoken_1');
+    await t.session.onConfirmResult('failed', 'No launcher for a was found, did you call register?');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'done',
+      result: { status: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1' },
+    });
+  });
+
   describe('no answer from /pay', () => {
     const network = new VezmoApiError('network', 'Check your connection and try again.', null);
 

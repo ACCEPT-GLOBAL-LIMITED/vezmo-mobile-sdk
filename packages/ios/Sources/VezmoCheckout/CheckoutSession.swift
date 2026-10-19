@@ -419,9 +419,10 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .ready(error: nil) }
       return
     case .failed:
-      // The engine gave up for want of Vezmo's answer, but the payment went through.
-      if let recovered {
-        set { $0.phase = .done(recovered) }
+      // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo had
+      // already taken the payment. Either way the payment is the result, never the engine's words.
+      if let paid = recovered ?? lastPay.flatMap(resultFromPay) {
+        set { $0.phase = .done(paid) }
         return
       }
       var error = lastError
