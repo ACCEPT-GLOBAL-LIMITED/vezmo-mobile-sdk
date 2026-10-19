@@ -1,14 +1,15 @@
 name: Release React Native SDK
 
 # Publishes @vezmopay/react-native when a tag like `react-native-v1.2.3` is pushed. The tag's version must match
-# packages/react-native/package.json. Needs the NPM_TOKEN secret (a granular write token of the `vezmopay` npm org).
+# packages/react-native/package.json. Signs in to npm with this workflow's GitHub identity (npm trusted publishing:
+# the package's npm settings name this repository and `release-react-native.yml`), so no npm token is stored anywhere.
 on:
   push:
     tags: ['react-native-v*']
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing + provenance
 
 defaults:
   run:
@@ -33,6 +34,4 @@ jobs:
           node-version-file: packages/react-native/.nvmrc
           registry-url: https://registry.npmjs.org
       - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
