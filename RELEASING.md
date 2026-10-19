@@ -11,7 +11,9 @@ For maintainers. Release the four SDKs in this order (each tag runs its own work
    `NPM_TOKEN` secret of the `vezmopay` npm org).
 4. **Flutter**, last: push `flutter-v<version>`. The plugin runs on the native SDKs, so it needs 1 and 2 out first;
    `release-flutter.yml` checks both, then publishes to pub.dev with GitHub's login (the one-time pub.dev setup is in
-   that file's header).
+   that file's header). **0.1.0 only**: pub.dev automates only a package that already exists, so publish 0.1.0 by
+   hand with `flutter pub publish` from `packages/flutter` and push no `flutter-v0.1.0` tag (the workflow would fail
+   on the version that is already there); the tags take over from 0.1.1.
 
 Bump every place a version lives (and each package's `CHANGELOG.md`) before tagging:
 
