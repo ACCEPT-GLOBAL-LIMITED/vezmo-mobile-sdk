@@ -86,7 +86,7 @@ internal fun engineIntent(charge: Charge, methods: SheetMethods, config: Checkou
  * finishes any step left (3D Secure, Google Pay, a provider) and reports the result.
  */
 @OptIn(WalletButtonsPreview::class)
-internal class Engine(private val session: CheckoutSession) {
+internal class Engine(val session: CheckoutSession) {
     lateinit var flow: PaymentSheet.FlowController
     lateinit var walletFlow: PaymentSheet.FlowController
     lateinit var embedded: EmbeddedPaymentElement
@@ -97,6 +97,32 @@ internal class Engine(private val session: CheckoutSession) {
     private var cardConfiguration: PaymentSheet.Configuration? = null
     private var walletConfiguration: PaymentSheet.Configuration? = null
     private var elementConfiguration: EmbeddedPaymentElement.Configuration? = null
+
+    /** What the engine last finished setting up for (the settings, the amount, the reconfigure count). */
+    private var configuredFor: Triple<EngineSettings, EngineIntent, Int>? = null
+
+    /**
+     * The sheet is composed, so the flows have registered what they launch to finish a payment. Between the old
+     * activity's sheet and the recreated one's they haven't: an answer from Vezmo then waits ([held]) for the new sheet.
+     */
+    private var isComposed = false
+    private val held = mutableListOf<() -> Unit>()
+
+    private fun whenComposed(deliver: () -> Unit) {
+        if (isComposed) deliver() else held += deliver
+    }
+
+    /** The sheet is composed (its flows built and registered): answers held over a recreation go on now. */
+    fun composed() {
+        isComposed = true
+        val waiting = held.toList()
+        held.clear()
+        waiting.forEach { it() }
+    }
+
+    fun decomposed() {
+        isComposed = false
+    }
 
     /** The settings the card flow and the element last finished loading with (the sheet shows placeholders until). */
     var cardLoaded by mutableStateOf<EngineSettings?>(null)
@@ -157,8 +183,11 @@ internal class Engine(private val session: CheckoutSession) {
             }
 
             override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
-                cardSecret?.complete(answer(clientSecret, errorMessage))
-                cardSecret = null
+                val result = answer(clientSecret, errorMessage)
+                whenComposed {
+                    cardSecret?.complete(result)
+                    cardSecret = null
+                }
             }
         }
 
@@ -171,8 +200,11 @@ internal class Engine(private val session: CheckoutSession) {
             override fun clearSelection() = embedded.clearPaymentOption()
 
             override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
-                elementSecret?.complete(answer(clientSecret, errorMessage))
-                elementSecret = null
+                val result = answer(clientSecret, errorMessage)
+                whenComposed {
+                    elementSecret?.complete(result)
+                    elementSecret = null
+                }
             }
         }
 
@@ -247,6 +279,11 @@ internal class Engine(private val session: CheckoutSession) {
 
     /** Sets the engine up for these settings (rebuilt when they change) and this amount. */
     suspend fun configure(context: Context, settings: EngineSettings, intent: EngineIntent) {
+        // The sheet's activity was recreated: this engine and the flows' own setup (kept by the engine across it) are
+        // already set up for exactly this. Setting them up again could cut into a payment in flight.
+        val wanted = Triple(settings, intent, reconfigure)
+        if (wanted == configuredFor) return
+        configuredFor = null
         val rebuild = settings != configuredWith
         if (rebuild) {
             // Placeholders until it is built again, even for settings it last finished with (the buyer switched currency
@@ -300,6 +337,7 @@ internal class Engine(private val session: CheckoutSession) {
         }
         elementReady = true
         elementLoaded = settings
+        configuredFor = wanted
     }
 
     private suspend fun configureOne(
@@ -411,11 +449,12 @@ internal class Engine(private val session: CheckoutSession) {
 
 /**
  * Creates the engine with the sheet. The flow controllers and the element must be created unconditionally, as part of
- * the sheet's first composition, in the sheet's activity.
+ * the sheet's first composition, in the sheet's activity. [kept]: the engine from before the activity was recreated,
+ * so a confirmation waiting on Vezmo's answer still reaches the engine that asked for it.
  */
 @Composable
-internal fun rememberEngine(session: CheckoutSession): Engine {
-    val engine = remember(session) { Engine(session) }
+internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Engine {
+    val engine = remember(session, kept) { kept ?: Engine(session) }
     val cardBuilder = remember(engine) {
         PaymentSheet.FlowController
             .Builder(
@@ -453,9 +492,16 @@ internal fun rememberEngine(session: CheckoutSession): Engine {
     DisposableEffect(engine) {
         session.attachCardFlow(engine.cardPort)
         session.attachElement(engine.elementPort)
+        // After the flows built above registered what they launch (their effects run first).
+        engine.composed()
         onDispose {
-            session.attachCardFlow(null)
-            session.attachElement(null)
+            engine.decomposed()
+            // A kept engine outlives this composition (the activity is being recreated): it stays attached, so Vezmo's
+            // answer to a payment in flight reaches it, and waits there for the recreated sheet (see `composed`).
+            if (kept == null) {
+                session.attachCardFlow(null)
+                session.attachElement(null)
+            }
         }
     }
     return engine

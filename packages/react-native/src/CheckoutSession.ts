@@ -5,6 +5,7 @@ import {
   DECLINED,
   EXPIRED,
   intentIdOf,
+  isPaid,
   payFromSubscription,
   resultFromPay,
   resultFromStatus,
@@ -112,6 +113,10 @@ export class CheckoutSession {
   private qrIntentId: string | null = null;
   /** The card form was opened by the buyer: the card it returns becomes the selection. */
   private awaitingCard = false;
+  /** Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through. */
+  private recovered: CheckoutResult | null = null;
+  /** The buyer asked to close and Vezmo is being asked whether a UPI or Pix payment went through. */
+  private closing = false;
 
   constructor(
     private readonly api: VezmoApi,
@@ -315,6 +320,7 @@ export class CheckoutSession {
     if (card ? !this.cardFlow : !this.element) return;
     this.lastPay = null;
     this.lastError = null;
+    this.recovered = null;
     this.confirmVia = card ? 'card' : 'element';
     this.set({ phase: { name: 'paying' }, paidWith: card ? (this.snapshot.card?.label ?? null) : this.snapshot.option });
     if (card) this.cardFlow!.confirmCard();
@@ -326,6 +332,7 @@ export class CheckoutSession {
     if (this.snapshot.phase.name !== 'ready') return;
     this.lastPay = null;
     this.lastError = null;
+    this.recovered = null;
     this.confirmVia = 'card';
     const name = wallet === 'apple_pay' ? 'Apple Pay' : wallet === 'google_pay' ? 'Google Pay' : wallet;
     this.set({ phase: { name: 'paying' }, paidWith: name });
@@ -350,6 +357,15 @@ export class CheckoutSession {
       this.confirmer()?.resolveConfirmation(res.clientSecret ?? null, res.clientSecret ? undefined : DECLINED.message);
     } catch (e) {
       const err = e instanceof VezmoApiError ? e : null;
+      // No answer (a timeout, a dropped connection): the payment may have gone through all the same. Vezmo says.
+      if (err?.code === 'network') {
+        const landed = await this.paidAfterNoAnswer();
+        if (landed) {
+          this.recovered = landed;
+          this.confirmer()?.resolveConfirmation(null, '');
+          return;
+        }
+      }
       if (err?.reason === 'local_price_changed') {
         this.lastError = { code: 'unknown', message: PRICE_CHANGED };
         this.refreshOffer();
@@ -369,6 +385,13 @@ export class CheckoutSession {
       return;
     }
     if (status === 'failed') {
+      // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo had
+      // already taken the payment. Either way the payment is the result, never the engine's words.
+      const paid = this.recovered ?? (this.lastPay ? resultFromPay(this.lastPay) : null);
+      if (paid) {
+        this.set({ phase: { name: 'done', result: paid } });
+        return;
+      }
       const answer = this.lastError ? null : await this.afterDeviceFailure();
       if (answer && 'result' in answer) {
         this.set({ phase: { name: 'done', result: answer.result } });
@@ -450,6 +473,34 @@ export class CheckoutSession {
     return { status: 'processing', paymentId: null, subscription: { ref, status: 'incomplete' } };
   }
 
+  /**
+   * /pay got no answer: whether the payment went through anyway, from the session's status (a subscription: whether it
+   * is set up). A few tries while the connection comes back; null when Vezmo says it didn't, or can't be reached (the
+   * buyer sees the network error and can pay again: Vezmo never charges a session twice).
+   */
+  private async paidAfterNoAnswer(): Promise<CheckoutResult | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+      try {
+        if (this.kind === 'subscription') {
+          await this.api.subscription(this.token);
+          return null; // still open: not started
+        }
+        const result = resultFromStatus(await this.api.status(this.token));
+        return isPaid(result) ? result : null;
+      } catch (e) {
+        if (e instanceof VezmoApiError && e.code === 'network') continue;
+        if (this.kind === 'subscription' && e instanceof VezmoApiError && e.code === 'already_paid') {
+          // Started; the webhook says how (trialing or active).
+          const ref = this.snapshot.config?.subscription?.ref ?? '';
+          return { status: 'processing', paymentId: null, subscription: { ref, status: 'incomplete' } };
+        }
+        return null;
+      }
+    }
+    return null;
+  }
+
   /** The session's state, polled briefly while the server catches up with a payment just made. */
   private async settledResult(): Promise<CheckoutResult> {
     for (let i = 0; i < 5; i++) {
@@ -466,6 +517,45 @@ export class CheckoutSession {
   }
 
   // ── closing ────────────────────────────────────────────────────────────
+  /**
+   * The buyer closed the sheet. A UPI or Pix payment started here may still go through in their bank app, so Vezmo is
+   * asked first. Paid: the sheet shows the receipt and stays open (null). Still waiting on the bank app: `processing`
+   * (the webhook says how it ends). Otherwise `canceled`.
+   */
+  async closeRequested(): Promise<CheckoutResult | null> {
+    const phase = this.snapshot.phase.name;
+    if (!this.qrIntentId || (phase !== 'ready' && phase !== 'waiting')) return { status: 'canceled' };
+    // A second tap while Vezmo is asked waits for the first.
+    if (this.closing) return null;
+    this.closing = true;
+    try {
+      const waiting = phase === 'waiting';
+      this.unwatch();
+      const result = await this.statusSoon().then((s) => (s ? resultFromStatus(s) : null));
+      if (result) {
+        if (!isPaid(result)) return { status: 'canceled' };
+        await this.api.confirm(this.token, this.qrIntentId).catch(() => undefined);
+        this.set({ phase: { name: 'done', result } });
+        return null;
+      }
+      // No verdict yet: the buyer can still pay in their bank app (or Vezmo couldn't be reached).
+      return waiting ? { status: 'processing', paymentId: this.snapshot.config?.paymentId ?? null } : { status: 'canceled' };
+    } finally {
+      this.closing = false;
+    }
+  }
+
+  /** The session's status, or null when it takes more than a few seconds (the buyer is waiting for the sheet to close). */
+  private statusSoon() {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      this.api.status(this.token).catch(() => null),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), 5000);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
   private close(e: unknown) {
     const err = e instanceof VezmoApiError ? e.toVezmoError() : { code: 'network' as const, message: 'Check your connection and try again.' };
     const error: VezmoError = err.code === 'expired' ? EXPIRED : err;

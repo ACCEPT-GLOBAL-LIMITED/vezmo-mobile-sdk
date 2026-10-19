@@ -151,21 +151,23 @@ class VezmoConfiguration {
 
 /// Apple Pay in the sheet on iPhone, with your Apple Merchant ID.
 class ApplePayOptions {
-  const ApplePayOptions({required this.merchantId, this.merchantCountryCode = 'US'});
+  const ApplePayOptions({required this.merchantId, this.merchantCountryCode});
 
   /// Your Apple Merchant ID (Apple Developer → Identifiers → Merchant IDs).
   final String merchantId;
 
-  /// Your business's country, as a two-letter code.
-  final String merchantCountryCode;
+  /// The country of the account that processes the payment, as two letters. Leave it null: Vezmo's session says
+  /// (your business's own country on Connect, Vezmo's on merchant of record).
+  final String? merchantCountryCode;
 }
 
 /// Google Pay in the sheet on Android.
 class GooglePayOptions {
-  const GooglePayOptions({this.merchantCountryCode = 'US'});
+  const GooglePayOptions({this.merchantCountryCode});
 
-  /// Your business's country, as a two-letter code.
-  final String merchantCountryCode;
+  /// The country of the account that processes the payment, as two letters. Leave it null: Vezmo's session says
+  /// (your business's own country on Connect, Vezmo's on merchant of record).
+  final String? merchantCountryCode;
 }
 
 /// The sheet's look: follow the phone, or always light or dark.
@@ -302,7 +304,8 @@ final class CheckoutSucceeded extends CheckoutResult {
   };
 }
 
-/// Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook.
+/// Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment the buyer started and can
+/// still finish in their bank app after closing the sheet: wait for the webhook, which says how it ends.
 final class CheckoutProcessing extends CheckoutResult {
   const CheckoutProcessing({this.paymentId, this.subscription});
 

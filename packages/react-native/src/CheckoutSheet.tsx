@@ -141,18 +141,24 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   const [walletsHeight, setWalletsHeight] = useState(0);
 
   const close = (result: CheckoutResult) => props.onClose(result);
+  // The buyer closes the sheet. A UPI or Pix payment started here may still go through: the session asks Vezmo first
+  // (null: it shows the receipt instead of closing).
+  const { onClose } = props;
+  const requestClose = useMemo(
+    () => () => void session.closeRequested().then((result) => result && onClose(result)),
+    [session, onClose],
+  );
 
   // Android's back button closes the sheet, as on the native sheet (it would otherwise go back in the app beneath):
   // the result once there is one; a payment on its way finishes first.
-  const { onClose } = props;
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (phase.name === 'done' || phase.name === 'closed') onClose(phase.result);
-      else if (phase.name !== 'paying') onClose({ status: 'canceled' });
+      else if (phase.name !== 'paying') requestClose();
       return true;
     });
     return () => sub.remove();
-  }, [phase, onClose]);
+  }, [phase, onClose, requestClose]);
 
   const amount = charge ? formatAmount(charge.amountMinor, charge.currency) : '';
   // A subscription checkout: what is due today, the plan after it, and a button that says what it starts.
@@ -189,7 +195,7 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
               accessibilityRole="button"
               accessibilityLabel="Close"
               disabled={paying}
-              onPress={() => close({ status: 'canceled' })}
+              onPress={requestClose}
               style={[s.close, paying && { opacity: 0.4 }]}
               hitSlop={12}
             >

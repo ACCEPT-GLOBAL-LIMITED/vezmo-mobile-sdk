@@ -135,8 +135,8 @@ alone. The result tells your app what to show.
 | `VezmoConfiguration` | What it does |
 | --- | --- |
 | `returnUrl` | Your registered return link. On iPhone it brings the buyer back after 3D Secure, a bank app or a pay-later provider; Android needs no link. |
-| `applePay` | `ApplePayOptions(merchantId: …, merchantCountryCode: 'US')`. Without it the sheet shows no Apple Pay. |
-| `googlePay` | `GooglePayOptions(merchantCountryCode: 'US')`. Google Pay shows when your business offers it and the phone has it. |
+| `applePay` | `ApplePayOptions(merchantId: …)`. Without it the sheet shows no Apple Pay. The merchant country defaults to that of the account processing the payment, read from the session (your business's own on Connect, Vezmo's on merchant of record); set `merchantCountryCode` only to override that. |
+| `googlePay` | `GooglePayOptions()`. Google Pay shows when your business offers it and the phone has it. The merchant country comes from the session, as for Apple Pay. |
 | `style` | `VezmoStyle.automatic` (follow the phone, default), `light` or `dark`. |
 | `appearance` | Colors, corner radius and font, below. |
 
@@ -147,7 +147,7 @@ alone. The result tells your app what to show.
 | Result | Meaning |
 | --- | --- |
 | `CheckoutSucceeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
-| `CheckoutProcessing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `CheckoutProcessing` | Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment still waiting in the buyer's bank app when they closed the sheet. Wait for the webhook, which says how it ends. |
 | `CheckoutCanceled` | The buyer closed the sheet (or pressed Back). Not an error. |
 | `CheckoutFailed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
@@ -160,6 +160,17 @@ alone. The result tells your app what to show.
 | `network` | No connection. Let the buyer try again. |
 | `config` | A setup mistake in the app (for example `present()` before `prepare()`, or while the sheet is already open). |
 | `unknown` | Anything else. Let the buyer try again. |
+
+**Closing while UPI or Pix waits.** When the buyer closes the sheet while a UPI or Pix payment waits in their bank
+app, the sheet asks Vezmo first. Paid meanwhile: it shows the receipt, and the result is `CheckoutSucceeded`. Still waiting:
+the result is `CheckoutProcessing`, because the buyer can still approve it; the webhook says how it ends.
+
+**No answer while paying.** When the payment request gets no answer (a timeout, a dropped connection), the sheet
+checks the session before reporting `network`: a payment that went through all the same is the result.
+
+**A payment in flight is never lost or doubled (Android).** The sheet isn't recreated for a configuration change
+(rotation, font size, language, dark mode). When Android recreates it anyway, or stops the app's process in the
+background, the result is still that payment's.
 
 `prepare()` returns the same `VezmoError` when the session can't be paid (expired, already paid, a bad token).
 `result.toJson()` gives the result in the same JSON shape as Vezmo's React Native package, for your logs.

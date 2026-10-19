@@ -1,0 +1,16 @@
+# A configuration change in the middle of a payment, part 1 of 2: a card payment up to the tap on Pay. Then android.yml
+# changes the phone's font size (an activity that doesn't handle it is recreated; the sheet's handles it in place), and
+# part 2 checks the payment still ends as the payment, once, in the bigger text.
+appId: com.vezmo.example.nativeapp
+---
+- runFlow: ../common/launch.yaml
+- runFlow: ../../../../../e2e/maestro/session.yaml
+- runFlow: ../../../../../e2e/maestro/sheet.yaml
+- runFlow:
+    file: ../../../../../e2e/maestro/android/card.yaml
+    env:
+      CARD: "4242424242424242"
+      SHOT: recreate
+- runFlow: ../../../../../e2e/maestro/api-ready.yaml
+- tapOn:
+    id: "vezmo-pay"

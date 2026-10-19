@@ -47,8 +47,19 @@ func configFromSubscription(_ v: SubscriptionView) -> CheckoutConfig {
       nextChargeAt: v.nextChargeAt,
       manageUrl: v.manageUrl,
       consentText: v.consentText
-    )
+    ),
+    processingCountry: v.processingCountry
   )
+}
+
+/// Apple Pay's merchant country: the app's own, else the country of the account that processes the payment (from the
+/// session: the business's own on Connect, Vezmo's on merchant of record), else US (a server that doesn't say).
+func merchantCountry(_ app: String?, session: String?) -> String {
+  for candidate in [app, session] {
+    let code = (candidate ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+    if code.count == 2, code.unicodeScalars.allSatisfy({ ("A"..."Z").contains($0) }) { return code }
+  }
+  return "US"
 }
 
 func subscriptionOf(_ ref: String, _ status: String) -> SubscriptionResult {
@@ -173,6 +184,16 @@ func resultFromPay(_ res: PayResponse) -> CheckoutResult? {
   case "succeeded": return .succeeded(paymentId: res.paymentId, transactionId: res.transactionId, subscription: res.subscription)
   case "processing": return .processing(paymentId: res.paymentId, subscription: res.subscription)
   default: return nil // requires_action: the engine finishes it first
+  }
+}
+
+extension CheckoutResult {
+  /// Paid, or money on its way.
+  var isPaid: Bool {
+    switch self {
+    case .succeeded, .processing: return true
+    case .canceled, .failed: return false
+    }
   }
 }
 

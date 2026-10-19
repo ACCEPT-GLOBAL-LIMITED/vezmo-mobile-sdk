@@ -103,7 +103,7 @@ alone. The result tells your app what to show.
 | Result | Meaning |
 | --- | --- |
 | `Succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
-| `Processing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `Processing` | Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment still waiting in the buyer's bank app when they closed the sheet. Wait for the webhook, which says how it ends. |
 | `Canceled` | The buyer closed the sheet (or pressed Back). Not an error. |
 | `Failed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
@@ -116,6 +116,17 @@ alone. The result tells your app what to show.
 | `Network` | No connection. Let the buyer try again. |
 | `Config` | A setup mistake in the app (for example `present()` before `prepare()`). |
 | `Unknown` | Anything else. Let the buyer try again. |
+
+**Closing while UPI or Pix waits.** When the buyer closes the sheet while a UPI or Pix payment waits in their bank
+app, the sheet asks Vezmo first. Paid meanwhile: it shows the receipt, and the result is `Succeeded`. Still waiting:
+the result is `Processing`, because the buyer can still approve it; the webhook says how it ends.
+
+**No answer while paying.** When the payment request gets no answer (a timeout, a dropped connection), the sheet
+checks the session before reporting `Network`: a payment that went through all the same is the result.
+
+**A payment in flight is never lost or doubled.** The sheet isn't recreated for a configuration change (rotation,
+font size, language, dark mode). When Android recreates it anyway, or stops the app's process in the background, the
+result is still that payment's.
 
 `prepare()` returns the same `VezmoError` when the session can't be paid (expired, already paid, a bad token).
 
@@ -161,7 +172,7 @@ classes, rentals, services.
 | `VezmoConfiguration` | What it does |
 | --- | --- |
 | `returnUrl` | Not used on Android: the buyer returns to the open sheet by themselves. |
-| `googlePay` | `GooglePayOptions(merchantCountryCode = "US")`. Google Pay shows when your business offers it and the phone has it; sandbox sessions use Google's test environment. |
+| `googlePay` | `GooglePayOptions(merchantCountryCode = …)`. Google Pay shows when your business offers it and the phone has it, with or without this; sandbox sessions use Google's test environment. The merchant country defaults to that of the account processing the payment, read from the session (your business's own on Connect, Vezmo's on merchant of record); set it only to override that. |
 | `style` | `VezmoStyle.Automatic` (follow the phone, default), `Light` or `Dark`. |
 | `appearance` | Colors, corner radius and font, below. |
 

@@ -9,6 +9,15 @@ import org.junit.Test
 
 class FlowTest {
     @Test
+    fun `Google Pay's merchant country is the app's, else the session's, else US`() {
+        assertEquals("AE", merchantCountry(null, "ae"))
+        assertEquals("GB", merchantCountry("GB", "AE"))
+        assertEquals("AE", merchantCountry("usa", "AE"))
+        assertEquals("US", merchantCountry(" ", null))
+        assertEquals("US", merchantCountry(null, null))
+    }
+
+    @Test
     fun `the charge is the price, or the buyer's own currency when they chose it`() {
         assertEquals(Charge(4900, "USD", null), chargeOf(config(), false))
         assertEquals(Charge(420000, "INR", "offer_sealed"), chargeOf(config(), true))

@@ -197,6 +197,7 @@ struct SheetView: View {
         radius: look.radius,
         fontFamily: look.fontFamily,
         applePay: methods.applePay ? props.applePay : nil,
+        processingCountry: config.processingCountry,
         applePayRecurring: ApplePayRecurring(config: config, charge: charge, merchant: merchant),
         billingName: config.customerName,
         billingEmail: config.customerEmail,
@@ -294,7 +295,11 @@ struct SheetView: View {
   }
 
   private func closeButton(_ look: Look) -> some View {
-    Button { close(.canceled) } label: {
+    Button {
+      // A UPI or Pix payment started here may still go through: the session asks Vezmo first (nil: it shows the
+      // receipt instead of closing).
+      Task { if let result = await session.closeRequested() { close(result) } }
+    } label: {
       Cross(color: look.c(look.p.ink2), size: 11)
         .frame(width: 30, height: 30)
         .background(Circle().fill(look.c(look.p.fill)))

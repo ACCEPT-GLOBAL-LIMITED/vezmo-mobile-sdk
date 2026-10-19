@@ -104,7 +104,11 @@ internal fun CheckoutSheet(
                 connectedAccountId = config.connectedAccountId,
                 merchantDisplayName = merchant,
                 googlePay = if (methods.googlePay) {
-                    EngineSettings.GooglePay(configuration.googlePay?.merchantCountryCode ?: "US", charge.currency, !config.livemode)
+                    EngineSettings.GooglePay(
+                        merchantCountry(configuration.googlePay?.merchantCountryCode, config.processingCountry),
+                        charge.currency,
+                        !config.livemode,
+                    )
                 } else {
                     null
                 },
@@ -126,13 +130,17 @@ internal fun CheckoutSheet(
     val paying = phase == SessionPhase.Paying
     val finished = phase is SessionPhase.Done || phase is SessionPhase.Closed
     val qrForm = remember { QrFormState(config?.customerName ?: "") }
+    // The buyer closes the sheet. A UPI or Pix payment started here may still go through: the session asks Vezmo first
+    // (null: it shows the receipt instead of closing).
+    val closeScope = rememberCoroutineScope()
+    val requestClose = { closeScope.launch { session.closeRequested()?.let(onClose) } }
 
     BackHandler {
         when (phase) {
             SessionPhase.Paying -> Unit // a payment in flight finishes first
             is SessionPhase.Done -> onClose(phase.result)
             is SessionPhase.Closed -> onClose(phase.result)
-            else -> onClose(CheckoutResult.Canceled)
+            else -> requestClose()
         }
     }
 
@@ -219,7 +227,7 @@ internal fun CheckoutSheet(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 role = Role.Button,
-                            ) { onClose(CheckoutResult.Canceled) }
+                            ) { requestClose() }
                             .semantics { contentDescription = "Close" }
                             .padding(12.dp)
                             .alpha(if (paying) 0.4f else 1f)

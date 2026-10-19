@@ -131,9 +131,11 @@ extension VezmoCheckout {
   public struct ApplePay: Equatable, Sendable {
     /// Your Apple Merchant ID (Apple Developer → Identifiers → Merchant IDs).
     public var merchantId: String
-    public var merchantCountryCode: String
+    /// The country of the account that processes the payment, as two letters. Leave it nil: Vezmo's session says
+    /// (your business's own country on Connect, Vezmo's on merchant of record).
+    public var merchantCountryCode: String?
 
-    public init(merchantId: String, merchantCountryCode: String = "US") {
+    public init(merchantId: String, merchantCountryCode: String? = nil) {
       self.merchantId = merchantId
       self.merchantCountryCode = merchantCountryCode
     }

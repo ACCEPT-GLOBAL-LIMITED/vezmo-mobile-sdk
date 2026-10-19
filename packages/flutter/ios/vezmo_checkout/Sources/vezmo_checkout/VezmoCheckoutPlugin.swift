@@ -101,7 +101,7 @@ public final class VezmoCheckoutPlugin: NSObject, FlutterPlugin, FlutterSceneLif
       returnURL: (map["returnUrl"] as? String).flatMap(URL.init(string:)),
       applePay: (map["applePay"] as? [String: Any]).flatMap { pay in
         (pay["merchantId"] as? String).map {
-          VezmoCheckout.ApplePay(merchantId: $0, merchantCountryCode: pay["merchantCountryCode"] as? String ?? "US")
+          VezmoCheckout.ApplePay(merchantId: $0, merchantCountryCode: pay["merchantCountryCode"] as? String)
         }
       },
       style: map["style"] as? String == "light" ? .light : map["style"] as? String == "dark" ? .dark : .automatic

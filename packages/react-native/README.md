@@ -70,8 +70,8 @@ export default function App() {
 | Prop | What it does |
 | --- | --- |
 | `returnUrl` | Your registered return link (iPhone; Android brings the buyer back by itself). Needed for 3D Secure in some banks, bank apps and pay-later methods. |
-| `applePay` | `{ merchantId, merchantCountryCode? }`. Without it the sheet shows no Apple Pay. |
-| `googlePay` | `{ merchantCountryCode? }`. Google Pay shows on phones that have it; sandbox sessions use Google's test environment. |
+| `applePay` | `{ merchantId, merchantCountryCode? }`. Without it the sheet shows no Apple Pay. The merchant country defaults to that of the account processing the payment, read from the session (your business's own on Connect, Vezmo's on merchant of record); set it only to override that. |
+| `googlePay` | `{ merchantCountryCode? }`. Google Pay shows on phones that have it; sandbox sessions use Google's test environment. The merchant country comes from the session, as for Apple Pay. |
 | `style` | `'automatic'` (follow the phone, default), `'light'` or `'dark'`. |
 | `appearance` | Colors, corner radius and font, below. |
 
@@ -138,7 +138,7 @@ show.
 | `result.status` | Meaning |
 | --- | --- |
 | `succeeded` | Paid. `paymentId` and `transactionId` match the dashboard and the webhook. A subscription also has `subscription` (`ref`, `status`); `paymentId` is null when a free trial started. |
-| `processing` | Paid, money on its way (a bank debit, UPI or Pix still settling). Wait for the webhook. |
+| `processing` | Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment still waiting in the buyer's bank app when they closed the sheet. Wait for the webhook, which says how it ends. |
 | `canceled` | The buyer closed the sheet (or pressed Back on Android). Not an error. |
 | `failed` | `error.code` is one of the codes below; `error.message` is written for the buyer. |
 
@@ -151,6 +151,13 @@ show.
 | `network` | No connection, or Vezmo didn't answer within 30 seconds. Let the buyer try again. |
 | `config` | A setup mistake in the app (for example `presentCheckout()` before `prepareCheckout()`, or while the sheet is already open). |
 | `unknown` | Anything else. Let the buyer try again. |
+
+**Closing while UPI or Pix waits.** When the buyer closes the sheet while a UPI or Pix payment waits in their bank
+app, the sheet asks Vezmo first. Paid meanwhile: it shows the receipt, and the result is `succeeded`. Still waiting:
+the result is `processing`, because the buyer can still approve it; the webhook says how it ends.
+
+**No answer while paying.** When the payment request gets no answer (a timeout, a dropped connection), the sheet
+checks the session before reporting `network`: a payment that went through all the same is the result.
 
 ## Subscriptions
 

@@ -109,6 +109,10 @@ final class CheckoutSession: ObservableObject {
   private var qrIntentId: String?
   /// The card form was opened by the buyer: the card it returns becomes the selection.
   private var awaitingCard = false
+  /// Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through.
+  private var recovered: CheckoutResult?
+  /// The buyer asked to close and Vezmo is being asked whether a UPI or Pix payment went through.
+  private var closing = false
 
   init(api: CheckoutAPI, token: String, returnURL: String?, kind: CheckoutKind = .payment) {
     self.api = api
@@ -340,6 +344,7 @@ final class CheckoutSession: ObservableObject {
     guard card ? cardFlow != nil : element != nil else { return }
     lastPay = nil
     lastError = nil
+    recovered = nil
     confirmViaCard = card
     set {
       $0.phase = .paying
@@ -353,6 +358,7 @@ final class CheckoutSession: ObservableObject {
     guard snapshot.phase.isReady else { return }
     lastPay = nil
     lastError = nil
+    recovered = nil
     confirmViaCard = true
     set {
       $0.phase = .paying
@@ -385,6 +391,12 @@ final class CheckoutSession: ObservableObject {
       resolve(res.clientSecret, res.clientSecret == nil ? declinedError.message : nil)
     } catch {
       let apiError = error as? VezmoAPIError
+      // No answer (a timeout, a dropped connection): the payment may have gone through all the same. Vezmo says.
+      if apiError?.code == .network, let landed = await paidAfterNoAnswer() {
+        recovered = landed
+        resolve(nil, "")
+        return
+      }
       if apiError?.reason == "local_price_changed" {
         let message = VezmoError(code: .unknown, message: priceChanged)
         lastError = message
@@ -407,6 +419,12 @@ final class CheckoutSession: ObservableObject {
       set { $0.phase = .ready(error: nil) }
       return
     case .failed:
+      // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo had
+      // already taken the payment. Either way the payment is the result, never the engine's words.
+      if let paid = recovered ?? lastPay.flatMap(resultFromPay) {
+        set { $0.phase = .done(paid) }
+        return
+      }
       var error = lastError
       if error == nil {
         switch await deviceFailure() {
@@ -482,6 +500,37 @@ final class CheckoutSession: ObservableObject {
     return .processing(paymentId: nil, subscription: SubscriptionResult(ref: ref, status: .incomplete))
   }
 
+  /// /pay got no answer: whether the payment went through anyway, from the session's status (a subscription: whether
+  /// it is set up). A few tries while the connection comes back; nil when Vezmo says it didn't, or can't be reached
+  /// (the buyer sees the network error and can pay again: Vezmo never charges a session twice).
+  private func paidAfterNoAnswer() async -> CheckoutResult? {
+    for attempt in 0..<3 {
+      if attempt > 0 { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+      if kind == .subscription {
+        do {
+          _ = try await api.subscription(token: token)
+          return nil // still open: not started
+        } catch let error as VezmoAPIError where error.code == .alreadyPaid {
+          // Started; the webhook says how (trialing or active).
+          let ref = snapshot.config?.subscription?.ref ?? ""
+          return .processing(paymentId: nil, subscription: SubscriptionResult(ref: ref, status: .incomplete))
+        } catch let error as VezmoAPIError where error.code == .network {
+          continue
+        } catch {
+          return nil
+        }
+      }
+      do {
+        let status = try await api.status(token: token)
+        guard let paid = resultFromStatus(status), paid.isPaid else { return nil }
+        return paid
+      } catch {
+        continue
+      }
+    }
+    return nil
+  }
+
   /// The session's state, polled briefly while the server catches up with a payment just made.
   private func settledResult() async -> CheckoutResult {
     for _ in 0..<5 {
@@ -493,6 +542,43 @@ final class CheckoutSession: ObservableObject {
   }
 
   // MARK: Closing
+
+  /// The buyer closed the sheet. A UPI or Pix payment started here may still go through in their bank app, so Vezmo is
+  /// asked first. Paid: the sheet shows the receipt and stays open (nil). Still waiting on the bank app: `processing`
+  /// (the webhook says how it ends). Otherwise `canceled`.
+  func closeRequested() async -> CheckoutResult? {
+    guard qrIntentId != nil, snapshot.phase.isReady || snapshot.phase.isWaiting else { return .canceled }
+    // A second tap while Vezmo is asked waits for the first.
+    guard !closing else { return nil }
+    closing = true
+    defer { closing = false }
+    let waiting = snapshot.phase.isWaiting
+    unwatch()
+    if let status = await statusSoon(), let result = resultFromStatus(status) {
+      guard result.isPaid else { return .canceled }
+      if let qrIntentId { try? await api.confirm(token: token, paymentIntentId: qrIntentId) }
+      set { $0.phase = .done(result) }
+      return nil
+    }
+    // No verdict yet: the buyer can still pay in their bank app (or Vezmo couldn't be reached).
+    return waiting ? .processing(paymentId: snapshot.config?.paymentId, subscription: nil) : .canceled
+  }
+
+  /// The session's status, or nil when it takes more than a few seconds (the buyer is waiting for the sheet to close).
+  private func statusSoon() async -> SessionStatus? {
+    let api = self.api
+    let token = self.token
+    return await withTaskGroup(of: SessionStatus?.self) { group in
+      group.addTask { try? await api.status(token: token) }
+      group.addTask {
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        return nil
+      }
+      let first = await group.next() ?? nil
+      group.cancelAll()
+      return first
+    }
+  }
 
   private func close(_ error: Error) {
     let err = (error as? VezmoAPIError)?.vezmoError ?? networkError

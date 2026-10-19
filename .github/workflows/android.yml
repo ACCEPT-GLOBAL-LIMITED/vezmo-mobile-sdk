@@ -123,6 +123,11 @@ jobs:
             adb logcat -G 16M
             adb install example/build/outputs/apk/release/example-release.apk
             ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out/flows e2e/maestro/flows || (adb exec-out screencap -p > e2e/out/failure.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            # A configuration change mid-payment: Pay, then a font size change, then the result.
+            ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out/recreate-pay e2e/maestro/recreate/1-pay.yaml || (adb exec-out screencap -p > e2e/out/failure-recreate.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            adb shell settings put system font_scale 1.15
+            ../../.github/scripts/maestro-test.sh ${{ matrix.track }} e2e/out/recreate-result e2e/maestro/recreate/2-result.yaml || (adb shell settings put system font_scale 1.0; adb exec-out screencap -p > e2e/out/failure-recreate.png; adb logcat -d > e2e/out/logcat.txt; exit 1)
+            adb shell settings put system font_scale 1.0
             [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night yes"
             [ ${{ matrix.track }} != connect ] || ../../.github/scripts/maestro-test.sh connect e2e/out/look e2e/maestro/look || (adb exec-out screencap -p > e2e/out/failure-dark.png; adb logcat -d > e2e/out/logcat-dark.txt; exit 1)
             [ ${{ matrix.track }} != connect ] || adb shell "cmd uimode night no"

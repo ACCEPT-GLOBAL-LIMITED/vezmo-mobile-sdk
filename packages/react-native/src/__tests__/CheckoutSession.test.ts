@@ -267,6 +267,102 @@ describe('CheckoutSession', () => {
     u.session.dispose();
   });
 
+  describe('closing while UPI or Pix may still be paid', () => {
+    async function upi() {
+      const u = setup();
+      u.api.checkout.mockResolvedValue({
+        ...config,
+        enabledMethods: { card: true, upi: true },
+        localOffer: {
+          currency: 'INR', amount: 4200, amountMinor: 420000, price: 49, rate: 85.7, markupPercent: 2,
+          usdPerUnit: 0.0117, expiresAt: '2026-10-16T00:00:00Z', country: 'IN', methods: ['upi'], token: 'offer',
+        },
+      });
+      await u.session.load();
+      u.session.chooseMethod('upi');
+      await u.session.payWithQr('upi', { name: 'Asha Rao', line1: '12 MG Road', country: 'IN' });
+      expect(u.session.getSnapshot().phase.name).toBe('waiting');
+      return u;
+    }
+    const pending = { state: 'requires_action', paymentId: 'pay_1', transactionId: null, livemode: false };
+
+    it('still waiting on the bank app: processing, never canceled', async () => {
+      const u = await upi();
+      u.api.status.mockResolvedValue(pending);
+      await expect(u.session.closeRequested()).resolves.toEqual({ status: 'processing', paymentId: 'pay_1' });
+      expect(u.api.confirm).not.toHaveBeenCalled();
+    });
+
+    it('paid meanwhile: the sheet shows the receipt instead of closing', async () => {
+      const u = await upi();
+      await expect(u.session.closeRequested()).resolves.toBeNull();
+      expect(u.api.confirm).toHaveBeenCalledWith('tok', 'pi_7');
+      expect(u.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'succeeded', transactionId: 'VT1' } });
+    });
+
+    it('after giving up on it: canceled, unless it was paid meanwhile', async () => {
+      const u = await upi();
+      u.session.stopWaiting();
+      u.api.status.mockResolvedValue(pending);
+      await expect(u.session.closeRequested()).resolves.toEqual({ status: 'canceled' });
+      u.api.status.mockResolvedValue({ state: 'processing', paymentId: 'pay_1', transactionId: null, livemode: false });
+      await expect(u.session.closeRequested()).resolves.toBeNull();
+      expect(u.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'processing' } });
+    });
+
+    it('no UPI or Pix started: canceled, without asking Vezmo', async () => {
+      await expect(t.session.closeRequested()).resolves.toEqual({ status: 'canceled' });
+      expect(t.api.status).not.toHaveBeenCalled();
+    });
+  });
+
+  it('an engine failure after Vezmo took the payment is the payment, never the engine’s words', async () => {
+    t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1', clientSecret: 'pi_1_secret_a' });
+    t.session.setOption({ label: 'Klarna' });
+    t.session.pay();
+    await t.session.onConfirmationToken('ctoken_1');
+    await t.session.onConfirmResult('failed', 'No launcher for a was found, did you call register?');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'done',
+      result: { status: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1' },
+    });
+  });
+
+  describe('no answer from /pay', () => {
+    const network = new VezmoApiError('network', 'Check your connection and try again.', null);
+
+    it('a payment that went through all the same is the result, not a failure', async () => {
+      t.api.pay.mockRejectedValue(network);
+      t.session.setOption({ label: 'Klarna' });
+      t.session.pay();
+      await t.session.onConfirmationToken('ctoken_1');
+      expect(t.element.resolveConfirmation).toHaveBeenCalledWith(null, '');
+      await t.session.onConfirmResult('failed', 'engine text');
+      expect(t.session.getSnapshot().phase).toEqual({
+        name: 'done',
+        result: { status: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1' },
+      });
+    });
+
+    it('one that didn’t go through is the network error, and the next try starts clean', async () => {
+      t.api.pay.mockRejectedValue(network);
+      t.api.status.mockResolvedValue({ state: 'open', paymentId: 'pay_1', transactionId: null, livemode: false });
+      t.session.setOption({ label: 'Klarna' });
+      t.session.pay();
+      await t.session.onConfirmationToken('ctoken_1');
+      expect(t.api.status).toHaveBeenCalledTimes(1);
+      expect(t.element.resolveConfirmation).toHaveBeenCalledWith(null, network.message);
+      await t.session.onConfirmResult('failed', 'engine text');
+      expect(t.session.getSnapshot().phase).toEqual({ name: 'ready', error: network.toVezmoError() });
+
+      t.api.pay.mockResolvedValue({ state: 'succeeded', paymentId: 'pay_1', transactionId: 'VT2', clientSecret: 'pi_1_secret_a' });
+      t.session.pay();
+      await t.session.onConfirmationToken('ctoken_2');
+      await t.session.onConfirmResult('completed', '');
+      expect(t.session.getSnapshot().phase).toMatchObject({ name: 'done', result: { status: 'succeeded', transactionId: 'VT2' } });
+    });
+  });
+
   it('UPI: an offer that ran out is fetched again (not retried as is), and status checks never overlap', async () => {
     const offer = {
       currency: 'INR', amount: 4200, amountMinor: 420000, price: 49, rate: 85.7, markupPercent: 2,

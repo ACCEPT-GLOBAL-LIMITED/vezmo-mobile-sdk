@@ -79,7 +79,26 @@ export function configFromSubscription(v: SubscriptionView): CheckoutConfig {
       manageUrl: v.manageUrl,
       consentText: v.consentText,
     },
+    processingCountry: v.processingCountry ?? null,
   };
+}
+
+/**
+ * Apple Pay's and Google Pay's merchant country: the app's own, else the country of the account that processes the
+ * payment (from the session: the business's own on Connect, Vezmo's on merchant of record), else US (a server that
+ * doesn't say).
+ */
+export function merchantCountry(app: string | null | undefined, session: string | null | undefined): string {
+  for (const candidate of [app, session]) {
+    const code = (candidate ?? '').trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(code)) return code;
+  }
+  return 'US';
+}
+
+/** Paid, or money on its way. */
+export function isPaid(result: CheckoutResult | null | undefined): result is Extract<CheckoutResult, { status: 'succeeded' | 'processing' }> {
+  return result?.status === 'succeeded' || result?.status === 'processing';
 }
 
 function subscriptionOf(ref: string, status: string): SubscriptionResult {

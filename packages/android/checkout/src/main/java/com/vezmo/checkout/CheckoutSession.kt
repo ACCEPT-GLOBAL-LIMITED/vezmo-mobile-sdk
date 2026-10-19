@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** What the engine's element (pay-later, Cash App rows) can be asked to do. */
 internal interface ElementPort {
@@ -120,6 +122,12 @@ internal class CheckoutSession(
     /** The card form was opened by the buyer: the card it returns becomes the selection. */
     private var awaitingCard = false
 
+    /** Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through. */
+    private var recovered: CheckoutResult? = null
+
+    /** The buyer asked to close and Vezmo is being asked whether a UPI or Pix payment went through. */
+    private var closing = false
+
     private fun set(change: SessionSnapshot.() -> SessionSnapshot) = _state.update(change)
 
     /** Runs [block] in the session's own scope (engine callbacks, the buyer coming back from a bank app). */
@@ -136,7 +144,11 @@ internal class CheckoutSession(
     }
 
     // ── loading and currency ───────────────────────────────────────────────
-    suspend fun load() {
+    /**
+     * @param recovering the sheet is open again after its activity or the app's process was gone (maybe in the middle
+     *   of a payment): a session already paid is that payment's result, from Vezmo, rather than "already paid".
+     */
+    suspend fun load(recovering: Boolean = false) {
         try {
             val config = fetchConfig()
             // The buyer's own currency is offered first when there is an offer (as on the web checkout).
@@ -146,7 +158,16 @@ internal class CheckoutSession(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (snapshot.phase == SessionPhase.Loading) close(e)
+            if (snapshot.phase != SessionPhase.Loading) return
+            if (recovering && !subscription && (e as? VezmoApiError)?.code == VezmoError.Code.AlreadyPaid) {
+                val paid = try {
+                    resultFromStatus(api.status(token))?.takeIf { it.isPaid }
+                } catch (_: VezmoApiError) {
+                    null
+                }
+                if (paid != null) return set { copy(phase = SessionPhase.Done(paid)) }
+            }
+            close(e)
         }
     }
 
@@ -312,6 +333,7 @@ internal class CheckoutSession(
         if (if (card) cardFlow == null else element == null) return
         lastPay = null
         lastError = null
+        recovered = null
         confirmViaCard = card
         set { copy(phase = SessionPhase.Paying, paidWith = if (card) this.card?.label else option) }
         if (card) cardFlow?.confirmCard() else element?.confirm()
@@ -322,6 +344,7 @@ internal class CheckoutSession(
         if (snapshot.phase !is SessionPhase.Ready) return
         lastPay = null
         lastError = null
+        recovered = null
         confirmViaCard = true
         val name = when (wallet) {
             "google_pay" -> "Google Pay"
@@ -349,6 +372,14 @@ internal class CheckoutSession(
             res.method?.let { m -> set { copy(paidMethod = m) } }
             resolve(res.clientSecret, if (res.clientSecret != null) null else DECLINED.message)
         } catch (e: VezmoApiError) {
+            // No answer (a timeout, a dropped connection): the payment may have gone through all the same. Vezmo says.
+            if (e.code == VezmoError.Code.Network) {
+                paidAfterNoAnswer()?.let { landed ->
+                    recovered = landed
+                    resolve(null, "")
+                    return
+                }
+            }
             val error = if (e.reason == "local_price_changed") {
                 refreshOffer()
                 VezmoError(VezmoError.Code.Unknown, PRICE_CHANGED)
@@ -367,6 +398,12 @@ internal class CheckoutSession(
         when (status) {
             ConfirmStatus.Canceled -> set { copy(phase = SessionPhase.Ready(null)) }
             ConfirmStatus.Failed -> {
+                // The engine gave up for want of Vezmo's answer, but the payment went through; or it failed after Vezmo
+                // had already taken the payment. Either way the payment is the result, never the engine's words.
+                (recovered ?: lastPay?.let(::resultFromPay))?.let { paid ->
+                    set { copy(phase = SessionPhase.Done(paid)) }
+                    return
+                }
                 val error = lastError ?: when (val verdict = deviceFailure()) {
                     null -> null
                     is CheckoutResult.Failed -> verdict.error
@@ -454,6 +491,35 @@ internal class CheckoutSession(
         return CheckoutResult.Processing(null, SubscriptionResult(ref, SubscriptionResult.Status.Incomplete))
     }
 
+    /**
+     * /pay got no answer: whether the payment went through anyway, from the session's status (a subscription: whether
+     * it is set up). A few tries while the connection comes back; null when Vezmo says it didn't, or can't be reached
+     * (the buyer sees the network error and can pay again: Vezmo never charges a session twice).
+     */
+    private suspend fun paidAfterNoAnswer(): CheckoutResult? {
+        repeat(3) { attempt ->
+            if (attempt > 0) delay(1_500)
+            try {
+                if (subscription) {
+                    api.subscription(token)
+                    return null // still open: not started
+                }
+                return resultFromStatus(api.status(token))?.takeIf { it.isPaid }
+            } catch (e: VezmoApiError) {
+                when {
+                    e.code == VezmoError.Code.Network -> Unit // try again
+                    subscription && e.code == VezmoError.Code.AlreadyPaid -> {
+                        // Started; the webhook says how (trialing or active).
+                        val ref = snapshot.config?.subscription?.ref ?: ""
+                        return CheckoutResult.Processing(null, SubscriptionResult(ref, SubscriptionResult.Status.Incomplete))
+                    }
+                    else -> return null
+                }
+            }
+        }
+        return null
+    }
+
     /** The session's state, polled briefly while the server catches up with a payment just made. */
     private suspend fun settledResult(): CheckoutResult {
         repeat(5) {
@@ -469,6 +535,39 @@ internal class CheckoutSession(
     }
 
     // ── closing ────────────────────────────────────────────────────────────
+    /**
+     * The buyer closed the sheet. A UPI or Pix payment started here may still go through in their bank app, so Vezmo is
+     * asked first. Paid: the sheet shows the receipt and stays open (null). Still waiting on the bank app: `Processing`
+     * (the webhook says how it ends). Otherwise `Canceled`.
+     */
+    suspend fun closeRequested(): CheckoutResult? {
+        val phase = snapshot.phase
+        if (qrIntentId == null || (phase !is SessionPhase.Ready && phase !is SessionPhase.Waiting)) return CheckoutResult.Canceled
+        // A second tap while Vezmo is asked waits for the first.
+        if (closing) return null
+        closing = true
+        try {
+            val waiting = phase is SessionPhase.Waiting
+            unwatch()
+            // The buyer is waiting for the sheet to close: a few seconds at most. The request runs on its own (a blocking
+            // read can't be cut short), and an answer after that is left to the webhook.
+            val status = withTimeoutOrNull(5_000) {
+                scope.async { runCatching { api.status(token) }.getOrNull() }.await()
+            }
+            val result = status?.let(::resultFromStatus)
+            if (result != null) {
+                if (!result.isPaid) return CheckoutResult.Canceled
+                qrIntentId?.let { id -> runCatching { api.confirm(token, id) } }
+                set { copy(phase = SessionPhase.Done(result)) }
+                return null
+            }
+            // No verdict yet: the buyer can still pay in their bank app (or Vezmo couldn't be reached).
+            return if (waiting) CheckoutResult.Processing(snapshot.config?.paymentId) else CheckoutResult.Canceled
+        } finally {
+            closing = false
+        }
+    }
+
     private fun close(e: Exception) {
         val err = (e as? VezmoApiError)?.toVezmoError() ?: VezmoError(VezmoError.Code.Network, "Check your connection and try again.")
         val error = if (err.code == VezmoError.Code.Expired) EXPIRED else err

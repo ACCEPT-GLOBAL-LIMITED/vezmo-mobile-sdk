@@ -1,0 +1,22 @@
+# A configuration change in the middle of a payment, part 2 of 2 (after android.yml changed the font size): the sheet
+# still gets the payment's result, and the app gets it too. No app launch: the sheet is still open.
+appId: com.vezmo.example.nativeapp
+---
+- tapOn:
+    text: "(?i)complete.*"
+    optional: true
+- tapOn:
+    text: "(?i)submit"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "vezmo-result-title"
+    timeout: 90000
+- takeScreenshot: recreate-05-result
+- assertVisible: "Payment successful"
+- tapOn:
+    id: "vezmo-done"
+- assertVisible:
+    id: "result"
+    text: ".*succeeded.*"
+- takeScreenshot: recreate-06-back-in-app

@@ -22,6 +22,12 @@ public final class VezmoCardFlowHost: UIView {
   /// The wallet flow is updating for a new amount: an Apple Pay tap now would fail before Vezmo is asked.
   private var walletUpdating = false
   private var walletUpdates = 0
+  /// The card flow is set up again for a new amount (the buyer switched currency, or a new price came in): the engine
+  /// refuses the card form and payments until it ends, so they wait for it (as on Android, where commands queue
+  /// behind the setup).
+  private var updating = false
+  private var updates = 0
+  private var held: [() -> Void] = []
   private var wallets: UIViewController?
   /// The wallet buttons' height for a width (SwiftUI's own measure).
   private var measureWallets: ((CGFloat) -> CGFloat)?
@@ -61,13 +67,32 @@ public final class VezmoCardFlowHost: UIView {
   }
 
   @objc public func presentCard() {
+    whenReady { [weak self] in self?.presentCardNow() }
+  }
+
+  @objc public func confirmCard() {
+    whenReady { [weak self] in self?.confirmCardNow() }
+  }
+
+  /// Runs `command` now, or once the card flow's update in flight ends.
+  private func whenReady(_ command: @escaping () -> Void) {
+    if updating { held.append(command) } else { command() }
+  }
+
+  private func runHeld() {
+    let commands = held
+    held = []
+    commands.forEach { $0() }
+  }
+
+  private func presentCardNow() {
     guard let flow, let presenter = RCTPresentedViewController() else { return }
     flow.presentPaymentOptions(from: presenter) { [weak self] _ in
       self?.emitCardOption()
     }
   }
 
-  @objc public func confirmCard() {
+  private func confirmCardNow() {
     guard let flow, let presenter = RCTPresentedViewController() else {
       emit("confirmResult", ["status": "failed", "message": "The payment form isn’t ready yet."])
       return
@@ -106,6 +131,10 @@ public final class VezmoCardFlowHost: UIView {
 
   @MainActor
   private func buildOnce() async {
+    // A new flow: an update of the old one in flight no longer counts; what waited for it runs once this one is built.
+    updates += 1
+    updating = false
+    defer { runHeld() }
     guard let config = VezmoMethodsHost.parse(configJson),
           let intent = VezmoMethodsHost.parse(intentJson) else { return }
     guard intent["card"] as? Bool == true else {
@@ -161,9 +190,18 @@ public final class VezmoCardFlowHost: UIView {
   @MainActor
   private func update() {
     guard let flow, let intent = VezmoMethodsHost.parse(intentJson) else { return }
+    updates += 1
+    let mine = updates
+    updating = true
+    // Only the latest update answers for the hold (the engine drops one superseded by another).
     flow.update(intentConfiguration: intentConfiguration(from: intent)) { [weak self] error in
-      if let error { self?.emit("loadFailed", ["message": error.localizedDescription]) }
-      self?.emitCardOption()
+      guard let self else { return }
+      if let error { self.emit("loadFailed", ["message": error.localizedDescription]) }
+      self.emitCardOption()
+      if mine == self.updates {
+        self.updating = false
+        self.runHeld()
+      }
     }
     if let walletFlow {
       walletUpdates += 1

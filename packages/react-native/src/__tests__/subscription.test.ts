@@ -108,6 +108,35 @@ describe('subscriptions in the sheet', () => {
     });
   });
 
+  it('Apple Pay and Google Pay take the processing country from the session; the app’s own wins; US without one', () => {
+    const base = configFromSubscription({ ...view(), processingCountry: 'AE' });
+    const json = (config: typeof base, wallets: Parameters<typeof elementConfigJson>[0]['wallets']) => {
+      const charge = chargeOf(config, false);
+      return JSON.parse(
+        elementConfigJson({
+          config,
+          methods: sheetMethods(config, charge),
+          merchantDisplayName: 'Acme',
+          returnUrl: null,
+          scheme: 'light',
+          palette: paletteFor('light'),
+          wallets,
+          charge,
+          withWallets: true,
+        }),
+      );
+    };
+    const fromSession = json(base, { applePay: { merchantId: 'merchant.com.acme' } });
+    expect(fromSession.applePay.merchantCountryCode).toBe('AE');
+    expect(fromSession.googlePay.merchantCountryCode).toBe('AE');
+    const own = json(base, { applePay: { merchantId: 'merchant.com.acme', merchantCountryCode: 'gb' }, googlePay: { merchantCountryCode: 'GB' } });
+    expect(own.applePay.merchantCountryCode).toBe('GB');
+    expect(own.googlePay.merchantCountryCode).toBe('GB');
+    const older = json(configFromSubscription(view()), { applePay: { merchantId: 'merchant.com.acme' } });
+    expect(older.applePay.merchantCountryCode).toBe('US');
+    expect(older.googlePay.merchantCountryCode).toBe('US');
+  });
+
   it('starts a free trial: our server confirms it, the result names the subscription', async () => {
     const t = setup();
     await t.session.load();

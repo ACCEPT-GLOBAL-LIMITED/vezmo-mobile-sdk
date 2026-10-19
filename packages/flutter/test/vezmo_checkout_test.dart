@@ -140,7 +140,8 @@ void main() {
       expect(calls.single.arguments, {
         'configuration': {
           'returnUrl': 'acme://vezmo',
-          'applePay': {'merchantId': 'merchant.com.acme', 'merchantCountryCode': 'US'},
+          // No country: the native SDK takes the one processing the payment from the session.
+          'applePay': {'merchantId': 'merchant.com.acme', 'merchantCountryCode': null},
           'googlePay': {'merchantCountryCode': 'GB'},
           'style': 'dark',
           'appearance': {

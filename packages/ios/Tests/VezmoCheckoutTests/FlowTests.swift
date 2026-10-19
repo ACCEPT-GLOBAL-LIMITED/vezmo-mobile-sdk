@@ -26,6 +26,25 @@ func makeConfig(
 }
 
 final class FlowTests: XCTestCase {
+  func testApplePaysMerchantCountryIsTheAppsElseTheSessionsElseUS() {
+    XCTAssertEqual(merchantCountry(nil, session: "ae"), "AE")
+    XCTAssertEqual(merchantCountry("GB", session: "AE"), "GB")
+    XCTAssertEqual(merchantCountry("usa", session: "AE"), "AE")
+    XCTAssertEqual(merchantCountry(" ", session: nil), "US")
+    XCTAssertEqual(merchantCountry(nil, session: nil), "US")
+  }
+
+  func testTheProcessingCountryIsReadFromTheCheckoutAndTheSubscription() throws {
+    let config = try JSONDecoder().decode(CheckoutConfig.self, from: Data(#"""
+      {"publishableKey":"pk","livemode":false,"amountMinor":100,"currency":"AED","paymentId":"p","processingCountry":"AE"}
+      """#.utf8))
+    XCTAssertEqual(config.processingCountry, "AE")
+    let older = try JSONDecoder().decode(CheckoutConfig.self, from: Data(#"""
+      {"publishableKey":"pk","livemode":false,"amountMinor":100,"currency":"USD","paymentId":"p"}
+      """#.utf8))
+    XCTAssertNil(older.processingCountry)
+  }
+
   func testChargeIsThePriceOrTheBuyersOwnCurrency() {
     XCTAssertEqual(chargeOf(makeConfig(), payLocal: false), Charge(amountMinor: 4900, currency: "USD", localOffer: nil))
     XCTAssertEqual(chargeOf(makeConfig(), payLocal: true), Charge(amountMinor: 420000, currency: "INR", localOffer: "offer_sealed"))

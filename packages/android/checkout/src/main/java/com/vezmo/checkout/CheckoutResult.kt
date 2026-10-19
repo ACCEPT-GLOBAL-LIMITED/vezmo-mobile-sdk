@@ -17,7 +17,10 @@ sealed interface CheckoutResult : Parcelable {
         val subscription: SubscriptionResult? = null,
     ) : CheckoutResult
 
-    /** Paid, money on its way (a bank debit, UPI or Pix still settling): wait for the webhook. */
+    /**
+     * Paid, money on its way (a bank debit, UPI or Pix still settling), or a UPI or Pix payment the buyer started and
+     * can still finish in their bank app after closing the sheet: wait for the webhook, which says how it ends.
+     */
     @Parcelize
     data class Processing(
         val paymentId: String?,

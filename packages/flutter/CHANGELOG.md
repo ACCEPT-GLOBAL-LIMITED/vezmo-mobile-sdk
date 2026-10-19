@@ -19,4 +19,14 @@ The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`)
 - **iPhone**: the native Vezmo iOS SDK's sheet (Swift package `VezmoCheckout` 0.1.0, through Swift Package Manager):
   cards with 3D Secure, Apple Pay, pay-later methods, Cash App, UPI and Pix. The plugin hands links back into the
   app to the sheet by itself. Subscriptions too.
+- **Apple Pay and Google Pay merchant country** from the session: the country of the account that processes the
+  payment (the business's own on Connect, Vezmo's on merchant of record). `merchantCountryCode` on
+  `ApplePayOptions` and `GooglePayOptions` is optional and only overrides it.
+- **Closing while UPI or Pix waits**: the sheet asks Vezmo first. Paid meanwhile, it shows the receipt (`CheckoutSucceeded`);
+  still waiting in the buyer's bank app, the result is `CheckoutProcessing`, never canceled, since the buyer can still approve it.
+- **No answer while paying** (a timeout, a dropped connection): the sheet checks the session before reporting
+  `network`, so a payment that went through is never reported as failed. A payment Vezmo already took
+  stays the result even when the payment engine fails afterwards.
+- **Android**: a payment in flight is never lost or doubled when the phone's settings change or the process is stopped.
+- **Test-mode badge**: a darker orange behind its white text (5.2:1, up from 3.6:1), in light and dark.
 - Android 7.0+ (API 24), iOS 15.1+; Flutter 3.41+.
