@@ -15,23 +15,17 @@ subscriptions too, with a free trial or a first payment, and the card saved for 
 
 <sub>Screens from the example apps against Vezmo's sandbox, as the end-to-end tests capture them.</sub>
 
-> [!NOTE]
-> **0.1.0 release candidate.** The SDKs are complete and tested end to end, and are being prepared for their first
-> release to npm, Swift Package Manager, Maven Central and pub.dev. The online guides on
-> [user.vezmo.com](https://user.vezmo.com/docs/v1) go live with that release; until then each package's README below
-> is its full guide.
-
 ## Choose your SDK
 
 | Your app | Package | Install | Guide |
 | --- | --- | --- | --- |
-| React Native or Expo | [`@vezmopay/react-native`](packages/react-native) | `npx expo install @vezmopay/react-native` | [README](packages/react-native#readme) |
-| iOS, Swift (SwiftUI or UIKit) | [`VezmoCheckout`](packages/ios) Swift package | Xcode → Add Package Dependencies → this repository's URL | [README](packages/ios#readme) |
-| Android, Kotlin (Compose or Views) | [`com.vezmo:vezmo-checkout`](packages/android) | `implementation("com.vezmo:vezmo-checkout:0.1.0")` | [README](packages/android#readme) |
-| Flutter | [`vezmo_checkout`](packages/flutter) (on the native SDKs) | `flutter pub add vezmo_checkout` | [README](packages/flutter#readme) |
+| React Native or Expo | [`@vezmopay/react-native`](packages/react-native) | `npx expo install @vezmopay/react-native` | [README](packages/react-native#readme) · [online guide](https://user.vezmo.com/docs/v1/mobile/react-native) |
+| iOS, Swift (SwiftUI or UIKit) | [`VezmoCheckout`](packages/ios) Swift package | Xcode → Add Package Dependencies → this repository's URL | [README](packages/ios#readme) · [online guide](https://user.vezmo.com/docs/v1/mobile/ios) |
+| Android, Kotlin (Compose or Views) | [`com.vezmo:vezmo-checkout`](packages/android) | `implementation("com.vezmo:vezmo-checkout:0.1.0")` | [README](packages/android#readme) · [online guide](https://user.vezmo.com/docs/v1/mobile/android) |
+| Flutter | [`vezmo_checkout`](packages/flutter) (on the native SDKs) | `flutter pub add vezmo_checkout` | [README](packages/flutter#readme) · [online guide](https://user.vezmo.com/docs/v1/mobile/flutter) |
 
 All four draw the same sheet and return the same results. Apps without an SDK can open Vezmo's hosted checkout in the
-phone's secure browser sheet instead (Checkout for apps, in the online guides).
+phone's secure browser sheet instead ([Checkout for apps](https://user.vezmo.com/docs/v1/mobile/checkout-for-apps)).
 
 ### Requirements
 
