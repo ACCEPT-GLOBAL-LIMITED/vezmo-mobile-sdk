@@ -7,8 +7,9 @@ For maintainers. Release the four SDKs in this order (each tag runs its own work
    account with the `com.vezmo` namespace verified); then release the validated upload in the Central Portal.
 2. **iOS**: push the plain semver tag `<version>` (for example `0.1.0`) at the repository root; Swift Package Manager
    reads it directly. `release-ios.yml` checks that it equals `VezmoCheckout.version`.
-3. **React Native**: push `react-native-v<version>`. `release-react-native.yml` publishes to npm with provenance (the
-   `NPM_TOKEN` secret of the `vezmopay` npm org).
+3. **React Native**: push `react-native-v<version>`. `release-react-native.yml` publishes to npm with provenance, signed
+   in by npm trusted publishing (no token: the package's npm settings trust this repository's
+   `release-react-native.yml`).
 4. **Flutter**, last: push `flutter-v<version>`. The plugin runs on the native SDKs, so it needs 1 and 2 out first;
    `release-flutter.yml` checks both, then publishes to pub.dev with GitHub's login (the one-time pub.dev setup is in
    that file's header). **0.1.0 only**: pub.dev automates only a package that already exists, so publish 0.1.0 by
