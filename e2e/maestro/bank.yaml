@@ -30,7 +30,10 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
             visible: "(?i)continue with link"
           commands:
             - takeScreenshot: ${SHOT}-03a-returning
-            - tapOn: "Continue"
+            # Its button, under the buyer's email (the title above says the same on iPhone).
+            - tapOn:
+                text: "(?i)continue( with link)?"
+                below: "(?i).*@.*"
             - waitForAnimationToEnd:
                 timeout: 10000
       - runFlow:
@@ -52,12 +55,21 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
             - pressKey: Enter
             - waitForAnimationToEnd:
                 timeout: 10000
-      # A returning buyer signs in with the code sent to their phone.
+      # A returning buyer signs in with the code sent to their phone: the sandbox's own Autofill, else any six digits.
       - runFlow:
           when:
-            visible: "(?i).*(verification code|enter the code|sent a code|we sent|confirm it).*"
+            visible: "(?i).*(check your texts|verification code|enter the code|sent a code|we sent|confirm it).*"
           commands:
             - takeScreenshot: ${SHOT}-03d-code
+            - tapOn:
+                text: "(?i)autofill"
+                optional: true
+            - waitForAnimationToEnd:
+                timeout: 10000
+      - runFlow:
+          when:
+            visible: "(?i).*(check your texts|verification code|enter the code|sent a code|we sent|confirm it).*"
+          commands:
             - inputText: "123456"
             - waitForAnimationToEnd:
                 timeout: 10000
