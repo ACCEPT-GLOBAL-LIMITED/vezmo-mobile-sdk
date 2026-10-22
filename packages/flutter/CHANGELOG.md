@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Instant ACH**: buyers pay from a US bank account. When the business offers it, the sheet has an Instant ACH row
+  (US dollars only, never in the buyer's own currency) that opens a secure bank-connection step; the payment confirms
+  at once and the receipt reads "Paid with Instant ACH". Subscriptions save the bank account for the renewals; a free
+  trial sets it up without charging. It comes with the native SDKs the plugin runs on; nothing to change in
+  your app.
+
 ## 0.1.0
 
 The first release of the Vezmo payment sheet for Flutter apps (`vezmo_checkout`), on Vezmo's native SDKs.

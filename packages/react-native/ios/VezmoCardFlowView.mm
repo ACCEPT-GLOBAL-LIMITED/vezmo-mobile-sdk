@@ -62,6 +62,8 @@ static std::string VZCardString(id value)
     emitter->onHeightChange({.height = [body[@"height"] doubleValue]});
   } else if ([name isEqualToString:@"cardOption"]) {
     emitter->onCardOptionChange({.label = VZCardString(body[@"label"]), .image = VZCardString(body[@"image"])});
+  } else if ([name isEqualToString:@"bankChange"]) {
+    emitter->onBankChange({.available = [body[@"available"] boolValue], .label = VZCardString(body[@"label"])});
   } else if ([name isEqualToString:@"walletTap"]) {
     emitter->onWalletTap({.wallet = VZCardString(body[@"wallet"])});
   } else if ([name isEqualToString:@"confirmationToken"]) {
@@ -97,6 +99,16 @@ static std::string VZCardString(id value)
 - (void)confirmCard
 {
   [_host confirmCard];
+}
+
+- (void)presentBank
+{
+  [_host presentBank];
+}
+
+- (void)confirmBank
+{
+  [_host confirmBank];
 }
 
 - (void)resolveConfirmation:(NSString *)clientSecret errorMessage:(NSString *)errorMessage

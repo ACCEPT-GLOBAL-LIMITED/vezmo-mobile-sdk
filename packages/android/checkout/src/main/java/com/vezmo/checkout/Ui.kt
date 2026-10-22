@@ -592,7 +592,7 @@ internal fun CardRow(
         Column(Modifier.weight(1f)) {
             Txt(title, 15f, p.ink, weight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             // Before a bank is linked, what Instant ACH is.
-            val sub = card?.label ?: if (bank) "Pay from your US bank account" else null
+            val sub = card?.label ?: if (bank) "US bank account" else null
             if (sub != null) Txt(sub, 12.5f, p.ink3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
         }
         if (selected && card != null) {

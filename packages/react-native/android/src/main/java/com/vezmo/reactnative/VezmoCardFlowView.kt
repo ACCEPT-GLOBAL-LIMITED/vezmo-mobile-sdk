@@ -55,7 +55,9 @@ private const val WALLET_LOADING = "Google Pay is still loading. Try again in a 
  * Card row itself (with the card network's logo) and opens the card form with [presentCard].
  *
  * Two flow controllers: one for cards only (its sheet is just the card form, which the Card row opens) and one with
- * Google Pay that only draws the express button. Both confirm through the same Vezmo step.
+ * Google Pay that only draws the express button. Both confirm through the same Vezmo step. A third, for Instant ACH,
+ * offers only the engine's bank step (its sheet goes straight to linking a US bank account, which the sheet's Instant ACH
+ * row opens with [presentBank]); it is set up beside the card flow, on its own queue, so neither waits for the other.
  */
 @SuppressLint("ViewConstructor")
 @OptIn(WalletButtonsPreview::class)
@@ -79,7 +81,27 @@ class VezmoCardFlowView(
     data object ConfirmCard : Command
   }
 
+  /** Instant ACH's bank step. */
+  private sealed interface BankCommand {
+    data class Configure(
+      val intent: PaymentSheet.IntentConfiguration,
+      val configuration: PaymentSheet.Configuration,
+    ) : BankCommand
+
+    /** Not offered (not in US dollars, or the business doesn't). */
+    data object Off : BankCommand
+
+    data object Present : BankCommand
+
+    data object Confirm : BankCommand
+  }
+
   private val commands = Channel<Command>(Channel.UNLIMITED)
+  private val bankCommands = Channel<BankCommand>(Channel.UNLIMITED)
+  private var bankConfiguration: PaymentSheet.Configuration? = null
+
+  /** The bank step is set up for the latest amount. */
+  private var bankReady = false
   private var configJson = ""
   private var intentJson = ""
   private var configDirty = false
@@ -142,6 +164,13 @@ class VezmoCardFlowView(
       )
       sheetConfiguration = sheetConfiguration(config, wallets = false)
       walletConfiguration = if (config.optJSONObject("googlePay") != null) sheetConfiguration(config, wallets = true) else null
+      bankConfiguration = null
+    }
+    if (intent.optBoolean("instantAch")) {
+      val bank = bankConfiguration ?: bankConfiguration(config).also { bankConfiguration = it }
+      bankCommands.trySend(BankCommand.Configure(intentConfiguration(intent, listOf("link")), bank))
+    } else {
+      bankCommands.trySend(BankCommand.Off)
     }
     commands.trySend(
       Command.Configure(intentConfiguration(intent, listOf("card")), sheetConfiguration!!, walletConfiguration, loaded = rebuild),
@@ -154,6 +183,14 @@ class VezmoCardFlowView(
 
   fun confirmCard() {
     commands.trySend(Command.ConfirmCard)
+  }
+
+  fun presentBank() {
+    bankCommands.trySend(BankCommand.Present)
+  }
+
+  fun confirmBank() {
+    bankCommands.trySend(BankCommand.Confirm)
   }
 
   fun resolveConfirmation(
@@ -243,6 +280,16 @@ class VezmoCardFlowView(
             CreateIntentWithConfirmationTokenCallback { confirmationToken -> awaitClientSecret(confirmationToken.id) },
           )
       }
+    val bankBuilder =
+      remember {
+        PaymentSheet.FlowController
+          .Builder(
+            resultCallback = { result -> emitResult(result) },
+            paymentOptionResultCallback = { result -> emitBank(result.paymentOption) },
+          ).createIntentCallback(
+            CreateIntentWithConfirmationTokenCallback { confirmationToken -> awaitClientSecret(confirmationToken.id) },
+          )
+      }
     val clickHandler =
       remember {
         WalletButtonsViewClickHandler { wallet ->
@@ -270,6 +317,7 @@ class VezmoCardFlowView(
     ) {
       val flow = builder.build()
       val walletFlow = walletBuilder.build()
+      val bankFlow = bankBuilder.build()
       var walletsOn by remember { mutableStateOf(false) }
       val density = LocalDensity.current
 
@@ -288,6 +336,37 @@ class VezmoCardFlowView(
               paying = true
               flow.confirm()
             }
+          }
+        }
+      }
+      LaunchedEffect(bankFlow) {
+        bankCommands.consumeAsFlow().collect { command ->
+          when (command) {
+            is BankCommand.Configure -> {
+              bankReady = false
+              val error = configureOne(bankFlow, command.intent, command.configuration)
+              if (error != null) android.util.Log.i("VezmoCheckout", "Instant ACH isn't available for this payment", error)
+              bankReady = error == null
+              emitBank(if (bankReady) bankFlow.getPaymentOption() else null)
+            }
+            is BankCommand.Off -> {
+              bankReady = false
+              emitBank(null)
+            }
+            is BankCommand.Present -> if (bankReady) bankFlow.presentPaymentOptions()
+            is BankCommand.Confirm ->
+              if (bankReady) {
+                paying = true
+                bankFlow.confirm()
+              } else {
+                emit(
+                  "topConfirmResult",
+                  Arguments.createMap().apply {
+                    putString("status", "failed")
+                    putString("message", BANK_LOADING)
+                  },
+                )
+              }
           }
         }
       }
@@ -401,6 +480,55 @@ class VezmoCardFlowView(
     }
     config.optJSONObject("appearance")?.let { builder.appearance(appearance(it)) }
     return builder.build()
+  }
+
+  /**
+   * The bank step: the engine's bank payments run on its own wallet, which must be on for them; its button is never
+   * shown (Vezmo is white label: the buyer sees the Instant ACH row and the bank step, nothing else). The buyer's email
+   * from the session is used as is, so the step asks only for the bank.
+   */
+  @SuppressLint("RestrictedApi")
+  private fun bankConfiguration(config: JSONObject): PaymentSheet.Configuration {
+    val hidden =
+      PaymentSheet.WalletButtonsConfiguration(
+        visibility =
+          PaymentSheet.WalletButtonsConfiguration.Visibility(
+            paymentElement =
+              mapOf(
+                PaymentSheet.WalletButtonsConfiguration.Wallet.Link to
+                  PaymentSheet.WalletButtonsConfiguration.PaymentElementVisibility.Never,
+              ),
+          ),
+      )
+    val builder =
+      PaymentSheet.Configuration
+        .Builder(config.text("merchantDisplayName") ?: "")
+        .link(PaymentSheet.LinkConfiguration(display = PaymentSheet.LinkConfiguration.Display.WalletButtonHidden))
+        .walletButtons(hidden)
+        .paymentMethodLayout(PaymentSheet.PaymentMethodLayout.Vertical)
+    val billing = config.optJSONObject("billing")
+    billing?.let { b -> builder.defaultBillingDetails(PaymentSheet.BillingDetails(name = b.text("name"), email = b.text("email"))) }
+    if (billing?.text("email") != null) {
+      builder.billingDetailsCollectionConfiguration(
+        PaymentSheet.BillingDetailsCollectionConfiguration(
+          email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+          attachDefaultsToPaymentMethod = true,
+        ),
+      )
+    }
+    config.optJSONObject("appearance")?.let { builder.appearance(appearance(it)) }
+    return builder.build()
+  }
+
+  /** Whether the bank step is set up, and the account it linked in the engine's words (the sheet shows its last four). */
+  private fun emitBank(option: PaymentOption?) {
+    emit(
+      "topBankChange",
+      Arguments.createMap().apply {
+        putBoolean("available", bankReady)
+        putString("label", option?.label ?: "")
+      },
+    )
   }
 
   /** The card from the card form, for the sheet's own Card row: its label and the network's logo. */

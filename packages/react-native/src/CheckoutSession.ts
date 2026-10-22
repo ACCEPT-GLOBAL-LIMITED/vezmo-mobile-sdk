@@ -23,14 +23,19 @@ export interface ElementPort {
   clearSelection(): void;
 }
 
-/** What the card flow can be asked to do: the card form, paying with its card, answering its confirmation. */
+/**
+ * What the card flow can be asked to do: the card form, the bank step (Instant ACH), paying with what they chose,
+ * answering its confirmation.
+ */
 export interface CardFlowPort {
   presentCard(): void;
   confirmCard(): void;
+  presentBank(): void;
+  confirmBank(): void;
   resolveConfirmation(clientSecret: string | null, errorMessage?: string): void;
 }
 
-/** The card from the native card form, for the sheet's own Card row. */
+/** The card from the native card form, for the sheet's own Card row (or the bank account linked for Instant ACH). */
 export interface CardChoice {
   /** "•••• 4242". */
   label: string;
@@ -69,12 +74,19 @@ export interface SessionSnapshot {
   elementAttempt: number;
   /**
    * The selected way to pay: the sheet's Card row (`card`), one of the element's rows (`element`: wallets, pay-later),
-   * or our UPI or Pix row.
+   * our UPI or Pix row, or our Instant ACH row.
    */
-  method: 'card' | 'element' | 'upi' | 'pix';
+  method: PayMethod;
   /** The card typed in the card form, kept when the buyer looks at another method and comes back. */
   card: CardChoice | null;
+  /** The bank account linked in the engine's bank step for Instant ACH, kept the same way. */
+  bank: CardChoice | null;
 }
+
+export type PayMethod = 'card' | 'element' | 'upi' | 'pix' | 'instantAch';
+
+/** What the sheet and the receipt call an Instant ACH payment. */
+export const INSTANT_ACH = 'Instant ACH';
 
 const PRICE_CHANGED = 'The price in your currency just changed. Check the new amount and pay again.';
 /** The engine failed before Vezmo was asked to take the payment: never its own words (white label; they differ by platform). */
@@ -99,6 +111,7 @@ export class CheckoutSession {
     elementAttempt: 0,
     method: 'element',
     card: null,
+    bank: null,
   };
   private listeners = new Set<() => void>();
   private element: ElementPort | null = null;
@@ -113,6 +126,8 @@ export class CheckoutSession {
   private qrIntentId: string | null = null;
   /** The card form was opened by the buyer: the card it returns becomes the selection. */
   private awaitingCard = false;
+  /** The bank step was opened by the buyer: the account it links becomes the selection. */
+  private awaitingBank = false;
   /** Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through. */
   private recovered: CheckoutResult | null = null;
   /** The buyer asked to close and Vezmo is being asked whether a UPI or Pix payment went through. */
@@ -201,9 +216,47 @@ export class CheckoutSession {
     this.set({ card, ...(chosen ? { method: 'card' as const, phase: { name: 'ready', error: null } } : {}) });
   }
 
-  /** The Pay button can be pressed: a typed card on the Card row, or a method chosen in the element. */
+  /** The buyer tapped the Instant ACH row: the bank account already linked, or the bank step to link one. */
+  chooseBank() {
+    if (this.snapshot.phase.name !== 'ready') return;
+    if (this.snapshot.bank) {
+      this.element?.clearSelection();
+      this.set({ method: 'instantAch', phase: { name: 'ready', error: null } });
+    } else {
+      this.changeBank();
+    }
+  }
+
+  /** Change (or first link) the bank account. */
+  changeBank() {
+    if (this.snapshot.phase.name !== 'ready') return;
+    this.awaitingBank = true;
+    this.cardFlow?.presentBank();
+  }
+
+  /** The bank step reported its account (or none). One the buyer just linked becomes the selection. */
+  setBank(bank: CardChoice | null) {
+    const ready = this.snapshot.phase.name === 'ready';
+    const chosen = !!bank && this.awaitingBank && ready;
+    if (bank) this.awaitingBank = false;
+    if (chosen) this.element?.clearSelection();
+    // The bank step went away (the sheet's look changed): pick again.
+    const lost = !bank && this.snapshot.method === 'instantAch' && ready;
+    this.set({
+      bank,
+      ...(chosen ? { method: 'instantAch' as const, phase: { name: 'ready' as const, error: null } } : {}),
+      ...(lost ? { method: 'element' as const } : {}),
+    });
+  }
+
+  /**
+   * The Pay button can be pressed: a typed card on the Card row, a linked bank on the Instant ACH row, or a method chosen
+   * in the element.
+   */
   static canPay(s: SessionSnapshot): boolean {
-    return s.method === 'card' ? !!s.card : s.method === 'element' ? s.canPay : false;
+    if (s.method === 'card') return !!s.card;
+    if (s.method === 'instantAch') return !!s.bank;
+    return s.method === 'element' ? s.canPay : false;
   }
 
   setElementError(message: string | null) {
@@ -219,14 +272,17 @@ export class CheckoutSession {
   private apply(config: CheckoutConfig, payLocal: boolean) {
     const charge = chargeOf(config, payLocal && !!config.localOffer);
     const methods = sheetMethods(config, charge);
-    // A panel that this currency doesn't offer falls back to the element.
-    const method = this.snapshot.method === 'upi' && !methods.upi ? 'element'
-      : this.snapshot.method === 'pix' && !methods.pix ? 'element' : this.snapshot.method;
+    // A method that this currency doesn't offer falls back to the element.
+    const current = this.snapshot.method;
+    const method =
+      (current === 'upi' && !methods.upi) || (current === 'pix' && !methods.pix) || (current === 'instantAch' && !methods.instantAch)
+        ? 'element'
+        : current;
     this.set({ config, payLocal: !!charge.localOffer, charge, methods, method });
   }
 
   /** UPI or Pix (the sheet's own rows) or back to the element; one method is selected at a time. */
-  chooseMethod(method: 'card' | 'element' | 'upi' | 'pix') {
+  chooseMethod(method: PayMethod) {
     if (this.snapshot.phase.name !== 'ready') return;
     if (method !== 'element') this.element?.clearSelection();
     this.set({ method, phase: { name: 'ready', error: null } });
@@ -316,14 +372,19 @@ export class CheckoutSession {
   // ── paying ─────────────────────────────────────────────────────────────
   pay() {
     if (this.snapshot.phase.name !== 'ready' || !CheckoutSession.canPay(this.snapshot)) return;
-    const card = this.snapshot.method === 'card';
-    if (card ? !this.cardFlow : !this.element) return;
+    const method = this.snapshot.method;
+    // Cards and Instant ACH are the card flow's; the rest the element's.
+    const viaCard = method === 'card' || method === 'instantAch';
+    if (viaCard ? !this.cardFlow : !this.element) return;
     this.lastPay = null;
     this.lastError = null;
     this.recovered = null;
-    this.confirmVia = card ? 'card' : 'element';
-    this.set({ phase: { name: 'paying' }, paidWith: card ? (this.snapshot.card?.label ?? null) : this.snapshot.option });
-    if (card) this.cardFlow!.confirmCard();
+    this.confirmVia = viaCard ? 'card' : 'element';
+    const paidWith =
+      method === 'card' ? (this.snapshot.card?.label ?? null) : method === 'instantAch' ? INSTANT_ACH : this.snapshot.option;
+    this.set({ phase: { name: 'paying' }, paidWith });
+    if (method === 'card') this.cardFlow!.confirmCard();
+    else if (method === 'instantAch') this.cardFlow!.confirmBank();
     else this.element!.confirm();
   }
 

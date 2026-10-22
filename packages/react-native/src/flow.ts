@@ -46,7 +46,10 @@ export function chargeOf(config: CheckoutConfig, payLocal: boolean): Charge {
 
 // ── subscriptions ─────────────────────────────────────────────────────────
 
-/** The subscription checkout as the sheet's config: cards and wallets only, the plan beside the price. */
+/**
+ * The subscription checkout as the sheet's config: cards, wallets and Instant ACH (when the business offers it for this
+ * plan), the plan beside the price.
+ */
 export function configFromSubscription(v: SubscriptionView): CheckoutConfig {
   const minor = (major: number) => Math.round(major * 100);
   return {
@@ -58,7 +61,7 @@ export function configFromSubscription(v: SubscriptionView): CheckoutConfig {
     currency: v.currency,
     title: v.planName,
     merchantName: v.merchant?.name ?? null,
-    enabledMethods: { card: true, applePay: true, googlePay: true },
+    enabledMethods: { card: true, applePay: true, googlePay: true, instantAch: v.instantAchEnabled === true },
     bankSupported: false,
     customerName: v.customer?.name ?? null,
     customerEmail: v.customer?.email ?? null,
@@ -198,11 +201,13 @@ export interface SheetMethods {
   /** Our own panels: UPI (INR) and Pix (BRL), only when paying in that currency. */
   upi: boolean;
   pix: boolean;
+  /** Our own Instant ACH row (a US bank account through the engine's bank step): US dollars only. */
+  instantAch: boolean;
 }
 
 /**
  * The ways to pay the sheet offers, from the business's enabled methods: the same rules as the web checkout. Bank
- * debit (ACH) is not offered in the mobile sheet yet.
+ * debit (ACH) is not offered in the mobile sheet; Instant ACH is, in US dollars (never in the buyer's own currency).
  */
 export function sheetMethods(config: CheckoutConfig, charge: Charge): SheetMethods {
   const on = config.enabledMethods ?? {};
@@ -218,7 +223,17 @@ export function sheetMethods(config: CheckoutConfig, charge: Charge): SheetMetho
     googlePay: on.googlePay === true,
     upi: local && charge.currency === 'INR' && on.upi === true && offerMethods.includes('upi'),
     pix: local && charge.currency === 'BRL' && on.pix === true && offerMethods.includes('pix'),
+    instantAch: !local && charge.currency === 'USD' && on.instantAch === true,
   };
+}
+
+/**
+ * The linked bank account as the Instant ACH row shows it: "•••• 6789". Null until the engine's bank step has linked one
+ * (its label then ends in the account's last four); the engine's own words are never shown.
+ */
+export function bankLabel(engineLabel: string | null | undefined): string | null {
+  const m = /(\d{4})\s*$/.exec(engineLabel ?? '');
+  return m ? `•••• ${m[1]}` : null;
 }
 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */

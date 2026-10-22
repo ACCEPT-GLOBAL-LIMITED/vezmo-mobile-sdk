@@ -54,6 +54,14 @@ class VezmoCardFlowViewManager :
     view.confirmCard()
   }
 
+  override fun presentBank(view: VezmoCardFlowView) {
+    view.presentBank()
+  }
+
+  override fun confirmBank(view: VezmoCardFlowView) {
+    view.confirmBank()
+  }
+
   override fun resolveConfirmation(
     view: VezmoCardFlowView,
     clientSecret: String,
@@ -74,6 +82,7 @@ class VezmoCardFlowViewManager :
       "topLoadFailed" to mapOf("registrationName" to "onLoadFailed"),
       "topHeightChange" to mapOf("registrationName" to "onHeightChange"),
       "topCardOptionChange" to mapOf("registrationName" to "onCardOptionChange"),
+      "topBankChange" to mapOf("registrationName" to "onBankChange"),
       "topWalletTap" to mapOf("registrationName" to "onWalletTap"),
       "topConfirmationToken" to mapOf("registrationName" to "onConfirmationToken"),
       "topConfirmResult" to mapOf("registrationName" to "onConfirmResult"),

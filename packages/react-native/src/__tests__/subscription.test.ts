@@ -37,7 +37,13 @@ function setup(v: SubscriptionView = view()) {
     checkout: jest.fn<any>(),
     pay: jest.fn<any>(),
   };
-  const cardFlow = { presentCard: jest.fn(), confirmCard: jest.fn(), resolveConfirmation: jest.fn() };
+  const cardFlow = {
+    presentCard: jest.fn(),
+    confirmCard: jest.fn(),
+    presentBank: jest.fn(),
+    confirmBank: jest.fn(),
+    resolveConfirmation: jest.fn(),
+  };
   const session = new CheckoutSession(api as any, 'subtok', 'acme://vezmo', 'subscription');
   session.attachCardFlow(cardFlow);
   return { api, cardFlow, session };
@@ -63,6 +69,24 @@ describe('subscriptions in the sheet', () => {
     });
     expect(planPriceText(config.subscription!)).toBe('$9.99 / month');
     expect(planPriceText({ ...config.subscription!, intervalCount: 3 })).toBe('$9.99 every 3 months');
+  });
+
+  it('Instant ACH when the business offers it for the plan: set up for a trial, kept for the renewals', () => {
+    const trial = configFromSubscription(view({ instantAchEnabled: true }));
+    const trialCharge = chargeOf(trial, false);
+    expect(JSON.parse(elementIntentJson(trialCharge, sheetMethods(trial, trialCharge), trial))).toMatchObject({
+      instantAch: true,
+      mode: 'setup',
+      setupFutureUsage: 'off_session',
+    });
+    const paid = configFromSubscription(view({ mode: 'payment', amount: 9.99, trialDays: null, instantAchEnabled: true }));
+    const charge = chargeOf(paid, false);
+    expect(JSON.parse(elementIntentJson(charge, sheetMethods(paid, charge), paid))).toMatchObject({
+      instantAch: true,
+      mode: 'payment',
+      setupFutureUsage: 'off_session',
+    });
+    expect(sheetMethods(configFromSubscription(view()), trialCharge).instantAch).toBe(false);
   });
 
   it('a first payment keeps the card for renewals; a one-time payment does not', () => {

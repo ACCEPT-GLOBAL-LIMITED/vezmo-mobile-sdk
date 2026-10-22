@@ -238,7 +238,7 @@ struct CardRow: View {
           VStack(alignment: .leading, spacing: 1) {
             Text(title).font(look.font(15, .medium)).foregroundColor(look.c(p.ink)).lineLimit(1)
             // Before a bank is linked, what Instant ACH is.
-            if let sub = card?.label ?? (bank ? "Pay from your US bank account" : nil) {
+            if let sub = card?.label ?? (bank ? "US bank account" : nil) {
               Text(sub).font(look.font(12.5)).foregroundColor(look.c(p.ink3)).lineLimit(1)
             }
           }

@@ -1,7 +1,8 @@
 # vezmo_checkout
 
-The Vezmo payment sheet for Flutter apps. Cards with 3D Secure, Google Pay, Apple Pay, Klarna, Affirm, Afterpay,
-Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency, in a native sheet. Payments and subscriptions.
+The Vezmo payment sheet for Flutter apps. Cards with 3D Secure, Google Pay, Apple Pay, Instant ACH, Klarna, Affirm,
+Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency, in a native sheet. Payments and
+subscriptions.
 
 Your server keeps your Vezmo API key. The app only ever receives a session's client token.
 
@@ -212,9 +213,18 @@ charge sends `subscription.activated` (or `subscription.payment_failed`).
 
 - Your business, what they're paying for and the total, with a choice of their own currency where Vezmo offers one.
 - Google Pay (or Apple Pay) as one tap at the top, when the phone has it.
-- The other ways to pay as one list: **Card** (with the card's own logo once typed), pay-later methods, Cash App, and
-  UPI or Pix for buyers in India or Brazil.
+- The other ways to pay as one list: **Card** (with the card's own logo once typed), **Instant ACH** (a US bank
+  account), pay-later methods, Cash App, and UPI or Pix for buyers in India or Brazil.
 - One Pay button, 3D Secure when the bank asks for it, and a receipt: who was paid, with what, and a reference.
+
+### Instant ACH
+
+When your business offers Instant ACH, the sheet has an **Instant ACH** row for payments in US dollars ($0.50 to
+$7,500). The buyer links their US bank account in a secure bank-connection step, then pays. The payment confirms at
+once, as `CheckoutSucceeded`, and the receipt reads **Paid with Instant ACH**. A subscription saves the bank account for its
+renewals (a free trial sets it up without charging). It isn't offered when the buyer pays in their own currency.
+
+In the sandbox, choose the **Success** test bank, and enter any six digits when asked for a code.
 
 ## Appearance
 
@@ -335,8 +345,8 @@ ios --simulator`.
 CI (`.github/workflows/flutter.yml`) runs the analysis and tests, then pays end to end from the example app with
 Maestro (`e2e/maestro`), on an Android emulator and an iPhone simulator alike. On both business models (Connect and
 merchant of record): a card with 3D Secure, a decline, a payment and a subscription in AED, and a subscription's free
-trial and its first payment. Once: cancel, a bad token, Cash App on the merchant-of-record business, and the sheet in
-dark mode.
+trial and its first payment. Once: cancel, a bad token, Cash App and Instant ACH on the merchant-of-record business,
+and the sheet in dark mode.
 
 To release, push a tag `flutter-v<version>` after the Android and iOS SDKs it pins are out; the release order and
 every place the version lives are in

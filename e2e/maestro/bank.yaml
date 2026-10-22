@@ -32,15 +32,33 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
 - waitForAnimationToEnd:
     timeout: 10000
 - takeScreenshot: ${SHOT}-03c-after-consent
-# The buyer's email is the session's: sign in (an earlier run made the account) or sign up.
-- tapOn:
-    text: "(?i)continue with link"
+# The buyer's email is the session's: an earlier run signed it up, so it asks for the code sent to its phone (any six
+# digits in the sandbox); or this run signs it up with a phone number (a fictional 555 one).
+- extendedWaitUntil:
+    visible: "(?i).*(phone number|code|confirm it|success).*"
+    timeout: 30000
     optional: true
-- waitForAnimationToEnd:
-    timeout: 10000
 - runFlow:
     when:
-      visible: "(?i).*(verification code|enter the code|we sent|sent a code).*"
+      visible: "(?i)phone number"
+    commands:
+      - inputText: "2015550123"
+      - takeScreenshot: ${SHOT}-03d-sign-up
+      - pressKey: Enter
+      - waitForAnimationToEnd:
+          timeout: 10000
+- runFlow:
+    when:
+      visible: "(?i)phone number"
+    commands:
+      - hideKeyboard
+      - takeScreenshot: ${SHOT}-03d-sign-up-button
+      - tapOn: "(?i)(continue|agree and continue|sign up|join link|save)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+- runFlow:
+    when:
+      visible: "(?i).*(verification code|enter the code|we sent|sent a code|confirm it).*"
     commands:
       - takeScreenshot: ${SHOT}-03d-code
       - inputText: "123456"

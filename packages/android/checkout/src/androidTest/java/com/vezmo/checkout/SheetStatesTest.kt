@@ -298,7 +298,7 @@ class SheetStatesTest {
     fun instantAch() {
         open(FakeApi({ config(methods = setOf("card", "instantAch", "klarna")) }))
         rule.onNodeWithText("Instant ACH").assertIsDisplayed()
-        rule.onNodeWithText("Pay from your US bank account").assertIsDisplayed()
+        rule.onNodeWithText("US bank account").assertIsDisplayed()
         shoot("instant-ach")
     }
 

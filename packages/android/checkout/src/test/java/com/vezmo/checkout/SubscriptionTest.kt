@@ -73,6 +73,10 @@ private class CardFlow : CardFlowPort {
         confirms++
     }
 
+    override fun presentBank() = Unit
+
+    override fun confirmBank() = Unit
+
     override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
         resolved += clientSecret to errorMessage
     }

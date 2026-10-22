@@ -1,7 +1,8 @@
 # @vezmopay/react-native
 
-The Vezmo payment sheet for React Native and Expo apps. Cards with 3D Secure, Apple Pay, Google Pay, Klarna, Affirm,
-Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency, drawn natively on iPhone and Android.
+The Vezmo payment sheet for React Native and Expo apps. Cards with 3D Secure, Apple Pay, Google Pay, Instant ACH,
+Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency, drawn natively on iPhone and
+Android.
 
 Your server keeps your Vezmo API key. The app only ever receives a session's client token.
 
@@ -201,10 +202,19 @@ classes, rentals, services.
 
 - Your business, what they're paying for and the total, with a choice of their own currency where Vezmo offers one.
 - Apple Pay or Google Pay as one tap at the top, when the phone has it and you've set it up.
-- The other ways to pay as one list: **Card** (with the card's own logo once typed), pay-later methods, Cash App, and
-  UPI or Pix for buyers in India or Brazil.
+- The other ways to pay as one list: **Card** (with the card's own logo once typed), **Instant ACH** (a US bank
+  account), pay-later methods, Cash App, and UPI or Pix for buyers in India or Brazil.
 - One Pay button, 3D Secure when the bank asks for it, and a receipt: who was paid, with what, and a reference.
 - Light or dark, and their own text size (the sheet's text grows up to the first accessibility size).
+
+### Instant ACH
+
+When your business offers Instant ACH, the sheet has an **Instant ACH** row for payments in US dollars ($0.50 to
+$7,500). The buyer links their US bank account in a secure bank-connection step, then pays. The payment confirms at
+once, as `succeeded`, and the receipt reads **Paid with Instant ACH**. A subscription saves the bank account for its
+renewals (a free trial sets it up without charging). It isn't offered when the buyer pays in their own currency.
+
+In the sandbox, choose the **Success** test bank, and enter any six digits when asked for a code.
 
 ## Appearance
 
