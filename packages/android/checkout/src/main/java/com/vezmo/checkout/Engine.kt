@@ -608,7 +608,12 @@ internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Eng
     }
     // The bank account the bank step linked, for our Instant ACH row: its last four only.
     LaunchedEffect(engine.bankReport) {
-        session.setBank(linkedBank(engine.bankReport.first)?.let { CardChoice(it, null) })
+        // TEMP DIAGNOSTIC (reverted before merge): what the bank step reported.
+        val o = engine.bankReport.first
+        @OptIn(ExtendedLabelsInPaymentOptionPreview::class)
+        val dbg = "dbg#${engine.bankReport.second} ${o?.paymentMethodType}|${o?.label}|${o?.labels?.label}|${o?.labels?.sublabel}"
+        session.setBank((linkedBank(o) ?: dbg.takeIf { o != null })?.let { CardChoice(it, null) })
+        if (o == null && engine.bankReport.second > 1) session.setBank(CardChoice(dbg, null))
     }
     LaunchedEffect(engine.embedded) {
         engine.embedded.paymentOption.collect { session.setOption(it?.let { o -> o.label }) }
