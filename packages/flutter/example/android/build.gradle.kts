@@ -1,9 +1,10 @@
 allprojects {
     repositories {
+        // The Vezmo Android SDK built from this repository into Maven local (as CI does), ahead of the release of the
+        // same version on Maven Central; without a local build, Maven Central's.
+        mavenLocal { content { includeGroup("com.vezmo") } }
         google()
         mavenCentral()
-        // The Vezmo Android SDK, built into Maven local (in CI) until it is on Maven Central.
-        mavenLocal { content { includeGroup("com.vezmo") } }
     }
 }
 

@@ -18,13 +18,14 @@ buildscript {
 
 allprojects {
     repositories {
-        google()
-        mavenCentral()
         // Only for this repository's CI, which builds com.vezmo:vezmo-checkout into Maven local first
-        // (ORG_GRADLE_PROJECT_vezmoMavenLocal=true). Apps get it from Maven Central.
+        // (ORG_GRADLE_PROJECT_vezmoMavenLocal=true): ahead of Maven Central, which has the released build of the same
+        // version. Apps get it from Maven Central.
         if (providers.gradleProperty("vezmoMavenLocal").isPresent) {
             mavenLocal { content { includeGroup("com.vezmo") } }
         }
+        google()
+        mavenCentral()
     }
 }
 
