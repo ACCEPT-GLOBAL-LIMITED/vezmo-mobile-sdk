@@ -514,9 +514,44 @@ private fun CardGlyph(color: Color) {
     }
 }
 
+/** A bank: a pediment over three columns on a base. Instant ACH's icon, on its row and the receipt. */
+@Composable
+private fun BankGlyph(color: Color, scale: Float = 1f) {
+    Canvas(Modifier.size(22.dp * scale, 16.dp * scale)) {
+        val u = size.width / 22f
+        val w = 1.6f * u
+        val roof = Path().apply {
+            moveTo(1.8f * u, 6.2f * u)
+            lineTo(11f * u, 1f * u)
+            lineTo(20.2f * u, 6.2f * u)
+            close()
+        }
+        drawPath(roof, color, style = Stroke(w, join = StrokeJoin.Round))
+        for (i in 0..2) {
+            drawRoundRect(color, topLeft = Offset((4.2f + i * 5.8f) * u, 7.6f * u), size = Size(2f * u, 5.6f * u), cornerRadius = CornerRadius(0.5f * u))
+        }
+        drawRoundRect(color, topLeft = Offset(1f * u, 14.2f * u), size = Size(20f * u, 1.8f * u), cornerRadius = CornerRadius(0.8f * u))
+    }
+}
+
+/** Instant ACH's bank on a tile, beside "Instant ACH" on the receipt (as a card network's mark sits beside its card). */
+@Composable
+internal fun BankTile() {
+    val p = LocalLook.current.p
+    Box(
+        Modifier
+            .size(30.dp, 20.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .background(p.field)
+            .border(1.dp, p.fieldLine, RoundedCornerShape(5.dp)),
+        contentAlignment = Alignment.Center,
+    ) { BankGlyph(p.ink, scale = 0.8f) }
+}
+
 /**
  * The Card row, drawn by the sheet (the engine would show a plain card for any card): the network's own logo once a
- * card is typed, its last four, and Change. Tapping opens the engine's card form.
+ * card is typed, its last four, and Change. Tapping opens the engine's card form. The Instant ACH row is the same row
+ * with a bank ([bank]): the linked account's last four, and Change to link another.
  */
 @Composable
 internal fun CardRow(
@@ -525,15 +560,18 @@ internal fun CardRow(
     disabled: Boolean,
     onClick: () -> Unit,
     onChange: () -> Unit,
+    bank: Boolean = false,
+    first: Boolean = true,
 ) {
     val p = LocalLook.current.p
     val hair = hairline()
+    val title = if (bank) INSTANT_ACH else "Card"
     RowFrame(
-        first = true,
+        first = first,
         modifier = Modifier
-            .testTag("vezmo-card-row")
+            .testTag(if (bank) "vezmo-instant-ach-row" else "vezmo-card-row")
             .semantics(mergeDescendants = true) {
-                contentDescription = if (card != null) "Card ${card.label}" else "Card"
+                contentDescription = if (card != null) "$title ${card.label}" else title
                 this.selected = selected
             }.clickable(enabled = !disabled, role = Role.RadioButton, onClick = onClick),
     ) {
@@ -549,11 +587,13 @@ internal fun CardRow(
                 Image(card.image, contentDescription = null, modifier = Modifier.size(24.dp, 16.dp), contentScale = ContentScale.Fit)
             }
         } else {
-            Box(Modifier.size(30.dp, 22.dp), contentAlignment = Alignment.Center) { CardGlyph(p.ink) }
+            Box(Modifier.size(30.dp, 22.dp), contentAlignment = Alignment.Center) { if (bank) BankGlyph(p.ink) else CardGlyph(p.ink) }
         }
         Column(Modifier.weight(1f)) {
-            Txt("Card", 15f, p.ink, weight = FontWeight.Medium)
-            if (card != null) Txt(card.label, 12.5f, p.ink3, modifier = Modifier.padding(top = 1.dp))
+            Txt(title, 15f, p.ink, weight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Before a bank is linked, what Instant ACH is.
+            val sub = card?.label ?: if (bank) "Pay from your US bank account" else null
+            if (sub != null) Txt(sub, 12.5f, p.ink3, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 1.dp))
         }
         if (selected && card != null) {
             LinkText(
@@ -561,7 +601,7 @@ internal fun CardRow(
                 onClick = { if (!disabled) onChange() },
                 size = 14f,
                 weight = FontWeight.Medium,
-                modifier = Modifier.semantics { contentDescription = "Change card" },
+                modifier = Modifier.semantics { contentDescription = if (bank) "Change bank account" else "Change card" },
             )
             Tick(p.accent, 16.dp)
         }

@@ -84,6 +84,26 @@ final class FlowTests: XCTestCase {
     XCTAssertFalse(methods.upi)
   }
 
+  func testInstantACHOnlyInDollarsWhenTheBusinessOffersIt() {
+    let config = makeConfig(enabled: ["card": true, "instantAch": true])
+    XCTAssertTrue(sheetMethods(config, chargeOf(config, payLocal: false)).instantAch)
+    // Never in the buyer's own currency.
+    XCTAssertFalse(sheetMethods(config, chargeOf(config, payLocal: true)).instantAch)
+    let off = makeConfig(enabled: ["card": true])
+    XCTAssertFalse(sheetMethods(off, chargeOf(off, payLocal: false)).instantAch)
+    // It is the sheet's own row, never one of the element's.
+    XCTAssertEqual(sheetMethods(config, chargeOf(config, payLocal: false)).elementTypes, ["card"])
+    XCTAssertTrue(EngineIntent(charge: chargeOf(config, payLocal: false), methods: sheetMethods(config, chargeOf(config, payLocal: false))).instantAch)
+  }
+
+  func testTheLinkedBankShowsOnlyItsLastFourNeverTheEnginesWords() {
+    XCTAssertEqual(bankLabel("••••6789"), "•••• 6789")
+    XCTAssertEqual(bankLabel("Success Bank ••••6789 "), "•••• 6789")
+    XCTAssertNil(bankLabel("Link"))
+    XCTAssertNil(bankLabel("Bank"))
+    XCTAssertNil(bankLabel(nil))
+  }
+
   func testServerAnswersMapToWhatTheMerchantGets() {
     XCTAssertEqual(
       resultFromPay(PayResponse(state: "succeeded", paymentId: "p", transactionId: "VT1", clientSecret: nil)),

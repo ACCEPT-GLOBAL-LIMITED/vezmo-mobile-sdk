@@ -46,6 +46,28 @@ class FlowTest {
     }
 
     @Test
+    fun `Instant ACH only in US dollars, when the business offers it, as the sheet's own row`() {
+        val on = config(enabledMethods = setOf("card", "instantAch"))
+        val dollars = sheetMethods(on, chargeOf(on, false))
+        assertTrue(dollars.instantAch)
+        assertEquals(listOf("card"), dollars.elementTypes)
+        assertTrue(engineIntent(chargeOf(on, false), dollars).instantAch)
+        // Never in the buyer's own currency.
+        assertFalse(sheetMethods(on, chargeOf(on, true)).instantAch)
+        val off = config(enabledMethods = setOf("card"))
+        assertFalse(sheetMethods(off, chargeOf(off, false)).instantAch)
+    }
+
+    @Test
+    fun `the linked bank shows only its last four, never the engine's words`() {
+        assertEquals("•••• 6789", bankLabel("••••6789"))
+        assertEquals("•••• 6789", bankLabel("Success Bank ••••6789 "))
+        assertNull(bankLabel("Link"))
+        assertNull(bankLabel("Bank"))
+        assertNull(bankLabel(null))
+    }
+
+    @Test
     fun `maps the server answers to what the merchant gets`() {
         assertEquals(
             CheckoutResult.Succeeded("p", "VT1"),

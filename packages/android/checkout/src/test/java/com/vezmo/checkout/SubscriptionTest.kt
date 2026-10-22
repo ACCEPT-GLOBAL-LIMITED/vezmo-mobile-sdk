@@ -109,6 +109,22 @@ class SubscriptionTest {
     }
 
     @Test
+    fun `Instant ACH when the business offers it for the plan - set up for a trial, kept for the renewals`() {
+        val trial = CheckoutConfig.fromSubscription(view { put("instantAchEnabled", true) })
+        val trialCharge = chargeOf(trial, false)
+        val setup = engineIntent(trialCharge, sheetMethods(trial, trialCharge), trial)
+        assertTrue(setup.instantAch)
+        assertTrue(setup.setup)
+        val paid = CheckoutConfig.fromSubscription(firstPayment().put("instantAchEnabled", true))
+        val charge = chargeOf(paid, false)
+        val intent = engineIntent(charge, sheetMethods(paid, charge), paid)
+        assertTrue(intent.instantAch)
+        assertTrue(intent.saveForLater)
+        assertFalse(intent.setup)
+        assertFalse(sheetMethods(CheckoutConfig.fromSubscription(view()), trialCharge).instantAch)
+    }
+
+    @Test
     fun `a first payment keeps the card for renewals, a one-time payment does not`() {
         val config = CheckoutConfig.fromSubscription(firstPayment())
         val charge = chargeOf(config, false)

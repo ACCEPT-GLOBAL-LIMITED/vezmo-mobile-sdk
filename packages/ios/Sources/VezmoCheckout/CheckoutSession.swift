@@ -9,15 +9,18 @@ protocol ElementPort: AnyObject {
   func clearSelection()
 }
 
-/// What the card flow can be asked to do: the card form, paying with its card, answering its confirmation.
+/// What the card flow can be asked to do: the card form, the bank step (Instant ACH), paying with what they chose,
+/// answering its confirmation.
 @MainActor
 protocol CardFlowPort: AnyObject {
   func presentCard()
   func confirmCard()
+  func presentBank()
+  func confirmBank()
   func resolveConfirmation(clientSecret: String?, errorMessage: String?)
 }
 
-/// The card from the native card form, for the sheet's own Card row.
+/// The card from the native card form, for the sheet's own Card row (or the bank account linked for Instant ACH).
 struct CardChoice: Equatable {
   /// "•••• 4242".
   var label: String
@@ -44,9 +47,10 @@ enum SessionPhase: Equatable {
   var isClosed: Bool { if case .closed = self { return true } else { return false } }
 }
 
-/// The selected way to pay: the sheet's Card row, one of the element's rows (pay-later), or our UPI or Pix row.
+/// The selected way to pay: the sheet's Card row, one of the element's rows (pay-later), our UPI or Pix row, or our
+/// Instant ACH row.
 enum PayMethod: Equatable {
-  case card, element, upi, pix
+  case card, element, upi, pix, instantAch
 
   var qr: QrMethod? { self == .upi ? .upi : self == .pix ? .pix : nil }
 }
@@ -73,14 +77,19 @@ struct SessionSnapshot: Equatable {
   var method: PayMethod = .element
   /// The card typed in the card form, kept when the buyer looks at another method and comes back.
   var card: CardChoice?
+  /// The bank account linked in the engine's bank step for Instant ACH, kept the same way.
+  var bank: CardChoice?
 }
 
 private let priceChanged = "The price in your currency just changed. Check the new amount and pay again."
 /// The engine isn't set up for this payment (it is loading, or loading again after a currency switch).
 let engineLoading = "The card form is still loading. Try again in a moment."
 let walletLoading = "Apple Pay is still loading. Try again in a moment."
+let bankLoading = "Instant ACH is still loading. Try again in a moment."
 /// The engine failed before Vezmo was asked to take the payment: never its own words.
 let notCompleted = "Your payment couldn’t be completed. Please try again."
+/// What the receipt calls an Instant ACH payment.
+let instantAchName = "Instant ACH"
 
 /// What the token is: an API checkout session's (a one-time payment) or a subscription checkout's (cards and Apple Pay;
 /// a first payment or a free trial).
@@ -109,6 +118,8 @@ final class CheckoutSession: ObservableObject {
   private var qrIntentId: String?
   /// The card form was opened by the buyer: the card it returns becomes the selection.
   private var awaitingCard = false
+  /// The bank step was opened by the buyer: the account it links becomes the selection.
+  private var awaitingBank = false
   /// Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through.
   private var recovered: CheckoutResult?
   /// The buyer asked to close and Vezmo is being asked whether a UPI or Pix payment went through.
@@ -207,10 +218,50 @@ final class CheckoutSession: ObservableObject {
     }
   }
 
-  /// The Pay button can be pressed: a typed card on the Card row, or a method chosen in the element.
+  /// The buyer tapped the Instant ACH row: the bank account already linked, or the bank step to link one.
+  func chooseBank() {
+    guard snapshot.phase.isReady else { return }
+    if snapshot.bank != nil {
+      element?.clearSelection()
+      set {
+        $0.method = .instantAch
+        $0.phase = .ready(error: nil)
+      }
+    } else {
+      changeBank()
+    }
+  }
+
+  /// Change (or first link) the bank account.
+  func changeBank() {
+    guard snapshot.phase.isReady else { return }
+    awaitingBank = true
+    cardFlow?.presentBank()
+  }
+
+  /// The bank step reported its account (or none). One the buyer just linked becomes the selection.
+  func setBank(_ bank: CardChoice?) {
+    let chosen = bank != nil && awaitingBank && snapshot.phase.isReady
+    if bank != nil { awaitingBank = false }
+    if chosen { element?.clearSelection() }
+    set {
+      $0.bank = bank
+      if chosen {
+        $0.method = .instantAch
+        $0.phase = .ready(error: nil)
+      } else if bank == nil && $0.method == .instantAch && $0.phase.isReady {
+        // The bank step went away (the sheet's look changed): pick again.
+        $0.method = .element
+      }
+    }
+  }
+
+  /// The Pay button can be pressed: a typed card on the Card row, a linked bank on the Instant ACH row, or a method
+  /// chosen in the element.
   static func canPay(_ s: SessionSnapshot) -> Bool {
     switch s.method {
     case .card: return s.card != nil
+    case .instantAch: return s.bank != nil
     case .element: return s.canPay
     case .upi, .pix: return false
     }
@@ -240,8 +291,9 @@ final class CheckoutSession: ObservableObject {
     let charge = chargeOf(config, payLocal: payLocal && config.localOffer != nil)
     let methods = sheetMethods(config, charge)
     set {
-      // A panel that this currency doesn't offer falls back to the element.
-      if ($0.method == .upi && !methods.upi) || ($0.method == .pix && !methods.pix) { $0.method = .element }
+      // A method that this currency doesn't offer falls back to the element.
+      if ($0.method == .upi && !methods.upi) || ($0.method == .pix && !methods.pix)
+        || ($0.method == .instantAch && !methods.instantAch) { $0.method = .element }
       $0.config = config
       $0.payLocal = charge.localOffer != nil
       $0.charge = charge
@@ -340,17 +392,23 @@ final class CheckoutSession: ObservableObject {
 
   func pay() {
     guard snapshot.phase.isReady, Self.canPay(snapshot) else { return }
-    let card = snapshot.method == .card
-    guard card ? cardFlow != nil : element != nil else { return }
+    let method = snapshot.method
+    // Cards and Instant ACH are the card flow's; the rest the element's.
+    let viaCard = method == .card || method == .instantAch
+    guard viaCard ? cardFlow != nil : element != nil else { return }
     lastPay = nil
     lastError = nil
     recovered = nil
-    confirmViaCard = card
+    confirmViaCard = viaCard
     set {
       $0.phase = .paying
-      $0.paidWith = card ? $0.card?.label : $0.option
+      $0.paidWith = method == .card ? $0.card?.label : method == .instantAch ? instantAchName : $0.option
     }
-    if card { cardFlow?.confirmCard() } else { element?.confirm() }
+    switch method {
+    case .card: cardFlow?.confirmCard()
+    case .instantAch: cardFlow?.confirmBank()
+    default: element?.confirm()
+    }
   }
 
   /// An express wallet button was tapped (Apple Pay): its payment has started in the card flow.

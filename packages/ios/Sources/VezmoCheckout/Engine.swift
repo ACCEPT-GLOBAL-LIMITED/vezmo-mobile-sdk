@@ -28,13 +28,16 @@ struct EngineSettings: Equatable {
 }
 
 /// What is charged: a change updates the engine in place (the buyer switched currency). Cards go to the native card
-/// form (`card`), the sheet's own Card row; every other method to the element's rows. A subscription saves the card
-/// for its renewals: a setup (a free trial, nothing charged today) or a payment kept for later use.
+/// form (`card`), the sheet's own Card row; Instant ACH to the engine's bank step, our Instant ACH row; every other
+/// method to the element's rows. A subscription saves the card (or the bank account) for its renewals: a setup (a free
+/// trial, nothing charged today) or a payment kept for later use.
 struct EngineIntent: Equatable {
   var amount: Int
   var currency: String
   var paymentMethodTypes: [String]
   var card: Bool
+  /// Instant ACH: the engine's bank step, for our own row.
+  var instantAch = false
   /// A free trial: the card is set up, nothing is charged.
   var setup: Bool
   /// A subscription: the card is kept for the renewals.
@@ -45,6 +48,7 @@ struct EngineIntent: Equatable {
     currency = charge.currency.lowercased()
     paymentMethodTypes = methods.elementTypes.filter { $0 != "card" }
     card = methods.elementTypes.contains("card")
+    instantAch = methods.instantAch
     setup = plan?.trial == true
     saveForLater = plan != nil
   }
@@ -162,7 +166,9 @@ private func confirmStatus(_ result: PaymentSheetResult) -> (ConfirmStatus, Stri
 /// form with `presentCard()`; the express Apple Pay button is the wallet flow's.
 ///
 /// Two flow controllers: one for cards only (its sheet is just the card form, which the Card row opens) and one with
-/// Apple Pay that only draws the express button. Both confirm through the same Vezmo step.
+/// Apple Pay that only draws the express button. Both confirm through the same Vezmo step. A third, for Instant ACH,
+/// offers only the engine's bank step (its sheet goes straight to linking a US bank account, which our Instant ACH row
+/// opens).
 @MainActor
 final class CardFlowHost: ObservableObject, CardFlowPort {
   weak var session: CheckoutSession?
@@ -180,6 +186,17 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
   private var updates = 0
 
   private var flow: PaymentSheet.FlowController?
+  /// Instant ACH's bank step (nil: not offered, or the engine has no bank step for this payment).
+  private var bankFlow: PaymentSheet.FlowController?
+  /// The bank step is set up: the Instant ACH row shows only then.
+  @Published private(set) var bankOn = false
+  /// The bank step finished setting up (or isn't wanted): the sheet holds its placeholders until then.
+  @Published private(set) var bankLoaded = true
+  /// Set up again for a new amount: the engine refuses the bank step meanwhile, so the sheet holds the row and Pay.
+  @Published private(set) var bankUpdating = false
+  private var bankSettings: EngineSettings?
+  private var bankBuilding = false
+  private var bankUpdates = 0
   private var settings: EngineSettings?
   private var intent: EngineIntent?
   private var building = false
@@ -196,6 +213,7 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     } else if intent.card {
       update()
     }
+    syncBank()
   }
 
   /// The sheet is gone: let the engine go.
@@ -204,6 +222,7 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     pendingSecret = nil
     flow = nil
     walletFlow = nil
+    bankFlow = nil
   }
 
   // MARK: Commands
@@ -225,6 +244,24 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     }
   }
 
+  /// Opens the engine's bank step: the buyer links a US bank account (or picks the one linked before).
+  func presentBank() {
+    guard let bankFlow, let presenter, !bankUpdating else { return }
+    bankFlow.presentPaymentOptions(from: presenter) { [weak self] _ in
+      self?.reportBank()
+    }
+  }
+
+  func confirmBank() {
+    guard let bankFlow, let presenter, !bankUpdating else {
+      session?.engineNotReady(bankLoading)
+      return
+    }
+    bankFlow.confirm(from: presenter) { [weak self] result in
+      self?.report(result)
+    }
+  }
+
   func resolveConfirmation(clientSecret: String?, errorMessage: String?) {
     guard let continuation = pendingSecret else { return }
     pendingSecret = nil
@@ -233,6 +270,97 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     } else {
       continuation.resume(throwing: EngineError(message: errorMessage ?? ""))
     }
+  }
+
+  // MARK: Instant ACH
+
+  /// The bank step follows the sheet: built for new settings, updated for a new amount, gone when the payment isn't in
+  /// US dollars (the buyer chose their own currency).
+  private func syncBank() {
+    guard let settings, let intent else { return }
+    if !intent.instantAch {
+      bankUpdates += 1
+      bankFlow = nil
+      bankSettings = nil
+      bankOn = false
+      bankUpdating = false
+      bankLoaded = true
+      reportBank()
+    } else if bankFlow == nil || settings != bankSettings {
+      bankLoaded = false
+      Task { await buildBank() }
+    } else {
+      updateBank(intent)
+    }
+  }
+
+  /// Builds the bank step for the latest settings. One the engine can't offer for this payment (it decides which
+  /// payments its bank step takes) leaves Instant ACH out; the card and the other methods are unaffected.
+  private func buildBank() async {
+    guard !bankBuilding else { return }
+    bankBuilding = true
+    defer { bankBuilding = false }
+    while let settings, let intent {
+      guard intent.instantAch else { return }
+      bankUpdates += 1
+      bankUpdating = false
+      STPAPIClient.shared.publishableKey = settings.publishableKey
+      STPAPIClient.shared.stripeAccount = settings.account
+      var built: PaymentSheet.FlowController?
+      do {
+        built = try await makeFlow(intent, bankConfiguration(settings), types: ["link"])
+      } catch {
+        engineLog.notice("Instant ACH isn't available for this payment: \(String(describing: error), privacy: .public)")
+      }
+      // Kept only when it is still what the sheet wants.
+      if settings == self.settings && intent == self.intent {
+        bankFlow = built
+        bankSettings = settings
+        bankOn = built != nil
+        bankLoaded = true
+        reportBank()
+        return
+      }
+    }
+  }
+
+  private func updateBank(_ intent: EngineIntent) {
+    guard let bankFlow else { return }
+    bankUpdates += 1
+    let mine = bankUpdates
+    bankUpdating = true
+    bankFlow.update(intentConfiguration: intentConfiguration(intent, types: ["link"])) { [weak self] error in
+      guard let self, mine == self.bankUpdates else { return }
+      if let error {
+        // Left out rather than shown for an amount it isn't set up for.
+        engineLog.error("Instant ACH failed to update: \(String(describing: error), privacy: .public)")
+        self.bankFlow = nil
+        self.bankSettings = nil
+        self.bankOn = false
+      }
+      self.bankUpdating = false
+      self.reportBank()
+    }
+  }
+
+  /// The bank step: the engine's bank payments run on its own wallet, which must be on for them; its button is never
+  /// shown (Vezmo is white label: the buyer sees our Instant ACH row and the bank step, nothing else). The buyer's email
+  /// from the session is used as is, so the step asks only for the bank.
+  private func bankConfiguration(_ settings: EngineSettings) -> PaymentSheet.Configuration {
+    var bank = configuration(settings, wallets: false)
+    bank.link = PaymentSheet.LinkConfiguration(display: .walletButtonHidden)
+    bank.willUseWalletButtonsView = true
+    if let email = settings.billingEmail, !email.isEmpty {
+      bank.billingDetailsCollectionConfiguration.email = .never
+      bank.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
+    }
+    return bank
+  }
+
+  /// The bank account the bank step linked, for our Instant ACH row: its last four only.
+  private func reportBank() {
+    let label = bankFlow.flatMap { bankLabel($0.paymentOption?.label) }
+    session?.setBank(label.map { CardChoice(label: $0, image: nil) })
   }
 
   // MARK: Flow
@@ -285,10 +413,14 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     }
   }
 
-  private func makeFlow(_ intent: EngineIntent, _ configuration: PaymentSheet.Configuration) async throws -> PaymentSheet.FlowController {
+  private func makeFlow(
+    _ intent: EngineIntent,
+    _ configuration: PaymentSheet.Configuration,
+    types: [String] = ["card"]
+  ) async throws -> PaymentSheet.FlowController {
     try await withCheckedThrowingContinuation { continuation in
       PaymentSheet.FlowController.create(
-        intentConfiguration: intentConfiguration(intent),
+        intentConfiguration: intentConfiguration(intent, types: types),
         configuration: configuration
       ) { continuation.resume(with: $0) }
     }
@@ -318,8 +450,8 @@ final class CardFlowHost: ObservableObject, CardFlowPort {
     }
   }
 
-  private func intentConfiguration(_ intent: EngineIntent) -> PaymentSheet.IntentConfiguration {
-    intent.configuration(types: ["card"]) { [weak self] tokenId in
+  private func intentConfiguration(_ intent: EngineIntent, types: [String] = ["card"]) -> PaymentSheet.IntentConfiguration {
+    intent.configuration(types: types) { [weak self] tokenId in
       guard let self else { throw EngineError(message: "") }
       return try await self.clientSecret(forToken: tokenId)
     }

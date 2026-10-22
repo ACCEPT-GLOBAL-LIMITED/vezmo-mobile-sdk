@@ -146,6 +146,8 @@ struct SubscriptionView: Decodable, Equatable {
   var manageUrl: String?
   /// See `CheckoutConfig.processingCountry`.
   var processingCountry: String? = nil
+  /// The business offers Instant ACH for this plan (US dollars).
+  var instantAchEnabled: Bool? = nil
 }
 
 /// POST /subscription-checkout/:token/pay: the subscription twin of `PayResponse`.

@@ -26,16 +26,23 @@ internal interface ElementPort {
     fun clearSelection()
 }
 
-/** What the card flow can be asked to do: the card form, paying with its card, answering its confirmation. */
+/**
+ * What the card flow can be asked to do: the card form, the bank step (Instant ACH), paying with what they chose,
+ * answering its confirmation.
+ */
 internal interface CardFlowPort {
     fun presentCard()
 
     fun confirmCard()
 
+    fun presentBank()
+
+    fun confirmBank()
+
     fun resolveConfirmation(clientSecret: String?, errorMessage: String?)
 }
 
-/** The card from the card form, for the sheet's own Card row. */
+/** The card from the card form, for the sheet's own Card row (or the bank account linked for Instant ACH). */
 internal data class CardChoice(
     /** "•••• 4242". */
     val label: String,
@@ -59,8 +66,8 @@ internal sealed interface SessionPhase {
     data class Closed(val result: CheckoutResult) : SessionPhase
 }
 
-/** The selected way to pay: the sheet's Card row, one of the element's rows, or our UPI or Pix row. */
-internal enum class Method { Card, Element, Upi, Pix }
+/** The selected way to pay: the sheet's Card row, one of the element's rows, our UPI or Pix row, or our Instant ACH row. */
+internal enum class Method { Card, Element, Upi, Pix, InstantAch }
 
 internal data class SessionSnapshot(
     val phase: SessionPhase = SessionPhase.Loading,
@@ -84,6 +91,8 @@ internal data class SessionSnapshot(
     val method: Method = Method.Element,
     /** The card typed in the card form, kept when the buyer looks at another method and comes back. */
     val card: CardChoice? = null,
+    /** The bank account linked in the engine's bank step for Instant ACH, kept the same way. */
+    val bank: CardChoice? = null,
 )
 
 private const val PRICE_CHANGED = "The price in your currency just changed. Check the new amount and pay again."
@@ -91,6 +100,10 @@ private const val PRICE_CHANGED = "The price in your currency just changed. Chec
 /** The engine isn't set up for this payment (it is loading, or loading again after a currency switch). */
 internal const val ENGINE_LOADING = "The card form is still loading. Try again in a moment."
 internal const val WALLET_LOADING = "Google Pay is still loading. Try again in a moment."
+internal const val BANK_LOADING = "Instant ACH is still loading. Try again in a moment."
+
+/** What the sheet and the receipt call an Instant ACH payment. */
+internal const val INSTANT_ACH = "Instant ACH"
 
 /**
  * One checkout, from the session's client token (or a subscription checkout's token) to a result. The money decisions
@@ -121,6 +134,9 @@ internal class CheckoutSession(
 
     /** The card form was opened by the buyer: the card it returns becomes the selection. */
     private var awaitingCard = false
+
+    /** The bank step was opened by the buyer: the account it links becomes the selection. */
+    private var awaitingBank = false
 
     /** Vezmo's answer when /pay itself got none (a timeout, a dropped connection) but the payment went through. */
     private var recovered: CheckoutResult? = null
@@ -212,6 +228,39 @@ internal class CheckoutSession(
         }
     }
 
+    /** The buyer tapped the Instant ACH row: the bank account already linked, or the bank step to link one. */
+    fun chooseBank() {
+        if (snapshot.phase !is SessionPhase.Ready) return
+        if (snapshot.bank != null) {
+            element?.clearSelection()
+            set { copy(method = Method.InstantAch, phase = SessionPhase.Ready(null)) }
+        } else {
+            changeBank()
+        }
+    }
+
+    /** Change (or first link) the bank account. */
+    fun changeBank() {
+        if (snapshot.phase !is SessionPhase.Ready) return
+        awaitingBank = true
+        cardFlow?.presentBank()
+    }
+
+    /** The bank step reported its account (or none). One the buyer just linked becomes the selection. */
+    fun setBank(bank: CardChoice?) {
+        val chosen = bank != null && awaitingBank && snapshot.phase is SessionPhase.Ready
+        if (bank != null) awaitingBank = false
+        if (chosen) element?.clearSelection()
+        set {
+            when {
+                chosen -> copy(bank = bank, method = Method.InstantAch, phase = SessionPhase.Ready(null))
+                // The bank step went away (the sheet's look changed): pick again.
+                bank == null && method == Method.InstantAch && phase is SessionPhase.Ready -> copy(bank = null, method = Method.Element)
+                else -> copy(bank = bank)
+            }
+        }
+    }
+
     /** The engine refused (it isn't set up yet): back to the sheet, in our words. */
     fun engineNotReady(message: String = ENGINE_LOADING) {
         if (snapshot.phase is SessionPhase.Ready || snapshot.phase == SessionPhase.Paying) {
@@ -231,10 +280,11 @@ internal class CheckoutSession(
         val charge = chargeOf(config, payLocal && config.localOffer != null)
         val methods = sheetMethods(config, charge)
         set {
-            // A panel that this currency doesn't offer falls back to the element.
+            // A method that this currency doesn't offer falls back to the element.
             val m = when {
                 method == Method.Upi && !methods.upi -> Method.Element
                 method == Method.Pix && !methods.pix -> Method.Element
+                method == Method.InstantAch && !methods.instantAch -> Method.Element
                 else -> method
             }
             copy(config = config, payLocal = charge.localOffer != null, charge = charge, methods = methods, method = m)
@@ -329,14 +379,27 @@ internal class CheckoutSession(
     // ── paying ─────────────────────────────────────────────────────────────
     fun pay() {
         if (snapshot.phase !is SessionPhase.Ready || !canPay(snapshot)) return
-        val card = snapshot.method == Method.Card
-        if (if (card) cardFlow == null else element == null) return
+        val method = snapshot.method
+        // Cards and Instant ACH are the card flow's; the rest the element's.
+        val viaCard = method == Method.Card || method == Method.InstantAch
+        if (if (viaCard) cardFlow == null else element == null) return
         lastPay = null
         lastError = null
         recovered = null
-        confirmViaCard = card
-        set { copy(phase = SessionPhase.Paying, paidWith = if (card) this.card?.label else option) }
-        if (card) cardFlow?.confirmCard() else element?.confirm()
+        confirmViaCard = viaCard
+        set {
+            val label = when (method) {
+                Method.Card -> card?.label
+                Method.InstantAch -> INSTANT_ACH
+                else -> option
+            }
+            copy(phase = SessionPhase.Paying, paidWith = label)
+        }
+        when (method) {
+            Method.Card -> cardFlow?.confirmCard()
+            Method.InstantAch -> cardFlow?.confirmBank()
+            else -> element?.confirm()
+        }
     }
 
     /** An express wallet button was tapped (Google Pay): its payment has started in the card flow. */
@@ -575,10 +638,14 @@ internal class CheckoutSession(
     }
 
     companion object {
-        /** The Pay button can be pressed: a typed card on the Card row, or a method chosen in the element. */
+        /**
+         * The Pay button can be pressed: a typed card on the Card row, a linked bank on the Instant ACH row, or a method
+         * chosen in the element.
+         */
         fun canPay(s: SessionSnapshot): Boolean =
             when (s.method) {
                 Method.Card -> s.card != null
+                Method.InstantAch -> s.bank != null
                 Method.Element -> s.canPay
                 else -> false
             }

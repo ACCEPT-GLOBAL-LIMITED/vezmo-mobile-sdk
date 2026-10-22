@@ -89,6 +89,8 @@ private class FakeElement : ElementPort {
 private class FakeCardFlow : CardFlowPort {
     var presents = 0
     var confirms = 0
+    var bankPresents = 0
+    var bankConfirms = 0
     val resolved = mutableListOf<Pair<String?, String?>>()
 
     override fun presentCard() {
@@ -97,6 +99,14 @@ private class FakeCardFlow : CardFlowPort {
 
     override fun confirmCard() {
         confirms++
+    }
+
+    override fun presentBank() {
+        bankPresents++
+    }
+
+    override fun confirmBank() {
+        bankConfirms++
     }
 
     override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
@@ -322,6 +332,58 @@ class CheckoutSessionTest {
         t.session.pay()
         t.session.setOption(null)
         assertEquals("Cash App", t.snap.paidWith)
+    }
+
+    @Test
+    fun `the Instant ACH row - opens the bank step, the linked account becomes the selection, and pays through it`() = runTest {
+        val t = Setup(this)
+        t.api.checkout = { config(enabledMethods = setOf("card", "klarna", "instantAch")) }
+        t.session.load()
+        // In the buyer's own currency there is no Instant ACH; in dollars there is.
+        assertFalse(t.snap.methods!!.instantAch)
+        t.session.choosePayLocal(false)
+        assertTrue(t.snap.methods!!.instantAch)
+        t.session.chooseBank()
+        assertEquals(1, t.cardFlow.bankPresents)
+        assertFalse(CheckoutSession.canPay(t.snap))
+        // The bank step closed without a bank: nothing chosen.
+        t.session.setBank(null)
+        assertEquals(Method.Element, t.snap.method)
+        val bank = CardChoice("•••• 6789", null)
+        t.session.setBank(bank)
+        assertEquals(Method.InstantAch, t.snap.method)
+        assertEquals(bank, t.snap.bank)
+        assertTrue(t.element.clears > 0)
+        assertTrue(CheckoutSession.canPay(t.snap))
+        t.api.pay = { PayResponse("succeeded", "pay_1", "VT1", "pi_1_secret_b", PaidMethod("instantAch", null, "6789", null)) }
+        t.session.pay()
+        assertEquals(1, t.cardFlow.bankConfirms)
+        assertEquals(0, t.cardFlow.confirms)
+        assertEquals(0, t.element.confirms)
+        assertEquals("Instant ACH", t.snap.paidWith)
+        t.session.onConfirmationToken("ctoken_b")
+        // The card flow holds the bank step, so it answers the confirmation.
+        assertEquals(listOf<Pair<String?, String?>>("pi_1_secret_b" to null), t.cardFlow.resolved)
+        assertEquals("ctoken_b", t.api.payArgs!![1])
+        t.session.onConfirmResult(ConfirmStatus.Completed, "")
+        assertEquals(SessionPhase.Done(CheckoutResult.Succeeded("pay_1", "VT1")), t.snap.phase)
+        assertEquals("instantAch", t.snap.paidMethod?.type)
+        t.session.dispose()
+    }
+
+    @Test
+    fun `Instant ACH leaves when the buyer pays in their own currency`() = runTest {
+        val t = Setup(this)
+        t.api.checkout = { config(enabledMethods = setOf("card", "instantAch")) }
+        t.session.load()
+        t.session.choosePayLocal(false)
+        t.session.chooseBank()
+        t.session.setBank(CardChoice("•••• 6789", null))
+        assertEquals(Method.InstantAch, t.snap.method)
+        t.session.choosePayLocal(true)
+        assertEquals(Method.Element, t.snap.method)
+        assertFalse(CheckoutSession.canPay(t.snap))
+        t.session.dispose()
     }
 
     @Test

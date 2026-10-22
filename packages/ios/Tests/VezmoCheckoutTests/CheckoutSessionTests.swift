@@ -108,9 +108,13 @@ final class FakeElement: ElementPort {
 final class FakeCardFlow: CardFlowPort {
   var presents = 0
   var confirms = 0
+  var bankPresents = 0
+  var bankConfirms = 0
   var resolutions: [[String?]] = []
   func presentCard() { presents += 1 }
   func confirmCard() { confirms += 1 }
+  func presentBank() { bankPresents += 1 }
+  func confirmBank() { bankConfirms += 1 }
   func resolveConfirmation(clientSecret: String?, errorMessage: String?) { resolutions.append([clientSecret, errorMessage]) }
 }
 
@@ -327,6 +331,53 @@ final class CheckoutSessionTests: XCTestCase {
     XCTAssertEqual(cardFlow.confirms, 1)
     XCTAssertEqual(element.confirms, 0)
     XCTAssertEqual(snap.paidWith, "•••• 4242")
+  }
+
+  func testTheInstantACHRowOpensTheBankStepTheLinkedAccountBecomesTheSelectionAndPaysThroughIt() async {
+    await start(makeConfig(enabled: ["card": true, "klarna": true, "instantAch": true], localOffer: rupees))
+    // In the buyer's own currency there is no Instant ACH; in dollars there is.
+    XCTAssertEqual(snap.methods?.instantAch, false)
+    session.choosePayLocal(false)
+    XCTAssertEqual(snap.methods?.instantAch, true)
+    session.chooseBank()
+    XCTAssertEqual(cardFlow.bankPresents, 1)
+    XCTAssertFalse(CheckoutSession.canPay(snap))
+    // The bank step closed without a bank: nothing chosen.
+    session.setBank(nil)
+    XCTAssertNotEqual(snap.method, .instantAch)
+    let bank = CardChoice(label: "•••• 6789", image: nil)
+    session.setBank(bank)
+    XCTAssertEqual(snap.method, .instantAch)
+    XCTAssertEqual(snap.bank, bank)
+    XCTAssertGreaterThan(element.clears, 0)
+    XCTAssertTrue(CheckoutSession.canPay(snap))
+    api.payAnswer = {
+      PayResponse(state: "succeeded", paymentId: "pay_1", transactionId: "VT1", clientSecret: "pi_1_secret_b",
+                  method: PaidMethod(type: "instantAch", brand: nil, last4: "6789", wallet: nil))
+    }
+    session.pay()
+    XCTAssertEqual(cardFlow.bankConfirms, 1)
+    XCTAssertEqual(cardFlow.confirms, 0)
+    XCTAssertEqual(element.confirms, 0)
+    XCTAssertEqual(snap.paidWith, "Instant ACH")
+    await session.onConfirmationToken("ctoken_b")
+    // The card flow holds the bank step, so it answers the confirmation.
+    XCTAssertEqual(cardFlow.resolutions, [["pi_1_secret_b", nil]])
+    XCTAssertEqual(api.payCalls.map(\.confirmationToken), ["ctoken_b"])
+    await session.onConfirmResult(.completed, message: "")
+    XCTAssertEqual(snap.phase, .done(.succeeded(paymentId: "pay_1", transactionId: "VT1", subscription: nil)))
+    XCTAssertEqual(snap.paidMethod?.type, "instantAch")
+  }
+
+  func testInstantACHLeavesWhenTheBuyerPaysInTheirOwnCurrency() async {
+    await start(makeConfig(enabled: ["card": true, "instantAch": true], localOffer: rupees))
+    session.choosePayLocal(false)
+    session.chooseBank()
+    session.setBank(CardChoice(label: "•••• 6789", image: nil))
+    XCTAssertEqual(snap.method, .instantAch)
+    session.choosePayLocal(true)
+    XCTAssertEqual(snap.method, .element)
+    XCTAssertFalse(CheckoutSession.canPay(snap))
   }
 
   func testTheCardFlowAnswersItsOwnConfirmationTheElementItsOwn() async {
