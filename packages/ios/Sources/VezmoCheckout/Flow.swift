@@ -183,10 +183,11 @@ func sheetMethods(_ config: CheckoutConfig, _ charge: Charge) -> SheetMethods {
 }
 
 /// The linked bank account as the Instant ACH row shows it: "•••• 6789". Nil until the engine's bank step has linked
-/// one (its label then ends in the account's last four); the engine's own words are never shown.
+/// one (its label then carries the account's last four, maybe wrapped in direction marks); the engine's own words are
+/// never shown.
 func bankLabel(_ engineLabel: String?) -> String? {
-  let digits = (engineLabel ?? "").trimmingCharacters(in: .whitespaces).reversed().prefix { $0.isNumber }
-  return digits.count >= 4 ? "•••• " + String(digits.prefix(4).reversed()) : nil
+  let runs = (engineLabel ?? "").split { !("0"..."9").contains($0) }.filter { $0.count >= 4 }
+  return runs.last.map { "•••• " + String($0.suffix(4)) }
 }
 
 /// The merchant's result for a /pay answer that needs nothing more from the buyer.

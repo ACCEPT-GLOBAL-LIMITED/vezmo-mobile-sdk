@@ -99,6 +99,8 @@ final class FlowTests: XCTestCase {
   func testTheLinkedBankShowsOnlyItsLastFourNeverTheEnginesWords() {
     XCTAssertEqual(bankLabel("••••6789"), "•••• 6789")
     XCTAssertEqual(bankLabel("Success Bank ••••6789 "), "•••• 6789")
+    // The engine wraps the number in direction marks on some phones.
+    XCTAssertEqual(bankLabel("\u{2022}\u{2022}\u{2022}\u{2022} \u{2066}6789\u{2069}"), "•••• 6789")
     XCTAssertNil(bankLabel("Link"))
     XCTAssertNil(bankLabel("Bank"))
     XCTAssertNil(bankLabel(nil))

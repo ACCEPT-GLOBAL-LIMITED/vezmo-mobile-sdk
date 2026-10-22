@@ -81,6 +81,8 @@ describe('sheetMethods', () => {
   it("the linked bank shows only its last four, never the engine's words", () => {
     expect(bankLabel('••••6789')).toBe('•••• 6789');
     expect(bankLabel('Success Bank ••••6789 ')).toBe('•••• 6789');
+    // The engine wraps the number in direction marks (as on the Android emulator).
+    expect(bankLabel('\u00b7\u00b7\u00b7\u00b7 \u20666789\u2069')).toBe('•••• 6789');
     expect(bankLabel('Link')).toBeNull();
     expect(bankLabel('Bank')).toBeNull();
     expect(bankLabel(undefined)).toBeNull();

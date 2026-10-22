@@ -75,12 +75,11 @@ internal fun sheetMethods(config: CheckoutConfig, charge: Charge): SheetMethods 
 
 /**
  * The linked bank account as the Instant ACH row shows it: "•••• 6789". Null until the engine's bank step has linked
- * one (its label then ends in the account's last four); the engine's own words are never shown.
+ * one (its label then carries the account's last four, maybe wrapped in direction marks); the engine's own words are
+ * never shown.
  */
-internal fun bankLabel(engineLabel: String?): String? {
-    val digits = (engineLabel ?: "").trim().takeLastWhile { it.isDigit() }
-    return if (digits.length >= 4) "•••• ${digits.takeLast(4)}" else null
-}
+internal fun bankLabel(engineLabel: String?): String? =
+    Regex("[0-9]{4,}").findAll(engineLabel ?: "").lastOrNull()?.let { "•••• ${it.value.takeLast(4)}" }
 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */
 internal fun resultFromPay(res: PayResponse): CheckoutResult? =

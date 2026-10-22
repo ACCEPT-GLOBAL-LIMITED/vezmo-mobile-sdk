@@ -62,6 +62,8 @@ class FlowTest {
     fun `the linked bank shows only its last four, never the engine's words`() {
         assertEquals("•••• 6789", bankLabel("••••6789"))
         assertEquals("•••• 6789", bankLabel("Success Bank ••••6789 "))
+        // The engine wraps the number in direction marks (as on the emulator).
+        assertEquals("•••• 6789", bankLabel("\u00b7\u00b7\u00b7\u00b7 \u20666789\u2069"))
         assertNull(bankLabel("Link"))
         assertNull(bankLabel("Bank"))
         assertNull(bankLabel(null))

@@ -229,11 +229,13 @@ export function sheetMethods(config: CheckoutConfig, charge: Charge): SheetMetho
 
 /**
  * The linked bank account as the Instant ACH row shows it: "•••• 6789". Null until the engine's bank step has linked one
- * (its label then ends in the account's last four); the engine's own words are never shown.
+ * (its label then carries the account's last four, maybe wrapped in direction marks); the engine's own words are never
+ * shown.
  */
 export function bankLabel(engineLabel: string | null | undefined): string | null {
-  const m = /(\d{4})\s*$/.exec(engineLabel ?? '');
-  return m ? `•••• ${m[1]}` : null;
+  const runs = (engineLabel ?? '').match(/[0-9]{4,}/g);
+  const last = runs?.[runs.length - 1];
+  return last ? `•••• ${last.slice(-4)}` : null;
 }
 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */
