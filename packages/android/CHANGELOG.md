@@ -5,8 +5,8 @@
 - **Instant ACH**: buyers pay from a US bank account. When the business offers it, the sheet has an Instant ACH row
   (US dollars only, never in the buyer's own currency) that opens a secure bank-connection step; the payment confirms
   at once and the receipt reads "Paid with Instant ACH". Subscriptions save the bank account for the renewals; a free
-  trial sets it up without charging. No new dependency: the bank step is part of the payment engine the library
-  already uses.
+  trial sets it up without charging. The bank step is drawn natively: the library now also brings the payment
+  engine's bank-connection module (pinned to the same engine release).
 
 ## 0.1.0
 

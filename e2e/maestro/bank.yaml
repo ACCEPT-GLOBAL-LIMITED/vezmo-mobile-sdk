@@ -55,14 +55,14 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
             - pressKey: Enter
             - waitForAnimationToEnd:
                 timeout: 10000
-      # A returning buyer signs in with the code sent to their phone: the sandbox's own Autofill, else any six digits.
+      # A returning buyer signs in with the code sent to their phone: the sandbox's own test code, else any six digits.
       - runFlow:
           when:
             visible: "(?i).*(check your texts|verification code|enter the code|sent a code|we sent|confirm it).*"
           commands:
             - takeScreenshot: ${SHOT}-03d-code
             - tapOn:
-                text: "(?i)autofill"
+                text: "(?i)(autofill|use test code)"
                 optional: true
             - waitForAnimationToEnd:
                 timeout: 10000
