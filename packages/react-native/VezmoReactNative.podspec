@@ -32,6 +32,8 @@ Pod::Spec.new do |s|
   }
 
   s.dependency "StripePaymentSheet", payment_engine_version
+  # Instant ACH's bank step, drawn natively (without it the engine falls back to a web page).
+  s.dependency "StripeFinancialConnections", payment_engine_version
 
   install_modules_dependencies(s)
 end

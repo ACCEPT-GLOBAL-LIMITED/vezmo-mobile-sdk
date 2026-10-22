@@ -1,7 +1,9 @@
 # Links the sandbox's "Success" test bank in the bank step that the Instant ACH row opens, and comes back to the sheet
-# with it (SHOT names the screenshots). The bank step is the payment engine's own: its sheet ("Add bank account"), then
-# its bank-connection pages (consent, the buyer's wallet sign-in by email and code, the bank, the account). In the
-# sandbox the code is any six digits and the "Success" bank needs no login. Nothing is paid here: Pay comes after.
+# with it (SHOT names the screenshots). The bank step is the payment engine's own: its sheet, then its bank-connection
+# pages. Which pages come, and in which order, depends on whether the session's buyer email already has the engine's
+# wallet (an earlier run made it): consent, then either a sign-up (a phone number) or a sign-in (a code; any six digits
+# in the sandbox), then the bank or the account saved before. Each page is answered when it shows. Nothing is paid
+# here: Pay comes after.
 appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling flow has open
 ---
 - extendedWaitUntil:
@@ -11,65 +13,60 @@ appId: com.vezmo.example # a shared subflow: it acts on whatever app the calling
     timeout: 5000
 - takeScreenshot: ${SHOT}-02-bank-step
 - tapOn: "(?i)(add bank account|continue)"
+- extendedWaitUntil:
+    visible: "(?i).*(agree and continue|continue with link|phone number|success).*"
+    timeout: 60000
 - waitForAnimationToEnd:
-    timeout: 15000
+    timeout: 5000
 - takeScreenshot: ${SHOT}-03-connect
-# A fresh emulator's browser asks its first-run questions before showing a page.
-- tapOn:
-    text: "(?i)(use without an account|accept & continue|accept and continue)"
-    optional: true
-- tapOn:
-    text: "(?i)(no thanks|no, thanks)"
-    optional: true
-- extendedWaitUntil:
-    visible: "(?i).*(agree and continue|agree|verification code|enter the code|continue with link|success).*"
-    timeout: 60000
-    optional: true
-- takeScreenshot: ${SHOT}-03b-first-page
-- tapOn:
-    text: "(?i)(agree and continue|agree)"
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 10000
-- takeScreenshot: ${SHOT}-03c-after-consent
-# The buyer's email is the session's: an earlier run signed it up, so it asks for the code sent to its phone (any six
-# digits in the sandbox); or this run signs it up with a phone number (a fictional 555 one).
-- extendedWaitUntil:
-    visible: "(?i).*(phone number|code|confirm it|success).*"
-    timeout: 30000
-    optional: true
-- runFlow:
-    when:
-      visible: "(?i)phone number"
+- repeat:
+    times: 8
+    while:
+      notVisible: "(?i).*success.*"
     commands:
-      - inputText: "2015550123"
-      - takeScreenshot: ${SHOT}-03d-sign-up
-      - pressKey: Enter
-      - waitForAnimationToEnd:
-          timeout: 10000
-- runFlow:
-    when:
-      visible: "(?i)phone number"
-    commands:
-      - hideKeyboard
-      - takeScreenshot: ${SHOT}-03d-sign-up-button
-      - tapOn: "(?i)(continue|agree and continue|sign up|join link|save)"
-      - waitForAnimationToEnd:
-          timeout: 10000
-- runFlow:
-    when:
-      visible: "(?i).*(verification code|enter the code|we sent|sent a code|confirm it).*"
-    commands:
-      - takeScreenshot: ${SHOT}-03d-code
-      - inputText: "123456"
-      - waitForAnimationToEnd:
-          timeout: 10000
-- takeScreenshot: ${SHOT}-03e-before-bank
-- extendedWaitUntil:
-    visible: "Success"
-    timeout: 60000
+      # A returning buyer: the wallet offers itself.
+      - runFlow:
+          when:
+            visible: "(?i)continue with link"
+          commands:
+            - takeScreenshot: ${SHOT}-03a-returning
+            - tapOn: "Continue"
+            - waitForAnimationToEnd:
+                timeout: 10000
+      - runFlow:
+          when:
+            visible: "(?i)agree and continue"
+          commands:
+            - takeScreenshot: ${SHOT}-03b-consent
+            - tapOn: "(?i)agree and continue"
+            - waitForAnimationToEnd:
+                timeout: 10000
+      # A new buyer: the wallet's sign-up asks for a phone (a fictional 555 number).
+      - runFlow:
+          when:
+            visible: "(?i)phone number"
+          commands:
+            - eraseText: 20
+            - inputText: "2015550123"
+            - takeScreenshot: ${SHOT}-03c-sign-up
+            - pressKey: Enter
+            - waitForAnimationToEnd:
+                timeout: 10000
+      # A returning buyer signs in with the code sent to their phone.
+      - runFlow:
+          when:
+            visible: "(?i).*(verification code|enter the code|sent a code|we sent|confirm it).*"
+          commands:
+            - takeScreenshot: ${SHOT}-03d-code
+            - inputText: "123456"
+            - waitForAnimationToEnd:
+                timeout: 10000
+      - extendedWaitUntil:
+          visible: "(?i).*(success|agree and continue|continue with link|phone number|code|confirm it).*"
+          timeout: 20000
+          optional: true
 - takeScreenshot: ${SHOT}-04-banks
-- tapOn: "Success"
+- tapOn: "(?i)success.*"
 - waitForAnimationToEnd:
     timeout: 15000
 - takeScreenshot: ${SHOT}-05-accounts
