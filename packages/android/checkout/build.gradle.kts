@@ -53,6 +53,8 @@ dependencies {
     api("androidx.activity:activity-compose:1.10.1")
     // The native payment engine the sheet runs on, pinned exactly (the same release as the React Native package).
     implementation("com.stripe:stripe-android:23.23.0")
+    // Instant ACH's bank step, drawn natively (without it the engine falls back to a web page).
+    implementation("com.stripe:financial-connections:23.23.0")
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

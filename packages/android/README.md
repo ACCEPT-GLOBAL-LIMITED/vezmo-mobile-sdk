@@ -1,7 +1,7 @@
 # Vezmo Checkout for Android
 
 The Vezmo payment sheet for native Android apps (Kotlin, Jetpack Compose or Views). Cards with 3D Secure, Google Pay,
-Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency.
+Instant ACH, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency.
 
 Your server keeps your Vezmo API key. The app only ever receives a session's client token.
 
@@ -180,9 +180,18 @@ classes, rentals, services.
 
 - Your business, what they're paying for and the total, with a choice of their own currency where Vezmo offers one.
 - Google Pay as one tap at the top, when the phone has it.
-- The other ways to pay as one list: **Card** (with the card's own logo once typed), pay-later methods, Cash App, and
-  UPI or Pix for buyers in India or Brazil.
+- The other ways to pay as one list: **Card** (with the card's own logo once typed), **Instant ACH** (a US bank
+  account), pay-later methods, Cash App, and UPI or Pix for buyers in India or Brazil.
 - One Pay button, 3D Secure when the bank asks for it, and a receipt: who was paid, with what, and a reference.
+
+### Instant ACH
+
+When your business offers Instant ACH, the sheet has an **Instant ACH** row for payments in US dollars ($0.50 to
+$7,500). The buyer links their US bank account in a secure bank-connection step, then pays. The payment confirms at
+once, as `Succeeded`, and the receipt reads **Paid with Instant ACH**. A subscription saves the bank account for its
+renewals (a free trial sets it up without charging). It isn't offered when the buyer pays in their own currency.
+
+In the sandbox, choose the **Success** test bank, and enter any six digits when asked for a code.
 
 ## Appearance
 
@@ -243,8 +252,8 @@ gradle :example:installRelease                             # the example app on 
 CI (`.github/workflows/android.yml`) runs the tests, lint and a local Maven publish, then pays end to end on an
 Android emulator with Maestro (`e2e/maestro`): on both business models (Connect and merchant of record), a card with
 3D Secure, a decline, a payment and a subscription in AED, and a subscription's free trial and its first payment; once,
-cancel, a bad token, Cash App on the merchant-of-record business, dark-mode screenshots, and screenshots of the UPI,
-Pix, subscription and result states (`checkout/src/androidTest`).
+cancel, a bad token, Cash App and Instant ACH on the merchant-of-record business, dark-mode screenshots, and screenshots
+of the UPI, Pix, Instant ACH, subscription and result states (`checkout/src/androidTest`).
 
 To release, set `VERSION_NAME` in `gradle.properties` and push a tag `android-v<version>` (first of the four SDKs;
 see [RELEASING.md](https://github.com/ACCEPT-GLOBAL-LIMITED/vezmo-mobile-sdk/blob/main/RELEASING.md)).

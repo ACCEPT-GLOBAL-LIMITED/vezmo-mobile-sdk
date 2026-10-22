@@ -73,6 +73,10 @@ private class CardFlow : CardFlowPort {
         confirms++
     }
 
+    override fun presentBank() = Unit
+
+    override fun confirmBank() = Unit
+
     override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
         resolved += clientSecret to errorMessage
     }
@@ -106,6 +110,22 @@ class SubscriptionTest {
         assertNull(config.connectedAccountId)
         assertEquals("Acme", config.merchantName)
         assertEquals("Ana", config.customerName)
+    }
+
+    @Test
+    fun `Instant ACH when the business offers it for the plan - set up for a trial, kept for the renewals`() {
+        val trial = CheckoutConfig.fromSubscription(view { put("instantAchEnabled", true) })
+        val trialCharge = chargeOf(trial, false)
+        val setup = engineIntent(trialCharge, sheetMethods(trial, trialCharge), trial)
+        assertTrue(setup.instantAch)
+        assertTrue(setup.setup)
+        val paid = CheckoutConfig.fromSubscription(firstPayment().put("instantAchEnabled", true))
+        val charge = chargeOf(paid, false)
+        val intent = engineIntent(charge, sheetMethods(paid, charge), paid)
+        assertTrue(intent.instantAch)
+        assertTrue(intent.saveForLater)
+        assertFalse(intent.setup)
+        assertFalse(sheetMethods(CheckoutConfig.fromSubscription(view()), trialCharge).instantAch)
     }
 
     @Test

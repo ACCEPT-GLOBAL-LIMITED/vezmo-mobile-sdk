@@ -91,8 +91,9 @@ function applePayRecurring(config: CheckoutConfig, charge: Charge, merchant: str
 
 /**
  * What is charged: a change updates it in place (the buyer switched currency). Cards go to the native card form
- * (`card`), the sheet's own Card row; every other method to the element's rows. A subscription saves the card for
- * its renewals: `setup` (a free trial, nothing charged today) or a payment kept for later use.
+ * (`card`), the sheet's own Card row; Instant ACH to the engine's bank step (`instantAch`), our Instant ACH row; every
+ * other method to the element's rows. A subscription saves the card (or the bank account) for its renewals: `setup` (a
+ * free trial, nothing charged today) or a payment kept for later use.
  */
 export function elementIntentJson(charge: Charge, methods: SheetMethods, config?: CheckoutConfig | null): string {
   const plan = config?.subscription;
@@ -101,6 +102,7 @@ export function elementIntentJson(charge: Charge, methods: SheetMethods, config?
     currency: charge.currency.toLowerCase(),
     paymentMethodTypes: methods.elementTypes.filter((t) => t !== 'card'),
     card: methods.elementTypes.includes('card'),
+    instantAch: methods.instantAch,
     mode: plan?.mode === 'setup' ? 'setup' : 'payment',
     setupFutureUsage: plan ? 'off_session' : null,
   });

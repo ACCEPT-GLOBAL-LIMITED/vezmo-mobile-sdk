@@ -135,6 +135,8 @@ export interface SubscriptionView {
   manageUrl: string | null;
   /** See `CheckoutConfig.processingCountry`. */
   processingCountry?: string | null;
+  /** The business offers Instant ACH for this plan (US dollars). */
+  instantAchEnabled?: boolean;
 }
 
 export type MethodKey =
@@ -148,7 +150,8 @@ export type MethodKey =
   | 'afterpayClearpay'
   | 'amazonPay'
   | 'upi'
-  | 'pix';
+  | 'pix'
+  | 'instantAch';
 
 /** POST …/pay — what the server did with the buyer's confirmation token. */
 export type PayResponse = (

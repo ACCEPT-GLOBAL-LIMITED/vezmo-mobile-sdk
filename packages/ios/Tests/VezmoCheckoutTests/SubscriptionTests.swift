@@ -7,7 +7,8 @@ private func view(
   mode: String = "setup",
   amount: Double = 0,
   trialDays: Int? = 7,
-  manageUrl: String? = "https://acme.test/manage/x"
+  manageUrl: String? = "https://acme.test/manage/x",
+  instantAch: Bool? = nil
 ) -> SubscriptionView {
   SubscriptionView(
     subscriptionRef: "SUB-1",
@@ -27,7 +28,8 @@ private func view(
     localOffer: nil,
     livemode: false,
     nextChargeAt: "2026-10-23T12:00:00.000Z",
-    manageUrl: manageUrl
+    manageUrl: manageUrl,
+    instantAchEnabled: instantAch
   )
 }
 
@@ -51,6 +53,21 @@ final class SubscriptionFlowTests: XCTestCase {
     var quarterly = plan
     quarterly.intervalCount = 3
     XCTAssertEqual(planPriceText(quarterly, locale: usd), "$9.99 every 3 months")
+  }
+
+  func testInstantACHWhenTheBusinessOffersItForThePlanSavedForTheRenewalsOrSetUpForATrial() {
+    let trial = configFromSubscription(view(instantAch: true))
+    let trialMethods = sheetMethods(trial, chargeOf(trial, payLocal: false))
+    XCTAssertTrue(trialMethods.instantAch)
+    let setup = EngineIntent(charge: chargeOf(trial, payLocal: false), methods: trialMethods, plan: trial.subscription)
+    XCTAssertTrue(setup.instantAch)
+    XCTAssertTrue(setup.setup)
+    let paid = configFromSubscription(view(mode: "payment", amount: 9.99, trialDays: nil, instantAch: true))
+    let intent = EngineIntent(charge: chargeOf(paid, payLocal: false), methods: sheetMethods(paid, chargeOf(paid, payLocal: false)), plan: paid.subscription)
+    XCTAssertTrue(intent.instantAch)
+    XCTAssertTrue(intent.saveForLater)
+    XCTAssertFalse(intent.setup)
+    XCTAssertFalse(sheetMethods(configFromSubscription(view(instantAch: false)), Charge(amountMinor: 0, currency: "USD", localOffer: nil)).instantAch)
   }
 
   func testAFirstPaymentKeepsTheCardForRenewalsAOneTimePaymentDoesNot() {

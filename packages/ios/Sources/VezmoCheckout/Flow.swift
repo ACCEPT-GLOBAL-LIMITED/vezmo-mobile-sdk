@@ -19,7 +19,8 @@ func chargeOf(_ config: CheckoutConfig, payLocal: Bool) -> Charge {
 
 // MARK: - Subscriptions
 
-/// The subscription checkout as the sheet's config: cards and Apple Pay only, the plan beside the price.
+/// The subscription checkout as the sheet's config: cards, Apple Pay and Instant ACH (when the business offers it for
+/// this plan), the plan beside the price.
 func configFromSubscription(_ v: SubscriptionView) -> CheckoutConfig {
   CheckoutConfig(
     publishableKey: v.publishableKey ?? "",
@@ -29,7 +30,7 @@ func configFromSubscription(_ v: SubscriptionView) -> CheckoutConfig {
     currency: v.currency,
     title: v.planName,
     merchantName: v.merchant?.name,
-    enabledMethods: ["card": true, "applePay": true, "googlePay": true],
+    enabledMethods: ["card": true, "applePay": true, "googlePay": true, "instantAch": v.instantAchEnabled == true],
     customerName: v.customer?.name,
     customerEmail: v.customer?.email,
     theme: nil,
@@ -146,6 +147,8 @@ struct SheetMethods: Equatable {
   /// Our own panels: UPI (INR) and Pix (BRL), only when paying in that currency.
   var upi: Bool
   var pix: Bool
+  /// Our own Instant ACH row (a US bank account through the engine's bank step): US dollars only.
+  var instantAch = false
 }
 
 /// The engine's payment-method types, by our method key, in the sheet's order.
@@ -162,7 +165,7 @@ private let engineTypes: [(key: String, type: String)] = [
 private let usdOnly: Set<String> = ["klarna", "affirm", "afterpayClearpay", "amazonPay", "cashapp", "ach"]
 
 /// The business's enabled methods, by the same rules as the web checkout. Bank debit (ACH) is not offered in the
-/// mobile sheet yet.
+/// mobile sheet; Instant ACH is, in US dollars (never in the buyer's own currency).
 func sheetMethods(_ config: CheckoutConfig, _ charge: Charge) -> SheetMethods {
   let local = charge.localOffer != nil
   let offerMethods = config.localOffer?.methods ?? []
@@ -174,8 +177,17 @@ func sheetMethods(_ config: CheckoutConfig, _ charge: Charge) -> SheetMethods {
     applePay: config.enabled("applePay"),
     googlePay: config.enabled("googlePay"),
     upi: local && charge.currency == "INR" && config.enabled("upi") && offerMethods.contains("upi"),
-    pix: local && charge.currency == "BRL" && config.enabled("pix") && offerMethods.contains("pix")
+    pix: local && charge.currency == "BRL" && config.enabled("pix") && offerMethods.contains("pix"),
+    instantAch: !local && charge.currency == "USD" && config.enabled("instantAch")
   )
+}
+
+/// The linked bank account as the Instant ACH row shows it: "•••• 6789". Nil until the engine's bank step has linked
+/// one (its label then carries the account's last four, maybe wrapped in direction marks); the engine's own words are
+/// never shown.
+func bankLabel(_ engineLabel: String?) -> String? {
+  let runs = (engineLabel ?? "").split { !("0"..."9").contains($0) }.filter { $0.count >= 4 }
+  return runs.last.map { "•••• " + String($0.suffix(4)) }
 }
 
 /// The merchant's result for a /pay answer that needs nothing more from the buyer.

@@ -33,7 +33,13 @@ function setup() {
     checkoutPageUrl: jest.fn((t: string) => `https://api.test/v1/secure-payments/${t}`),
   };
   const element = { confirm: jest.fn(), resolveConfirmation: jest.fn(), clearSelection: jest.fn() };
-  const cardFlow = { presentCard: jest.fn(), confirmCard: jest.fn(), resolveConfirmation: jest.fn() };
+  const cardFlow = {
+    presentCard: jest.fn(),
+    confirmCard: jest.fn(),
+    presentBank: jest.fn(),
+    confirmBank: jest.fn(),
+    resolveConfirmation: jest.fn(),
+  };
   const session = new CheckoutSession(api as any, 'tok', 'acme://vezmo/return');
   session.attachElement(element);
   session.attachCardFlow(cardFlow);
@@ -221,6 +227,83 @@ describe('CheckoutSession', () => {
     expect(t.cardFlow.confirmCard).toHaveBeenCalled();
     expect(t.element.confirm).not.toHaveBeenCalled();
     expect(t.session.getSnapshot().paidWith).toBe('•••• 4242');
+  });
+
+  it('the Instant ACH row: opens the bank step, the linked account becomes the selection, and pays through it', async () => {
+    const rupees = {
+      currency: 'INR',
+      amount: 4200,
+      amountMinor: 420000,
+      price: 49,
+      rate: 85.7,
+      markupPercent: 2,
+      usdPerUnit: 0.0117,
+      expiresAt: '2026-10-16T00:00:00Z',
+      country: 'IN',
+      token: 'offer',
+    };
+    t.api.checkout.mockResolvedValue({ ...config, enabledMethods: { card: true, klarna: true, instantAch: true }, localOffer: rupees });
+    await t.session.load();
+    // In the buyer's own currency there is no Instant ACH; in dollars there is.
+    expect(t.session.getSnapshot().methods?.instantAch).toBe(false);
+    t.session.choosePayLocal(false);
+    expect(t.session.getSnapshot().methods?.instantAch).toBe(true);
+    t.session.chooseBank();
+    expect(t.cardFlow.presentBank).toHaveBeenCalled();
+    expect(CheckoutSession.canPay(t.session.getSnapshot())).toBe(false);
+    // The bank step closed without a bank: nothing chosen.
+    t.session.setBank(null);
+    expect(t.session.getSnapshot().method).not.toBe('instantAch');
+    const bank = { label: '•••• 6789', image: null };
+    t.session.setBank(bank);
+    expect(t.session.getSnapshot()).toMatchObject({ method: 'instantAch', bank });
+    expect(t.element.clearSelection).toHaveBeenCalled();
+    t.api.pay.mockResolvedValue({
+      state: 'succeeded',
+      paymentId: 'pay_1',
+      transactionId: 'VT1',
+      clientSecret: 'pi_1_secret_b',
+      method: { type: 'instantAch', brand: null, last4: '6789', wallet: null },
+    });
+    t.session.pay();
+    expect(t.cardFlow.confirmBank).toHaveBeenCalled();
+    expect(t.cardFlow.confirmCard).not.toHaveBeenCalled();
+    expect(t.element.confirm).not.toHaveBeenCalled();
+    expect(t.session.getSnapshot().paidWith).toBe('Instant ACH');
+    await t.session.onConfirmationToken('ctoken_b');
+    // The card flow holds the bank step, so it answers the confirmation.
+    expect(t.cardFlow.resolveConfirmation).toHaveBeenCalledWith('pi_1_secret_b', undefined);
+    expect(t.api.pay).toHaveBeenCalledWith('tok', expect.objectContaining({ confirmationToken: 'ctoken_b' }));
+    await t.session.onConfirmResult('completed', '');
+    expect(t.session.getSnapshot().phase).toEqual({
+      name: 'done',
+      result: { status: 'succeeded', paymentId: 'pay_1', transactionId: 'VT1' },
+    });
+    expect(t.session.getSnapshot().paidMethod?.type).toBe('instantAch');
+  });
+
+  it('Instant ACH leaves when the buyer pays in their own currency', async () => {
+    const rupees = {
+      currency: 'INR',
+      amount: 4200,
+      amountMinor: 420000,
+      price: 49,
+      rate: 85.7,
+      markupPercent: 2,
+      usdPerUnit: 0.0117,
+      expiresAt: '2026-10-16T00:00:00Z',
+      country: 'IN',
+      token: 'offer',
+    };
+    t.api.checkout.mockResolvedValue({ ...config, enabledMethods: { card: true, instantAch: true }, localOffer: rupees });
+    await t.session.load();
+    t.session.choosePayLocal(false);
+    t.session.chooseBank();
+    t.session.setBank({ label: '•••• 6789', image: null });
+    expect(t.session.getSnapshot().method).toBe('instantAch');
+    t.session.choosePayLocal(true);
+    expect(t.session.getSnapshot().method).toBe('element');
+    expect(CheckoutSession.canPay(t.session.getSnapshot())).toBe(false);
   });
 
   it('the card flow answers its own confirmation (card form or wallet), the element its own', async () => {

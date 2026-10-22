@@ -11,6 +11,9 @@ internal const val DEFAULT_ERROR = "Your payment couldn’t be completed. Please
 /** The card form couldn't open: the engine isn't set up yet. */
 internal const val CARD_LOADING = "The card form is still loading. Try again in a moment."
 
+/** Instant ACH's bank step isn't set up yet. */
+internal const val BANK_LOADING = "Instant ACH is still loading. Try again in a moment."
+
 internal fun parseJson(json: String): JSONObject? =
   if (json.isEmpty()) {
     null

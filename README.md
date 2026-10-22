@@ -12,8 +12,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Take payments in your iPhone and Android apps with Vezmo, in a native payment sheet: cards with 3D Secure, Apple Pay,
-Google Pay, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency. Start
-subscriptions too, with a free trial or a first payment, and the card saved for the renewals.
+Google Pay, Instant ACH, Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI and Pix, in the buyer's own currency.
+Start subscriptions too, with a free trial or a first payment, and the card or bank account saved for the renewals.
 
 ![The Vezmo payment sheet: card and Apple Pay on iPhone, pay later and Cash App on Android, a $9.99 monthly subscription, dark mode, and the receipt](docs/images/sheet-hero.jpg)
 
@@ -46,9 +46,9 @@ iPhone that is where you register the return link (for example `acme://vezmo`) t
 
 ## What the sheet does
 
-- **Payment methods**: cards with 3D Secure and card scanning, Apple Pay, Google Pay, Klarna, Affirm, Afterpay,
-  Amazon Pay, Cash App, UPI (India) and Pix (Brazil). The sheet shows the methods your business offers that work for
-  the buyer.
+- **Payment methods**: cards with 3D Secure and card scanning, Apple Pay, Google Pay, Instant ACH (a US bank account,
+  in US dollars), Klarna, Affirm, Afterpay, Amazon Pay, Cash App, UPI (India) and Pix (Brazil). The sheet shows the
+  methods your business offers that work for the buyer.
 - **The buyer's own currency**: the buyer can choose to see and pay the total in their own currency, where Vezmo
   offers one.
 - **Subscriptions**: a free trial (the card is saved, nothing is charged today) or a first payment, with the renewals
@@ -112,7 +112,8 @@ Create sessions with your sandbox API key, then pay with:
 | `4000 0000 0000 0002` | Declined. |
 
 Any future expiry date and any CVC. In the sandbox, Apple Pay and Google Pay use the cards in the phone's wallet
-without charging them.
+without charging them. For Instant ACH, choose the **Success** test bank, and enter any six digits when asked for a
+code.
 
 Each package has an example app (a small shop called Northwind Audio) that pays against Vezmo's sandbox:
 
@@ -137,8 +138,8 @@ Package.swift     Swift Package Manager manifest for the iOS SDK (at the root so
 
 CI runs each package's tests on its pull requests and on `main`, and pays end to end from the example apps on an
 Android emulator and an iPhone simulator with [Maestro](https://maestro.dev): cards with 3D Secure, a decline, cancel,
-a bad token, both business models, a Cash App redirect back into the app, subscriptions with and without a free
-trial, and dark mode. [CONTRIBUTING.md](CONTRIBUTING.md#ci) lists what each workflow covers.
+a bad token, both business models, a Cash App redirect back into the app, Instant ACH, subscriptions with and without a
+free trial, and dark mode. [CONTRIBUTING.md](CONTRIBUTING.md#ci) lists what each workflow covers.
 
 ## Versions
 

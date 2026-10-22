@@ -272,7 +272,10 @@ internal data class CheckoutConfig(
     val processingCountry: String? = null,
 ) {
     companion object {
-        /** A subscription checkout as the sheet's config: cards and Google Pay only, the plan beside the price. */
+        /**
+         * A subscription checkout as the sheet's config: cards, Google Pay and Instant ACH (when the business offers it
+         * for this plan), the plan beside the price.
+         */
         fun fromSubscription(v: JSONObject): CheckoutConfig {
             val currency = v.str("currency") ?: "USD"
             val planName = v.str("planName") ?: ""
@@ -285,7 +288,7 @@ internal data class CheckoutConfig(
                 currency = currency,
                 title = planName,
                 merchantName = v.optJSONObject("merchant")?.str("name"),
-                enabledMethods = setOf("card", "googlePay"),
+                enabledMethods = if (v.optBoolean("instantAchEnabled")) setOf("card", "googlePay", "instantAch") else setOf("card", "googlePay"),
                 customerName = customer?.str("name"),
                 customerEmail = customer?.str("email"),
                 theme = null,

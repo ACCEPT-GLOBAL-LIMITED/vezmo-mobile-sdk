@@ -44,10 +44,12 @@ class SheetStatesTest {
         val qr: QrPayment = QrPayment("requires_action", null, null, null, null),
         val startError: VezmoApiError? = null,
         var status: SessionStatus = SessionStatus("requires_action", "pay_1", null),
+        val payAnswer: PayResponse? = null,
     ) : CheckoutApi {
         override suspend fun checkout(token: String, currency: String?) = config()
 
-        override suspend fun pay(token: String, confirmationToken: String, localOffer: String?, returnUrl: String?): PayResponse = error("not used")
+        override suspend fun pay(token: String, confirmationToken: String, localOffer: String?, returnUrl: String?): PayResponse =
+            payAnswer ?: error("not used")
 
         override suspend fun intent(token: String, localOffer: String?) = SessionIntent("pi_7", "pi_7_secret_q", null, false)
 
@@ -289,6 +291,40 @@ class SheetStatesTest {
         }
         rule.onNodeWithText("Subscription received").assertExists()
         shoot("subscription-received")
+    }
+
+    /** Instant ACH in the list, before a bank is linked (the bank step itself is the engine's). */
+    @Test
+    fun instantAch() {
+        open(FakeApi({ config(methods = setOf("card", "instantAch", "klarna")) }))
+        rule.onNodeWithText("Instant ACH").assertIsDisplayed()
+        rule.onNodeWithText("US bank account").assertIsDisplayed()
+        shoot("instant-ach")
+    }
+
+    @Test
+    fun instantAchDark() {
+        open(FakeApi({ config(methods = setOf("card", "instantAch")) }), dark = true)
+        shoot("instant-ach-dark")
+    }
+
+    /** The largest font size: the row's title and line stay on one line each. */
+    @Test
+    fun instantAchLargeText() {
+        open(FakeApi({ config(methods = setOf("card", "instantAch")) }), fontScale = 2f)
+        shoot("instant-ach-large-text")
+    }
+
+    @Test
+    fun instantAchReceipt() {
+        val paid = PayResponse("succeeded", "pay_1", "VT92TDOA", "pi_1_secret_b", PaidMethod("instantAch", null, "6789", null))
+        open(FakeApi({ config(methods = setOf("card", "instantAch")) }, payAnswer = paid)) {
+            load()
+            onConfirmationToken("ctoken_b")
+            onConfirmResult(ConfirmStatus.Completed, "")
+        }
+        rule.onNodeWithText("Instant ACH").assertIsDisplayed()
+        shoot("result-instant-ach")
     }
 
     @Test

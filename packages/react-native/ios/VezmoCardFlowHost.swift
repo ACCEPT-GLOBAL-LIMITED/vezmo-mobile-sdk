@@ -11,7 +11,9 @@ import UIKit
 /// (with the card network's logo) and opens the card form with `presentCard()`.
 ///
 /// Two flow controllers: one for cards only (its sheet is just the card form, which the Card row opens) and one with
-/// Apple Pay that only draws the express button. Both confirm through the same Vezmo step.
+/// Apple Pay that only draws the express button. Both confirm through the same Vezmo step. A third, for Instant ACH,
+/// offers only the engine's bank step (its sheet goes straight to linking a US bank account, which the sheet's Instant
+/// ACH row opens with `presentBank()`).
 @objc(VezmoCardFlowHost)
 public final class VezmoCardFlowHost: UIView {
   /// (event name, body) to the component view, which turns it into a React event.
@@ -19,6 +21,14 @@ public final class VezmoCardFlowHost: UIView {
 
   private var flow: PaymentSheet.FlowController?
   private var walletFlow: PaymentSheet.FlowController?
+  /// Instant ACH's bank step (nil: not offered, or the engine has no bank step for this payment).
+  private var bankFlow: PaymentSheet.FlowController?
+  /// The settings the bank step was built with.
+  private var bankConfig = ""
+  private var bankBuilding = false
+  /// Set up again for a new amount: the engine refuses the bank step meanwhile.
+  private var bankUpdating = false
+  private var bankUpdates = 0
   /// The wallet flow is updating for a new amount: an Apple Pay tap now would fail before Vezmo is asked.
   private var walletUpdating = false
   private var walletUpdates = 0
@@ -53,6 +63,7 @@ public final class VezmoCardFlowHost: UIView {
     configJson = config
     intentJson = intent
     Task { @MainActor in
+      self.syncBank()
       if rebuild { await self.build() } else { self.update() }
     }
   }
@@ -72,6 +83,24 @@ public final class VezmoCardFlowHost: UIView {
 
   @objc public func confirmCard() {
     whenReady { [weak self] in self?.confirmCardNow() }
+  }
+
+  /// Opens the engine's bank step: the buyer links a US bank account (or picks the one linked before).
+  @objc public func presentBank() {
+    guard let bankFlow, !bankUpdating, let presenter = RCTPresentedViewController() else { return }
+    bankFlow.presentPaymentOptions(from: presenter) { [weak self] _ in
+      self?.emitBank()
+    }
+  }
+
+  @objc public func confirmBank() {
+    guard let bankFlow, !bankUpdating, let presenter = RCTPresentedViewController() else {
+      emit("confirmResult", ["status": "failed", "message": "Instant ACH is still loading. Try again in a moment."])
+      return
+    }
+    bankFlow.confirm(from: presenter) { [weak self] result in
+      self?.emitResult(result)
+    }
   }
 
   /// Runs `command` now, or once the card flow's update in flight ends.
@@ -178,13 +207,111 @@ public final class VezmoCardFlowHost: UIView {
   }
 
   @MainActor
-  private func makeFlow(intent: [String: Any], configuration: PaymentSheet.Configuration) async throws -> PaymentSheet.FlowController {
+  private func makeFlow(
+    intent: [String: Any],
+    configuration: PaymentSheet.Configuration,
+    types: [String] = ["card"]
+  ) async throws -> PaymentSheet.FlowController {
     try await withCheckedThrowingContinuation { continuation in
       PaymentSheet.FlowController.create(
-        intentConfiguration: intentConfiguration(from: intent),
+        intentConfiguration: intentConfiguration(from: intent, types: types),
         configuration: configuration
       ) { continuation.resume(with: $0) }
     }
+  }
+
+  // MARK: Instant ACH
+
+  /// The bank step follows the props: built for new settings, updated for a new amount, gone when the payment isn't in
+  /// US dollars (the buyer chose their own currency).
+  @MainActor
+  private func syncBank() {
+    guard let intent = VezmoMethodsHost.parse(intentJson) else { return }
+    if intent["instantAch"] as? Bool != true {
+      bankUpdates += 1
+      bankFlow = nil
+      bankConfig = ""
+      bankUpdating = false
+      emitBank()
+    } else if bankFlow == nil || bankConfig != configJson {
+      Task { await buildBank() }
+    } else {
+      updateBank(intent)
+    }
+  }
+
+  /// Builds the bank step for the latest props. One the engine can't offer for this payment (it decides which payments
+  /// its bank step takes) leaves Instant ACH out; the card and the other methods are unaffected.
+  @MainActor
+  private func buildBank() async {
+    guard !bankBuilding else { return }
+    bankBuilding = true
+    defer { bankBuilding = false }
+    while true {
+      let built = (configJson, intentJson)
+      guard let config = VezmoMethodsHost.parse(configJson), let intent = VezmoMethodsHost.parse(intentJson),
+            intent["instantAch"] as? Bool == true,
+            let publishableKey = config["publishableKey"] as? String, !publishableKey.isEmpty else {
+        // Whatever the sheet waits for is answered: no bank step.
+        bankFlow = nil
+        emitBank()
+        return
+      }
+      bankUpdates += 1
+      bankUpdating = false
+      STPAPIClient.shared.publishableKey = publishableKey
+      STPAPIClient.shared.stripeAccount = config["stripeAccount"] as? String
+      var made: PaymentSheet.FlowController?
+      do {
+        made = try await makeFlow(intent: intent, configuration: bankConfiguration(from: config), types: ["link"])
+      } catch {
+        NSLog("[Vezmo] Instant ACH isn't available for this payment: %@", String(describing: error))
+      }
+      // Kept only when it is still what the sheet wants.
+      if built == (configJson, intentJson) {
+        bankFlow = made
+        bankConfig = configJson
+        emitBank()
+        return
+      }
+    }
+  }
+
+  @MainActor
+  private func updateBank(_ intent: [String: Any]) {
+    guard let bankFlow else { return }
+    bankUpdates += 1
+    let mine = bankUpdates
+    bankUpdating = true
+    bankFlow.update(intentConfiguration: intentConfiguration(from: intent, types: ["link"])) { [weak self] error in
+      guard let self, mine == self.bankUpdates else { return }
+      if error != nil {
+        // Left out rather than shown for an amount it isn't set up for.
+        self.bankFlow = nil
+        self.bankConfig = ""
+      }
+      self.bankUpdating = false
+      self.emitBank()
+    }
+  }
+
+  /// The bank step: the engine's bank payments run on its own wallet, which must be on for them; its button is never
+  /// shown (Vezmo is white label: the buyer sees the Instant ACH row and the bank step, nothing else). The buyer's email
+  /// from the session is used as is, so the step asks only for the bank.
+  private func bankConfiguration(from config: [String: Any]) -> PaymentSheet.Configuration {
+    var bank = sheetConfiguration(from: config, wallets: false)
+    bank.link = PaymentSheet.LinkConfiguration(display: .walletButtonHidden)
+    bank.willUseWalletButtonsView = true
+    if let email = (config["billing"] as? [String: Any])?["email"] as? String, !email.isEmpty {
+      bank.billingDetailsCollectionConfiguration.email = .never
+      bank.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
+    }
+    return bank
+  }
+
+  /// Whether the bank step is set up, and the account it linked in the engine's words (the sheet shows its last four).
+  private func emitBank() {
+    emit("bankChange", ["available": bankFlow != nil, "label": bankFlow?.paymentOption?.label ?? ""])
   }
 
   @MainActor
@@ -213,8 +340,8 @@ public final class VezmoCardFlowHost: UIView {
     }
   }
 
-  private func intentConfiguration(from intent: [String: Any]) -> PaymentSheet.IntentConfiguration {
-    VezmoMethodsHost.intentConfiguration(from: intent, types: ["card"]) { [weak self] tokenId in
+  private func intentConfiguration(from intent: [String: Any], types: [String] = ["card"]) -> PaymentSheet.IntentConfiguration {
+    VezmoMethodsHost.intentConfiguration(from: intent, types: types) { [weak self] tokenId in
       guard let self else { throw VezmoElementError(message: "") }
       return try await self.clientSecret(forToken: tokenId)
     }

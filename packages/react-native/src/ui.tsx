@@ -396,8 +396,38 @@ function CardGlyph({ color }: { color: string }) {
 }
 
 /**
+ * A bank, drawn: a pediment over three columns on a base. Instant ACH's icon, on its row and the receipt (22 × 16, as the
+ * plain card).
+ */
+export function BankGlyph({ color, scale = 1 }: { color: string; scale?: number }) {
+  // Each roof side: 10.6 long, 29.5° from level, centred between the apex (11, 1) and its corner.
+  const side = { position: 'absolute' as const, width: 11.2, height: 1.6, borderRadius: 0.8, backgroundColor: color, top: 2.8 };
+  return (
+    <View style={{ width: 22, height: 16, transform: [{ scale }] }} accessible={false}>
+      <View style={[side, { left: 0.8, transform: [{ rotate: '-29.5deg' }] }]} />
+      <View style={[side, { left: 10, transform: [{ rotate: '29.5deg' }] }]} />
+      <View style={{ position: 'absolute', left: 1.4, top: 5.4, width: 19.2, height: 1.6, borderRadius: 0.8, backgroundColor: color }} />
+      {[4.2, 10, 15.8].map((left) => (
+        <View key={left} style={{ position: 'absolute', left, top: 7.6, width: 2, height: 5.6, borderRadius: 0.5, backgroundColor: color }} />
+      ))}
+      <View style={{ position: 'absolute', left: 1, top: 14.2, width: 20, height: 1.8, borderRadius: 0.8, backgroundColor: color }} />
+    </View>
+  );
+}
+
+/** Instant ACH's bank on a tile, beside "Instant ACH" on the receipt (as a card network's mark sits beside its card). */
+export function BankTile({ s, p }: { s: Styles; p: SheetPalette }) {
+  return (
+    <View style={[s.tile, { backgroundColor: p.field }]} accessible={false}>
+      <BankGlyph color={p.ink} scale={0.8} />
+    </View>
+  );
+}
+
+/**
  * The Card row, drawn by the sheet (the native element would show a plain card for any card): the network's own logo
- * once a card is typed, its last four, and Change. Tapping opens the native card form.
+ * once a card is typed, its last four, and Change. Tapping opens the native card form. The Instant ACH row is the same
+ * row with a bank (`bank`): the linked account's last four, and Change to link another.
  */
 export function CardRow(props: {
   card: { label: string; image: string | null } | null;
@@ -407,20 +437,27 @@ export function CardRow(props: {
   onChange(): void;
   s: Styles;
   p: SheetPalette;
+  bank?: boolean;
+  /** A hairline above (not the group's first row). */
+  line?: boolean;
 }) {
-  const { s, p, card } = props;
+  const { s, p, card, bank } = props;
+  const title = bank ? 'Instant ACH' : 'Card';
+  // Before a bank is linked, what Instant ACH is.
+  const sub = card?.label ?? (bank ? 'US bank account' : null);
+  const change = bank ? 'Change bank account' : 'Change card';
   return (
     <Pressable
-      testID="vezmo-card-row"
+      testID={bank ? 'vezmo-instant-ach-row' : 'vezmo-card-row'}
       accessibilityRole="radio"
-      accessibilityLabel={card ? `Card ${card.label}` : 'Card'}
+      accessibilityLabel={card ? `${title} ${card.label}` : title}
       accessibilityState={{ checked: props.selected, disabled: props.disabled }}
       // The row reads as one element, so its Change button is offered as an action (VoiceOver, TalkBack).
-      accessibilityActions={props.selected && card ? [{ name: 'change', label: 'Change card' }] : undefined}
+      accessibilityActions={props.selected && card ? [{ name: 'change', label: change }] : undefined}
       onAccessibilityAction={(e) => e.nativeEvent.actionName === 'change' && !props.disabled && props.onChange()}
       disabled={props.disabled}
       onPress={props.onPress}
-      style={[s.row, s.ownRow]}
+      style={[s.row, s.ownRow, props.line && s.rowLine]}
     >
       {card?.image ? (
         <View style={s.rowIcon}>
@@ -428,15 +465,21 @@ export function CardRow(props: {
         </View>
       ) : (
         <View style={[s.rowIcon, { borderWidth: 0, backgroundColor: 'transparent' }]}>
-          <CardGlyph color={p.ink} />
+          {bank ? <BankGlyph color={p.ink} /> : <CardGlyph color={p.ink} />}
         </View>
       )}
       <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle}>Card</Text>
-        {!!card && <Text style={s.rowSub}>{card.label}</Text>}
+        <Text style={s.rowTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        {!!sub && (
+          <Text style={s.rowSub} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
       </View>
       {props.selected && card && (
-        <Pressable accessibilityRole="button" accessibilityLabel="Change card" onPress={props.onChange} hitSlop={10} disabled={props.disabled}>
+        <Pressable accessibilityRole="button" accessibilityLabel={change} onPress={props.onChange} hitSlop={10} disabled={props.disabled}>
           <Text style={[s.link, { fontSize: 14, fontWeight: '500' }]}>Change</Text>
         </Pressable>
       )}

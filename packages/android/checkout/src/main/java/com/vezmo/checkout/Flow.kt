@@ -47,11 +47,13 @@ internal data class SheetMethods(
     /** Our own panels: UPI (INR) and Pix (BRL), only when paying in that currency. */
     val upi: Boolean,
     val pix: Boolean,
+    /** Our own Instant ACH row (a US bank account through the engine's bank step): US dollars only. */
+    val instantAch: Boolean = false,
 )
 
 /**
  * The ways to pay the sheet offers, from the business's enabled methods: the same rules as the web checkout. Bank
- * debit (ACH) is not offered in the mobile sheet yet.
+ * debit (ACH) is not offered in the mobile sheet; Instant ACH is, in US dollars (never in the buyer's own currency).
  */
 internal fun sheetMethods(config: CheckoutConfig, charge: Charge): SheetMethods {
     val on = config.enabledMethods
@@ -67,8 +69,17 @@ internal fun sheetMethods(config: CheckoutConfig, charge: Charge): SheetMethods 
         googlePay = "googlePay" in on,
         upi = local && charge.currency == "INR" && "upi" in on && "upi" in offerMethods,
         pix = local && charge.currency == "BRL" && "pix" in on && "pix" in offerMethods,
+        instantAch = !local && charge.currency == "USD" && "instantAch" in on,
     )
 }
+
+/**
+ * The linked bank account as the Instant ACH row shows it: "•••• 6789". Null until the engine's bank step has linked
+ * one (its label then carries the account's last four, maybe wrapped in direction marks); the engine's own words are
+ * never shown.
+ */
+internal fun bankLabel(engineLabel: String?): String? =
+    Regex("[0-9]{4,}").findAll(engineLabel ?: "").lastOrNull()?.let { "•••• ${it.value.takeLast(4)}" }
 
 /** The merchant's result for a /pay answer that needs nothing more from the buyer. */
 internal fun resultFromPay(res: PayResponse): CheckoutResult? =

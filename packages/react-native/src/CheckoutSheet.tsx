@@ -12,9 +12,9 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { CheckoutSession } from './CheckoutSession';
+import { CheckoutSession, INSTANT_ACH } from './CheckoutSession';
 import { elementConfigJson, elementIntentJson, type WalletOptions } from './elementConfig';
-import { dateText, formatAmount, planPriceText } from './flow';
+import { bankLabel, dateText, formatAmount, planPriceText } from './flow';
 import { CardFlow, type CardFlowHandle } from './CardFlow';
 import { MethodsView, type MethodsViewHandle } from './MethodsView';
 import { QrForm, QrWaiting, type QrFormHandle } from './QrPanels';
@@ -22,6 +22,7 @@ import { DEFAULT_RADIUS, paletteFor, type SheetPalette, type VezmoAppearance } f
 import { markForBrand } from './marks';
 import type { CheckoutResult, PaidMethod, SubscriptionPlan } from './types';
 import {
+  BankTile,
   Banner,
   BrandTile,
   CardRow,
@@ -92,6 +93,8 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
     session.attachCardFlow({
       presentCard: () => cardFlow.current?.presentCard(),
       confirmCard: () => cardFlow.current?.confirmCard(),
+      presentBank: () => cardFlow.current?.presentBank(),
+      confirmBank: () => cardFlow.current?.confirmBank(),
       resolveConfirmation: (secret, message) => cardFlow.current?.resolveConfirmation(secret, message),
     });
     // Back from a bank app, a pay-later provider or 3D Secure in the browser: the payment waiting on the app's
@@ -137,7 +140,12 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   // The native views take a moment to load: placeholder rows hold their place until both report in.
   const [loadedConfig, setLoadedConfig] = useState('');
   const [loadedCardConfig, setLoadedCardConfig] = useState('');
-  const elementLoading = (loadedConfig !== configJson || loadedCardConfig !== cardConfigJson) && !snap.elementError;
+  // Instant ACH's bank step: whether it is set up for this payment, and for which settings it last reported.
+  const bankKey = methods?.instantAch ? cardConfigJson : '';
+  const [bankState, setBankState] = useState({ key: '', available: false });
+  const elementLoading =
+    (loadedConfig !== configJson || loadedCardConfig !== cardConfigJson || (!!bankKey && bankState.key !== bankKey)) &&
+    !snap.elementError;
   const [walletsHeight, setWalletsHeight] = useState(0);
 
   const close = (result: CheckoutResult) => props.onClose(result);
@@ -171,8 +179,10 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
   // The Card row is the sheet's own; the element draws the other methods and this phone's wallet when offered.
   const cardOn = !!methods?.elementTypes.includes('card');
   const elementRows = !!methods && methods.elementTypes.some((t) => t !== 'card');
-  // Placeholders for the rows about to load (the Card row and the element's).
-  const expectedRows = methods ? Math.max(1, methods.elementTypes.length) : 3;
+  // Instant ACH, in US dollars, when the engine's bank step is set up for this payment.
+  const bankOn = !!methods?.instantAch && bankState.key === bankKey && bankState.available;
+  // Placeholders for the rows about to load (the Card row, the Instant ACH row and the element's).
+  const expectedRows = methods ? Math.max(1, methods.elementTypes.length + (methods.instantAch ? 1 : 0)) : 3;
   // A hairline over the pinned bottom only while content scrolls under it.
   const [scroll, setScroll] = useState({ content: 0, frame: 0 });
   const scrolls = scroll.content > scroll.frame + 1;
@@ -302,6 +312,11 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                         onLoaded={() => setLoadedCardConfig(cardConfigJson)}
                         onLoadFailed={(message) => session.setElementError(message || 'load failed')}
                         onCardOptionChange={(card) => session.setCard(card)}
+                        onBankChange={(bank) => {
+                          setBankState({ key: bankKey, available: bank.available });
+                          const label = bankLabel(bank.label);
+                          session.setBank(bank.available && label ? { label, image: null } : null);
+                        }}
                         onWalletsHeight={setWalletsHeight}
                         onWalletTap={(wallet) => session.walletStarted(wallet)}
                         onConfirmationToken={(id) => void session.onConfirmationToken(id)}
@@ -340,7 +355,20 @@ export function CheckoutSheet(props: CheckoutSheetProps) {
                             p={p}
                           />
                         )}
-                        <View style={cardOn && elementRows && !elementLoading && !snap.elementError ? s.rowLine : undefined}>
+                        {bankOn && !elementLoading && !snap.elementError && (
+                          <CardRow
+                            bank
+                            line={cardOn}
+                            card={snap.bank}
+                            selected={snap.method === 'instantAch'}
+                            disabled={paying}
+                            onPress={() => session.chooseBank()}
+                            onChange={() => session.changeBank()}
+                            s={s}
+                            p={p}
+                          />
+                        )}
+                        <View style={(cardOn || bankOn) && elementRows && !elementLoading && !snap.elementError ? s.rowLine : undefined}>
                           <MethodsView
                             ref={element}
                             configJson={configJson}
@@ -496,19 +524,24 @@ function ResultView(props: {
   // The short reference the buyer can quote: the subscription's, else the transaction's, else the payment's own id.
   const reference = sub?.ref || (result.status === 'succeeded' && result.transactionId) || paymentId;
   // Paid with: the network's mark and last four from Vezmo's server, else the element's own label (or UPI / Pix).
-  const mark = markForBrand(props.paidMethod?.brand) ?? (props.paidWith === 'UPI' ? 'upi' : props.paidWith === 'Pix' ? 'pix' : null);
+  // Instant ACH: its bank and its name, whatever the account's last four.
+  const bank = props.paidMethod?.type === 'instantAch' || props.paidWith === INSTANT_ACH;
+  const mark = bank
+    ? null
+    : (markForBrand(props.paidMethod?.brand) ?? (props.paidWith === 'UPI' ? 'upi' : props.paidWith === 'Pix' ? 'pix' : null));
   const last4 = props.paidMethod?.last4;
-  const paidText = last4 ? `•••• ${last4}` : mark === 'upi' || mark === 'pix' ? '' : (props.paidWith ?? '');
+  const paidText = bank ? INSTANT_ACH : last4 ? `•••• ${last4}` : mark === 'upi' || mark === 'pix' ? '' : (props.paidWith ?? '');
+  const paidLogo = bank ? <BankTile s={s} p={p} /> : mark ? <BrandTile mark={mark} s={s} /> : null;
   const rows: [string, string, ReactNode?][] = sub
     ? [
         ['Plan', plan ? `${plan.planName} · ${planPriceText(plan)}` : ''],
         [trialing ? 'First charge' : 'Next charge', next],
-        [trialing ? 'Card' : 'Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
+        [trialing ? (bank ? 'Bank account' : 'Card') : 'Paid with', paidText || (mark ?? ''), paidLogo],
         ['Reference', reference],
       ]
     : [
         ['Paid to', props.merchant],
-        ['Paid with', paidText || (mark ?? ''), mark ? <BrandTile mark={mark} s={s} /> : null],
+        ['Paid with', paidText || (mark ?? ''), paidLogo],
         ['Reference', reference],
       ];
   const shown = rows.filter(([, v]) => !!v);

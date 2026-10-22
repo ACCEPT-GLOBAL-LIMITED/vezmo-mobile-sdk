@@ -207,18 +207,22 @@ struct MethodRow: View {
 }
 
 /// The Card row, drawn by the sheet (the engine would show a plain card for any card): the network's own logo once a
-/// card is typed, its last four, and Change. Tapping opens the native card form.
+/// card is typed, its last four, and Change. Tapping opens the native card form. The Instant ACH row is the same row
+/// with a bank (`bank`): the linked account's last four, and Change to link another.
 struct CardRow: View {
   let card: CardChoice?
   let selected: Bool
   let disabled: Bool
+  var line = false
+  var bank = false
   let look: Look
   let onPress: () -> Void
   let onChange: () -> Void
 
   var body: some View {
     let p = look.p
-    RowFrame(look: look, lead: Look.rowLead) {
+    let title = bank ? instantAchName : "Card"
+    RowFrame(look: look, line: line, lead: Look.rowLead) {
       Button(action: onPress) {
         HStack(spacing: 12) {
           if let image = card?.image {
@@ -226,12 +230,17 @@ struct CardRow: View {
               .frame(width: 30, height: 22)
               .background(RoundedRectangle(cornerRadius: 5).fill(look.c(p.field)))
               .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(look.c(p.fieldLine), lineWidth: look.hairline))
+          } else if bank {
+            BankGlyph(color: look.c(p.ink)).frame(width: 30, height: 22)
           } else {
             CardGlyph(color: look.c(p.ink)).frame(width: 30, height: 22)
           }
           VStack(alignment: .leading, spacing: 1) {
-            Text("Card").font(look.font(15, .medium)).foregroundColor(look.c(p.ink))
-            if let card { Text(card.label).font(look.font(12.5)).foregroundColor(look.c(p.ink3)) }
+            Text(title).font(look.font(15, .medium)).foregroundColor(look.c(p.ink)).lineLimit(1)
+            // Before a bank is linked, what Instant ACH is.
+            if let sub = card?.label ?? (bank ? "US bank account" : nil) {
+              Text(sub).font(look.font(12.5)).foregroundColor(look.c(p.ink3)).lineLimit(1)
+            }
           }
           Spacer(minLength: 0)
         }
@@ -240,16 +249,16 @@ struct CardRow: View {
       .buttonStyle(.plain)
       .disabled(disabled)
       .accessibilityElement(children: .ignore)
-      .accessibilityLabel(card.map { "Card \($0.label)" } ?? "Card")
+      .accessibilityLabel(card.map { "\(title) \($0.label)" } ?? title)
       .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-      .accessibilityIdentifier("vezmo-card-row")
+      .accessibilityIdentifier(bank ? "vezmo-instant-ach-row" : "vezmo-card-row")
       if selected && card != nil {
         Button(action: onChange) {
           Text("Change").font(look.font(14, .medium)).foregroundColor(look.c(p.accent))
         }
         .buttonStyle(.plain)
         .disabled(disabled)
-        .accessibilityLabel("Change card")
+        .accessibilityLabel(bank ? "Change bank account" : "Change card")
         Tick(color: look.c(p.accent), size: 16)
       }
     }
@@ -374,6 +383,49 @@ struct CardGlyph: View {
     }
     .frame(width: 22, height: 16)
     .accessibilityHidden(true)
+  }
+}
+
+/// A bank: a pediment over three columns on a base. Instant ACH's icon, on its row and the receipt.
+struct BankGlyph: View {
+  let color: Color
+
+  var body: some View {
+    ZStack(alignment: .topLeading) {
+      Pediment().stroke(color, style: StrokeStyle(lineWidth: 1.6, lineJoin: .round))
+      ForEach(0..<3) { i in
+        RoundedRectangle(cornerRadius: 0.5).fill(color)
+          .frame(width: 2, height: 5.6)
+          .offset(x: 4.2 + CGFloat(i) * 5.8, y: 7.6)
+      }
+      RoundedRectangle(cornerRadius: 0.8).fill(color).frame(width: 20, height: 1.8).offset(x: 1, y: 14.2)
+    }
+    .frame(width: 22, height: 16, alignment: .topLeading)
+    .accessibilityHidden(true)
+  }
+
+  private struct Pediment: Shape {
+    func path(in rect: CGRect) -> Path {
+      var path = Path()
+      path.move(to: CGPoint(x: 1.8, y: 6.2))
+      path.addLine(to: CGPoint(x: 11, y: 1))
+      path.addLine(to: CGPoint(x: 20.2, y: 6.2))
+      path.closeSubpath()
+      return path
+    }
+  }
+}
+
+/// Instant ACH's bank on a tile, beside "Instant ACH" on the receipt (as a card network's mark sits beside its card).
+struct BankTile: View {
+  let look: Look
+
+  var body: some View {
+    BankGlyph(color: look.c(look.p.ink)).scaleEffect(0.8)
+      .frame(width: 30, height: 20)
+      .background(RoundedRectangle(cornerRadius: 5).fill(look.c(look.p.field)))
+      .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(look.c(look.p.fieldLine), lineWidth: 1))
+      .accessibilityHidden(true)
   }
 }
 

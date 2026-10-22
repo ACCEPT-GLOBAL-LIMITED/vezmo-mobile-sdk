@@ -123,8 +123,14 @@ internal fun CheckoutSheet(
     LaunchedEffect(settings, intent, engine.reconfigure) {
         if (useEngine && settings != null && intent != null) engine.configure(context, settings, intent)
     }
+    // Instant ACH's bank step, set up beside the rest.
+    LaunchedEffect(settings, intent?.bank) {
+        if (useEngine && settings != null && intent != null) engine.configureBank(context, settings, intent)
+    }
     // The engine takes a moment to load: placeholder rows hold its place until it reports in.
-    val elementLoading = useEngine && (engine.cardLoaded != settings || engine.elementLoaded != settings) && snap.elementError == null
+    val elementLoading = useEngine &&
+        (engine.cardLoaded != settings || engine.elementLoaded != settings || engine.bankLoaded != settings) &&
+        snap.elementError == null
 
     val amount = charge?.let { formatAmount(it.amountMinor, it.currency) } ?: ""
     val paying = phase == SessionPhase.Paying
@@ -268,8 +274,10 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
     // The Card row is the sheet's own; the engine draws the other methods and this phone's wallet when offered.
     val cardOn = "card" in methods.elementTypes
     val elementRows = methods.elementTypes.any { it != "card" }
-    // Placeholders for the rows about to load (the Card row and the element's).
-    val expectedRows = maxOf(1, methods.elementTypes.size)
+    // Instant ACH, in US dollars, when the engine's bank step is set up for this payment.
+    val bankOn = methods.instantAch && (!useEngine || engine.bankOn)
+    // Placeholders for the rows about to load (the Card row, the Instant ACH row and the element's).
+    val expectedRows = maxOf(1, methods.elementTypes.size + if (methods.instantAch) 1 else 0)
     val scroll = rememberScrollState()
     val qrMethod = when (snap.method) {
         Method.Upi -> QrMethod.Upi
@@ -377,8 +385,19 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
                             onChange = { session.changeCard() },
                         )
                     }
+                    if (bankOn && ok) {
+                        CardRow(
+                            card = snap.bank,
+                            selected = snap.method == Method.InstantAch,
+                            disabled = paying || (useEngine && !engine.bankReady),
+                            onClick = { session.chooseBank() },
+                            onChange = { session.changeBank() },
+                            bank = true,
+                            first = !cardOn,
+                        )
+                    }
                     if (elementRows && ok) {
-                        Box(if (cardOn) Modifier.topLine(p.line, hairline()) else Modifier) { engine.ElementRows() }
+                        Box(if (cardOn || bankOn) Modifier.topLine(p.line, hairline()) else Modifier) { engine.ElementRows() }
                     }
                     if (snap.elementError != null) {
                         Column(
@@ -463,6 +482,9 @@ private fun androidx.compose.foundation.layout.ColumnScope.SheetBody(
         SecuredBy()
     }
 }
+
+/** Instant ACH's bank, as a receipt row's logo. */
+private object BankLogo
 
 /** Scrolls to the end, once the content that just changed has been laid out. */
 private suspend fun ScrollState.revealEnd() {
@@ -590,28 +612,37 @@ private fun ResultView(
     // The short reference the buyer can quote: the subscription's, else the transaction's, else the payment's own id.
     val reference = sub?.ref?.ifEmpty { null } ?: (result as? CheckoutResult.Succeeded)?.transactionId?.ifEmpty { null } ?: paymentId
     // Paid with: the network's mark and last four from Vezmo's server, else the engine's own label (or UPI / Pix).
-    val mark = Mark.forBrand(paidMethod?.brand) ?: when (paidWith) {
-        "UPI" -> Mark.Upi
-        "Pix" -> Mark.Pix
-        else -> null
+    // Instant ACH: its bank and its name, whatever the account's last four.
+    val bank = paidMethod?.type == "instantAch" || paidWith == INSTANT_ACH
+    val mark = if (bank) {
+        null
+    } else {
+        Mark.forBrand(paidMethod?.brand) ?: when (paidWith) {
+            "UPI" -> Mark.Upi
+            "Pix" -> Mark.Pix
+            else -> null
+        }
     }
     val last4 = paidMethod?.last4?.ifEmpty { null }
     val paidText = when {
+        bank -> INSTANT_ACH
         last4 != null -> "•••• $last4"
         mark == Mark.Upi || mark == Mark.Pix -> ""
         else -> paidWith ?: ""
     }
+    // The logo beside it: a network's or UPI's mark, or Instant ACH's bank.
+    val paidLogo: Any? = if (bank) BankLogo else mark
     val rows = if (sub != null) {
         listOf(
             Triple("Plan", plan?.let { "${it.planName} · ${planPriceText(it)}" } ?: "", null),
             Triple(if (trialing) "First charge" else "Next charge", next, null),
-            Triple(if (trialing) "Card" else "Paid with", paidText, mark),
+            Triple(if (trialing) (if (bank) "Bank account" else "Card") else "Paid with", paidText, paidLogo),
             Triple("Reference", reference, null),
         )
     } else {
         listOf(
             Triple("Paid to", merchant, null),
-            Triple("Paid with", paidText, mark),
+            Triple("Paid with", paidText, paidLogo),
             Triple("Reference", reference, null),
         )
     }.filter { (_, v, m) -> v.isNotEmpty() || m != null }
@@ -665,7 +696,10 @@ private fun ResultView(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                         ) {
-                            if (logo != null) BrandTile(logo)
+                            when (logo) {
+                                is Mark -> BrandTile(logo)
+                                BankLogo -> BankTile()
+                            }
                             if (value.isNotEmpty()) {
                                 Txt(value, 14f, p.ink, weight = FontWeight.Medium, align = TextAlign.End, tabular = true, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }

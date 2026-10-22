@@ -16,7 +16,11 @@ let package = Package(
   targets: [
     .target(
       name: "VezmoCheckout",
-      dependencies: [.product(name: "StripePaymentSheet", package: "stripe-ios-spm")],
+      dependencies: [
+        .product(name: "StripePaymentSheet", package: "stripe-ios-spm"),
+        // Instant ACH's bank step, drawn natively (without it the engine falls back to a web page).
+        .product(name: "StripeFinancialConnections", package: "stripe-ios-spm"),
+      ],
       path: "packages/ios/Sources/VezmoCheckout",
       // Apple's privacy manifest: no tracking; what the sheet sends Vezmo to take the payment (see the README).
       resources: [.copy("PrivacyInfo.xcprivacy")]

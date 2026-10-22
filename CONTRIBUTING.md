@@ -74,7 +74,8 @@ takes a few extra steps; they are in the [Flutter README](packages/flutter#devel
 The end-to-end flows (`packages/*/e2e/maestro`, with the steps they share in `e2e/maestro`) pay against Vezmo's
 sandbox on both business models, Connect and merchant of record, each in its own job: cards with 3D Secure, a decline,
 a payment and a subscription in the buyer's own currency (AED), and subscriptions with and without a free trial. Once:
-cancel, a bad token, a Cash App redirect back into the app, and dark mode. They need no secrets, so they run on pull
+cancel, a bad token, a Cash App redirect back into the app, Instant ACH with the sandbox's test bank (merchant of
+record), and dark mode. They need no secrets, so they run on pull
 requests from forks too (a first-time contributor's runs start once a maintainer approves them).
 
 To run a folder of flows on your own emulator or simulator, name the model:

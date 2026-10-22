@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  bankLabel,
   chargeOf,
   formatAmount,
   intentIdOf,
@@ -56,7 +57,35 @@ describe('chargeOf', () => {
 describe('sheetMethods', () => {
   it('in US dollars: card, the enabled pay-later methods and Cash App, wallets; no UPI', () => {
     const m = sheetMethods(config(), chargeOf(config(), false));
-    expect(m).toEqual({ elementTypes: ['card', 'klarna', 'cashapp'], applePay: true, googlePay: true, upi: false, pix: false });
+    expect(m).toEqual({
+      elementTypes: ['card', 'klarna', 'cashapp'],
+      applePay: true,
+      googlePay: true,
+      upi: false,
+      pix: false,
+      instantAch: false,
+    });
+  });
+
+  it("Instant ACH: only in US dollars, when the business offers it, as the sheet's own row", () => {
+    const on = config({ enabledMethods: { card: true, instantAch: true } });
+    const dollars = sheetMethods(on, chargeOf(on, false));
+    expect(dollars.instantAch).toBe(true);
+    expect(dollars.elementTypes).toEqual(['card']);
+    // Never in the buyer's own currency.
+    expect(sheetMethods(on, chargeOf(on, true)).instantAch).toBe(false);
+    const off = config({ enabledMethods: { card: true } });
+    expect(sheetMethods(off, chargeOf(off, false)).instantAch).toBe(false);
+  });
+
+  it("the linked bank shows only its last four, never the engine's words", () => {
+    expect(bankLabel('••••6789')).toBe('•••• 6789');
+    expect(bankLabel('Success Bank ••••6789 ')).toBe('•••• 6789');
+    // The engine wraps the number in direction marks (as on the Android emulator).
+    expect(bankLabel('\u00b7\u00b7\u00b7\u00b7 \u20666789\u2069')).toBe('•••• 6789');
+    expect(bankLabel('Link')).toBeNull();
+    expect(bankLabel('Bank')).toBeNull();
+    expect(bankLabel(undefined)).toBeNull();
   });
 
   it("in the buyer's rupees: card only in the element, plus our UPI panel", () => {

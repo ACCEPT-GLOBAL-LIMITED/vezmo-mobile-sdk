@@ -458,12 +458,15 @@ struct SheetView: View {
     }
   }
 
-  /// The ways to pay: one rounded group (our Card row, the engine's rows, then our own UPI or Pix row).
+  /// The ways to pay: one rounded group (our Card row, our Instant ACH row, the engine's rows, then our own UPI or Pix
+  /// row).
   private func ways(_ config: CheckoutConfig, _ methods: SheetMethods, _ look: Look) -> some View {
     let p = look.p
     let error = snap.elementError != nil
-    let loading = !(cardFlow.loaded && element.loaded) && !error
+    let loading = !(cardFlow.loaded && element.loaded && cardFlow.bankLoaded) && !error
     let cardOn = methods.elementTypes.contains("card")
+    // Instant ACH, in US dollars, when the engine's bank step is set up for this payment.
+    let bankOn = methods.instantAch && cardFlow.bankOn
     // Our own UPI or Pix row, when paying in rupees or reais.
     let own: (method: PayMethod, mark: Mark)? = methods.upi ? (.upi, .upi) : methods.pix ? (.pix, .pix) : nil
     return VStack(alignment: .leading, spacing: 8) {
@@ -482,7 +485,7 @@ struct SheetView: View {
       }
       VStack(spacing: 0) {
         if loading {
-          RowsSkeleton(look: look, rows: max(1, methods.elementTypes.count))
+          RowsSkeleton(look: look, rows: max(1, methods.elementTypes.count + (methods.instantAch ? 1 : 0)))
         }
         if cardOn && !loading && !error {
           CardRow(
@@ -495,9 +498,21 @@ struct SheetView: View {
             onChange: { session.changeCard() }
           )
         }
+        if bankOn && !loading && !error {
+          CardRow(
+            card: snap.bank,
+            selected: snap.method == .instantAch,
+            disabled: paying || cardFlow.bankUpdating,
+            line: cardOn,
+            bank: true,
+            look: look,
+            onPress: { session.chooseBank() },
+            onChange: { session.changeBank() }
+          )
+        }
         if element.element != nil && !loading && !error {
           VStack(spacing: 0) {
-            if cardOn { Rectangle().fill(look.c(p.line)).frame(height: look.hairline) }
+            if cardOn || bankOn { Rectangle().fill(look.c(p.line)).frame(height: look.hairline) }
             ElementView(host: element).frame(height: max(element.height, 1))
           }
         }
@@ -559,6 +574,7 @@ struct SheetView: View {
             look: look,
             disabled: !CheckoutSession.canPay(snap)
               || (snap.method == .card && cardFlow.updating)
+              || (snap.method == .instantAch && cardFlow.bankUpdating)
               || (snap.method == .element && element.updating),
             busy: paying,
             lock: true
@@ -665,29 +681,33 @@ struct ResultView: View {
   /// Receipt rows: Paid to, Paid with (the network's mark and last four from Vezmo's server, else what the buyer
   /// chose, or UPI / Pix), and the reference the buyer can quote: the subscription's, else the transaction's, else the
   /// payment's own id. A subscription's receipt shows the plan and its next charge instead of who was paid.
-  private var rows: [(key: String, value: String, mark: Mark?)] {
+  private var rows: [(key: String, value: String, mark: Mark?, bank: Bool)] {
     var reference = paymentId
     if case .succeeded(_, let transactionId?, _) = result, !transactionId.isEmpty { reference = transactionId }
     if let ref = subscription?.ref, !ref.isEmpty { reference = ref }
-    let mark = Mark.forBrand(paidMethod?.brand) ?? (paidWith == "UPI" ? .upi : paidWith == "Pix" ? .pix : nil)
+    // Instant ACH: its bank and its name, whatever the account's last four.
+    let bank = paidMethod?.type == "instantAch" || paidWith == instantAchName
+    let mark = bank ? nil : Mark.forBrand(paidMethod?.brand) ?? (paidWith == "UPI" ? .upi : paidWith == "Pix" ? .pix : nil)
     let paidText: String
-    if let last4 = paidMethod?.last4, !last4.isEmpty {
+    if bank {
+      paidText = instantAchName
+    } else if let last4 = paidMethod?.last4, !last4.isEmpty {
       paidText = "•••• \(last4)"
     } else {
       paidText = mark == .upi || mark == .pix ? "" : (paidWith ?? "")
     }
     let paid = paidText.isEmpty ? (mark?.rawValue ?? "") : paidText
-    var rows: [(key: String, value: String, mark: Mark?)] = []
+    var rows: [(key: String, value: String, mark: Mark?, bank: Bool)] = []
     if subscription != nil {
       let planText: String = plan.map { "\($0.planName) · \(planPriceText($0))" } ?? ""
-      rows.append(("Plan", planText, nil))
-      rows.append((trialing ? "First charge" : "Next charge", dateText(plan?.nextChargeAt), nil))
-      rows.append((trialing ? "Card" : "Paid with", paid, mark))
+      rows.append(("Plan", planText, nil, false))
+      rows.append((trialing ? "First charge" : "Next charge", dateText(plan?.nextChargeAt), nil, false))
+      rows.append((trialing ? (bank ? "Bank account" : "Card") : "Paid with", paid, mark, bank))
     } else {
-      rows.append(("Paid to", merchant, nil))
-      rows.append(("Paid with", paid, mark))
+      rows.append(("Paid to", merchant, nil, false))
+      rows.append(("Paid with", paid, mark, bank))
     }
-    rows.append(("Reference", reference, nil))
+    rows.append(("Reference", reference, nil, false))
     return rows.filter { !$0.value.isEmpty }
   }
 
@@ -717,6 +737,7 @@ struct ResultView: View {
               Spacer(minLength: 0)
               HStack(spacing: 8) {
                 if let mark = row.mark { BrandTile(mark: mark, look: look) }
+                if row.bank { BankTile(look: look) }
                 if !(row.mark != nil && row.value == row.mark?.rawValue) {
                   Text(row.value).font(look.font(14, .medium).monospacedDigit()).foregroundColor(look.c(p.ink))
                     .lineLimit(1).truncationMode(.middle)

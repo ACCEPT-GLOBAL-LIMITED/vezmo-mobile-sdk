@@ -51,8 +51,9 @@ internal data class EngineSettings(
 
 /**
  * What is charged: a change updates the engine in place (the buyer switched currency). Cards go to the card form, the
- * sheet's own Card row; every other method to the element's rows. A subscription saves the card for its renewals: a
- * free trial only sets it up ([setup]); a first payment keeps it ([saveForLater]).
+ * sheet's own Card row; Instant ACH to the engine's bank step, our Instant ACH row; every other method to the element's
+ * rows. A subscription saves the card (or the bank account) for its renewals: a free trial only sets it up ([setup]); a
+ * first payment keeps it ([saveForLater]).
  */
 internal data class EngineIntent(
     val amount: Long,
@@ -61,7 +62,11 @@ internal data class EngineIntent(
     val card: Boolean,
     val setup: Boolean = false,
     val saveForLater: Boolean = false,
-)
+    val instantAch: Boolean = false,
+) {
+    /** What the bank step depends on: a change of the other methods leaves it alone. */
+    val bank get() = copy(elementTypes = emptyList(), card = false)
+}
 
 internal fun engineIntent(charge: Charge, methods: SheetMethods, config: CheckoutConfig? = null) =
     EngineIntent(
@@ -71,6 +76,7 @@ internal fun engineIntent(charge: Charge, methods: SheetMethods, config: Checkou
         card = "card" in methods.elementTypes,
         setup = config?.subscription?.trial == true,
         saveForLater = config?.subscription != null,
+        instantAch = methods.instantAch,
     )
 
 /**
@@ -80,6 +86,8 @@ internal fun engineIntent(charge: Charge, methods: SheetMethods, config: Checkou
  *   one with Google Pay that only draws the express button. Each has its own store, so both live in one activity.
  * - an embedded element for the methods with rows of their own (pay-later, Cash App), left unconfigured when there
  *   are none (an empty method list would show every method on the account).
+ * - for Instant ACH, a third flow controller offering only the engine's bank step: its sheet goes straight to linking a
+ *   US bank account, which our Instant ACH row opens.
  *
  * Payment flow: the buyer taps Pay → the engine makes a confirmation token and calls back → the session sends its id
  * to Vezmo, which prices and confirms the payment → the session answers with the intent's client secret → the engine
@@ -89,6 +97,7 @@ internal fun engineIntent(charge: Charge, methods: SheetMethods, config: Checkou
 internal class Engine(val session: CheckoutSession) {
     lateinit var flow: PaymentSheet.FlowController
     lateinit var walletFlow: PaymentSheet.FlowController
+    lateinit var bankFlow: PaymentSheet.FlowController
     lateinit var embedded: EmbeddedPaymentElement
 
     private var cardSecret: CompletableDeferred<CreateIntentResult>? = null
@@ -100,6 +109,9 @@ internal class Engine(val session: CheckoutSession) {
 
     /** What the engine last finished setting up for (the settings, the amount, the reconfigure count). */
     private var configuredFor: Triple<EngineSettings, EngineIntent, Int>? = null
+    private var bankConfiguration: PaymentSheet.Configuration? = null
+    private var bankConfiguredWith: EngineSettings? = null
+    private var bankConfiguredFor: Pair<EngineSettings, EngineIntent>? = null
 
     /**
      * The sheet is composed, so the flows have registered what they launch to finish a payment. Between the old
@@ -139,11 +151,21 @@ internal class Engine(val session: CheckoutSession) {
     /** Bumped to set the engine up again for the same settings (the card form found it not set up after all). */
     var reconfigure by mutableIntStateOf(0)
 
+    /** The bank step is set up for this payment: the Instant ACH row shows only then. */
+    var bankOn by mutableStateOf(false)
+
+    /** The bank step is set up for what the sheet shows now (see [cardReady]). */
+    var bankReady by mutableStateOf(false)
+
+    /** The settings the bank step last finished with (or found it isn't wanted): placeholders until then. */
+    var bankLoaded by mutableStateOf<EngineSettings?>(null)
+
     /** The engine can take this way to pay now. */
     fun readyFor(method: Method) =
         when (method) {
             Method.Card -> cardReady
             Method.Element -> elementReady
+            Method.InstantAch -> bankReady
             else -> true
         }
 
@@ -171,6 +193,13 @@ internal class Engine(val session: CheckoutSession) {
         cardReport = option to cardReport.second + 1
     }
 
+    /** Each bank account the bank step reports, numbered the same way. */
+    var bankReport by mutableStateOf<Pair<PaymentOption?, Int>>(null to 0)
+
+    fun reportBank(option: PaymentOption?) {
+        bankReport = option to bankReport.second + 1
+    }
+
     val cardPort =
         object : CardFlowPort {
             // The Card row is off until the card flow is set up; a tap that gets here anyway is dropped.
@@ -180,6 +209,15 @@ internal class Engine(val session: CheckoutSession) {
 
             override fun confirmCard() {
                 if (cardReady) flow.confirm() else session.post { session.engineNotReady() }
+            }
+
+            // The Instant ACH row is off until the bank step is set up.
+            override fun presentBank() {
+                if (bankReady) bankFlow.presentPaymentOptions()
+            }
+
+            override fun confirmBank() {
+                if (bankReady) bankFlow.confirm() else session.post { session.engineNotReady(BANK_LOADING) }
             }
 
             override fun resolveConfirmation(clientSecret: String?, errorMessage: String?) {
@@ -340,6 +378,36 @@ internal class Engine(val session: CheckoutSession) {
         configuredFor = wanted
     }
 
+    /**
+     * Sets the bank step up for this payment (beside the rest of the engine, which it doesn't hold up). One the engine
+     * can't offer (it decides which payments its bank step takes) leaves Instant ACH out; everything else is unaffected.
+     */
+    suspend fun configureBank(context: Context, settings: EngineSettings, intent: EngineIntent) {
+        // As in [configure]: after a recreation the bank step is already set up for exactly this.
+        val wanted = settings to intent.bank
+        if (wanted == bankConfiguredFor) return
+        bankConfiguredFor = null
+        bankReady = false
+        if (!intent.instantAch) {
+            bankOn = false
+            reportBank(null)
+        } else {
+            if (settings != bankConfiguredWith) {
+                bankLoaded = null
+                PaymentConfiguration.init(context.applicationContext, settings.publishableKey, settings.connectedAccountId)
+                bankConfiguration = bankConfiguration(settings)
+                bankConfiguredWith = settings
+            }
+            val error = configureOne(bankFlow, intentConfiguration(intent, listOf("link")), bankConfiguration!!)
+            if (error != null) Log.i(TAG, "Instant ACH isn't available for this payment", error)
+            bankOn = error == null
+            bankReady = bankOn
+            reportBank(if (bankOn) bankFlow.getPaymentOption() else null)
+        }
+        bankLoaded = settings
+        bankConfiguredFor = wanted
+    }
+
     private suspend fun configureOne(
         flow: PaymentSheet.FlowController,
         intent: PaymentSheet.IntentConfiguration,
@@ -395,6 +463,38 @@ internal class Engine(val session: CheckoutSession) {
             )
         }
         billing(settings)?.let { builder.defaultBillingDetails(it) }
+        return builder.build()
+    }
+
+    /**
+     * The bank step: the engine's bank payments run on its own wallet, which must be on for them; its button is never
+     * shown (Vezmo is white label: the buyer sees our Instant ACH row and the bank step, nothing else). The buyer's email
+     * from the session is used as is, so the step asks only for the bank.
+     */
+    @SuppressLint("RestrictedApi")
+    private fun bankConfiguration(settings: EngineSettings): PaymentSheet.Configuration {
+        val hidden = PaymentSheet.WalletButtonsConfiguration(
+            visibility = PaymentSheet.WalletButtonsConfiguration.Visibility(
+                paymentElement = mapOf(
+                    PaymentSheet.WalletButtonsConfiguration.Wallet.Link to PaymentSheet.WalletButtonsConfiguration.PaymentElementVisibility.Never,
+                ),
+            ),
+        )
+        val builder = PaymentSheet.Configuration
+            .Builder(settings.merchantDisplayName)
+            .link(PaymentSheet.LinkConfiguration(display = PaymentSheet.LinkConfiguration.Display.WalletButtonHidden))
+            .walletButtons(hidden)
+            .paymentMethodLayout(PaymentSheet.PaymentMethodLayout.Vertical)
+            .appearance(settings.appearance)
+        billing(settings)?.let { builder.defaultBillingDetails(it) }
+        if (settings.billingEmail != null) {
+            builder.billingDetailsCollectionConfiguration(
+                PaymentSheet.BillingDetailsCollectionConfiguration(
+                    email = PaymentSheet.BillingDetailsCollectionConfiguration.CollectionMode.Never,
+                    attachDefaultsToPaymentMethod = true,
+                ),
+            )
+        }
         return builder.build()
     }
 
@@ -469,6 +569,14 @@ internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Eng
                 paymentOptionResultCallback = { },
             ).createIntentCallback(CreateIntentWithConfirmationTokenCallback { engine.awaitClientSecret(card = true, it.id) })
     }
+    // Instant ACH's bank step confirms through the card flow's Vezmo step too.
+    val bankBuilder = remember(engine) {
+        PaymentSheet.FlowController
+            .Builder(
+                resultCallback = { engine.onFlowResult(it) },
+                paymentOptionResultCallback = { engine.reportBank(it.paymentOption) },
+            ).createIntentCallback(CreateIntentWithConfirmationTokenCallback { engine.awaitClientSecret(card = true, it.id) })
+    }
     val elementBuilder = remember(engine) {
         EmbeddedPaymentElement.Builder(
             createIntentCallback = CreateIntentWithConfirmationTokenCallback { engine.awaitClientSecret(card = false, it.id) },
@@ -477,6 +585,7 @@ internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Eng
     }
     engine.flow = cardBuilder.build()
     engine.walletFlow = walletBuilder.build()
+    engine.bankFlow = bankBuilder.build()
     engine.embedded = rememberEmbeddedPaymentElement(elementBuilder)
 
     // The card the card form reports, with the network's logo, for the sheet's Card row.
@@ -485,6 +594,10 @@ internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Eng
     val painter = card?.iconPainter
     LaunchedEffect(engine.cardReport) {
         session.setCard(card?.let { CardChoice(it.label, painter) })
+    }
+    // The bank account the bank step linked, for our Instant ACH row: its last four only.
+    LaunchedEffect(engine.bankReport) {
+        session.setBank(bankLabel(engine.bankReport.first?.label)?.let { CardChoice(it, null) })
     }
     LaunchedEffect(engine.embedded) {
         engine.embedded.paymentOption.collect { session.setOption(it?.let { o -> o.label }) }
