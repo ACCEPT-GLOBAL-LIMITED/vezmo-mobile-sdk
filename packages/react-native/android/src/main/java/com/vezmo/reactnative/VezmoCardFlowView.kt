@@ -35,6 +35,7 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.paymentelement.CreateIntentWithConfirmationTokenCallback
+import com.stripe.android.paymentelement.ExtendedLabelsInPaymentOptionPreview
 import com.stripe.android.paymentelement.WalletButtonsPreview
 import com.stripe.android.paymentelement.WalletButtonsViewClickHandler
 import com.stripe.android.paymentsheet.CreateIntentResult
@@ -520,13 +521,19 @@ class VezmoCardFlowView(
     return builder.build()
   }
 
-  /** Whether the bank step is set up, and the account it linked in the engine's words (the sheet shows its last four). */
+  /**
+   * Whether the bank step is set up, and the account it linked in the engine's words (the sheet shows its last four): its
+   * label, or its second line when the label names the bank (an account linked before reads that way).
+   */
+  @OptIn(ExtendedLabelsInPaymentOptionPreview::class)
   private fun emitBank(option: PaymentOption?) {
+    val label = option?.label.orEmpty()
+    val withLast4 = if (label.trimEnd().lastOrNull()?.isDigit() == true) label else option?.labels?.sublabel ?: label
     emit(
       "topBankChange",
       Arguments.createMap().apply {
         putBoolean("available", bankReady)
-        putString("label", option?.label ?: "")
+        putString("label", withLast4)
       },
     )
   }

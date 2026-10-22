@@ -18,6 +18,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import com.stripe.android.PaymentConfiguration
 import com.stripe.android.paymentelement.CreateIntentWithConfirmationTokenCallback
 import com.stripe.android.paymentelement.EmbeddedPaymentElement
+import com.stripe.android.paymentelement.ExtendedLabelsInPaymentOptionPreview
 import com.stripe.android.paymentelement.WalletButtonsPreview
 import com.stripe.android.paymentelement.WalletButtonsViewClickHandler
 import com.stripe.android.paymentelement.rememberEmbeddedPaymentElement
@@ -548,6 +549,16 @@ internal class Engine(val session: CheckoutSession) {
 }
 
 /**
+ * The linked account's last four ("•••• 6789"), from the bank step's option: in its label, or in its second line when
+ * the label names the bank (an account linked before reads that way).
+ */
+@OptIn(ExtendedLabelsInPaymentOptionPreview::class)
+internal fun linkedBank(option: PaymentOption?): String? {
+    if (option == null) return null
+    return bankLabel(option.label) ?: bankLabel(option.labels.sublabel)
+}
+
+/**
  * Creates the engine with the sheet. The flow controllers and the element must be created unconditionally, as part of
  * the sheet's first composition, in the sheet's activity. [kept]: the engine from before the activity was recreated,
  * so a confirmation waiting on Vezmo's answer still reaches the engine that asked for it.
@@ -597,7 +608,7 @@ internal fun rememberEngine(session: CheckoutSession, kept: Engine? = null): Eng
     }
     // The bank account the bank step linked, for our Instant ACH row: its last four only.
     LaunchedEffect(engine.bankReport) {
-        session.setBank(bankLabel(engine.bankReport.first?.label)?.let { CardChoice(it, null) })
+        session.setBank(linkedBank(engine.bankReport.first)?.let { CardChoice(it, null) })
     }
     LaunchedEffect(engine.embedded) {
         engine.embedded.paymentOption.collect { session.setOption(it?.let { o -> o.label }) }
